@@ -1,6 +1,6 @@
 # Sonic-Boom-Linux
 Sonic Boom AVD with CAC passthrough on Linux  
-**NOTE:** This process has only been tested on Ubuntu 22.04 x86_64
+**Note:** This process has only been tested on Ubuntu 22.04 x86_64
 
 ## Background
 Currently, Microsoft does not provide an official Linux client to connect to Azure Virtual Desktop (AVD). Linux users must use the AVD web client, which does [not support](https://usaf.dps.mil/sites/SBVP/SitePages/AVD---FAQs.aspx) Common Access Card (CAC) passthrough. Lack of CAC passthrough prevents authenticating to websites and signing documents. This project aims to fix these problems.
@@ -85,4 +85,9 @@ CAC passthrough is officially supported using the [Windows App](https://apps.mic
 ## TODO
 - Script this process for ease of use
 - Test on non-Debian distros
+
+## Similar Projects
+- **Note:** These projects do not support CAC passthrough
+- [windows-app-linux](https://github.com/imamAtif/windows-app-linux)
+- [windows-app-for-linux](https://github.com/mariuszkopowski/windows-app-for-linux)
 
