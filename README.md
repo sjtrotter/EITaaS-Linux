@@ -82,12 +82,11 @@ CAC passthrough is officially supported using the [Windows App](https://apps.mic
 6. Test CAC passthrough
    - In the RDP session, attempt CAC authentication on a website (such as [LeaveWeb](https://leave.af.mil/login/1))
 
-## TODO
+## Todo
 - Script this process for ease of use
 - Test on non-Debian distros
 
-## Similar Projects
-- **Note:** These projects do not support CAC passthrough
-- [windows-app-linux](https://github.com/imamAtif/windows-app-linux)
-- [windows-app-for-linux](https://github.com/mariuszkopowski/windows-app-for-linux)
-
+## Alternative Methods
+- [winboat](https://github.com/winboat-org/winboat)
+- [windows-app-linux](https://github.com/imamAtif/windows-app-linux) (does NOT support CAC passthrough)
+- [windows-app-for-linux](https://github.com/mariuszkopowski/windows-app-for-linux) (does NOT support CAC passthrough)
