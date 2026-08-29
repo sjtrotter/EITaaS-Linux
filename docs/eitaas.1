@@ -1,0 +1,47 @@
+.TH EITAAS 1 "August 2026" "EITaaS-Linux 0.1.0" "User Commands"
+.SH NAME
+eitaas \- diagnose and launch community AVD connections with smart-card redirection
+.SH SYNOPSIS
+.B eitaas doctor
+.RI [ --json ]
+.br
+.B eitaas inspect-profile
+.I FILE
+.RI [ --json ]
+.br
+.B eitaas smartcard status
+.RI [ --json ]
+.br
+.B eitaas connect
+.I FILE
+.RI [ --backend=BACKEND ]
+.RI [ --clipboard ]
+.br
+.B eitaas certificates
+.RI { fetch | inspect }
+.SH DESCRIPTION
+EITaaS-Linux is an independent community helper for diagnosing and launching
+Azure Virtual Desktop connections through a compatible FreeRDP 3 client.
+.PP
+It does not disable certificate verification, request a CAC PIN, or install
+polkit rules or certificate trust anchors during ordinary operation.
+.SH SECURITY
+Connection profiles must be regular files owned by the current user without
+group or other permissions. Use chmod 600 on a downloaded profile before use.
+Clipboard redirection is disabled unless
+.B --clipboard
+is specified.
+.PP
+Never publish real RDP/RDPW files or authentication callback URLs. See the
+installed SECURITY.md documentation for reporting guidance.
+.SH BACKENDS
+The automatic backend preference is XFreeRDP, SDL, then native Wayland. Every
+selected client must be FreeRDP 3 with AAD and PC/SC support.
+.SH EXIT STATUS
+Zero indicates success. One indicates completed diagnostics with unmet
+requirements. Two indicates invalid input or an operation error. A connection
+otherwise returns the FreeRDP child exit status.
+.SH SEE ALSO
+.BR pcsc_scan (1),
+.BR pkcs11-tool (1),
+.BR xfreerdp3 (1)

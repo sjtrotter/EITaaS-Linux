@@ -8,11 +8,12 @@ version = "0.1.0"
 description = "Community Linux diagnostics and FreeRDP launcher for EITaaS AVD"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+# Keep the table form until Ubuntu 24.04's setuptools supports PEP 639's
+# SPDX-string form. Distribution packages install LICENSE/NOTICE separately.
+license = { text = "MIT" }
 authors = [{ name = "EITaaS-Linux contributors" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
 ]
@@ -22,4 +23,3 @@ eitaas = "eitaas.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
