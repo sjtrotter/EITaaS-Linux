@@ -20,7 +20,7 @@ from typing import Callable, Generic, Literal, TypeVar
 from . import certificates, doctor, smartcard
 from . import __version__
 from .freerdp import Client, select
-from .profile import inspect_profile, validate_profile
+from .profile import detect_cloud, inspect_profile, validate_profile
 from .redaction import redact
 
 T = TypeVar("T")
@@ -62,6 +62,9 @@ class FreeRDPClientSummary:
     version: str
     aad: bool
     pcsc: bool
+    sso_mib: bool
+    webview: bool
+    auth_mode: str
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,7 @@ class DoctorReport:
     pcsc_socket: bool
     tools: dict[str, bool]
     freerdp: tuple[FreeRDPClientSummary, ...]
+    identity_broker: bool
     ready: bool
 
 
@@ -88,6 +92,7 @@ class ProfileSummary:
     display_name: str
     size: int
     mode: str
+    cloud: str
     fields: tuple[ProfileField, ...]
 
 
@@ -181,6 +186,9 @@ class Application:
                     version=str(item["version"]),
                     aad=bool(item["aad"]),
                     pcsc=bool(item["pcsc"]),
+                    sso_mib=bool(item["sso_mib"]),
+                    webview=bool(item["webview"]),
+                    auth_mode=str(item["auth_mode"]),
                 )
                 for item in data["freerdp"]
             )
@@ -193,6 +201,7 @@ class Application:
                     pcsc_socket=bool(data["pcsc_socket"]),
                     tools={str(key): bool(value) for key, value in data["tools"].items()},
                     freerdp=clients,
+                    identity_broker=bool(data["identity_broker"]),
                     ready=doctor.healthy(data),
                 )
             )
@@ -207,7 +216,13 @@ class Application:
                 for item in data["fields"]
             )
             return Result(
-                ProfileSummary(Path(path).name, int(data["size"]), str(data["mode"]), fields)
+                ProfileSummary(
+                    Path(path).name,
+                    int(data["size"]),
+                    str(data["mode"]),
+                    str(data["cloud"]),
+                    fields,
+                )
             )
         except Exception as error:
             return self._error(
@@ -290,11 +305,17 @@ class Application:
             profile = validate_profile(request.profile)
             progress(ProgressEvent("selecting", "Selecting a compatible FreeRDP client"))
             client = select(request.backend)
-            command = self._connection_command(client, profile, request.clipboard)
+            cloud = detect_cloud(profile)
+            command = self._connection_command(client, profile, request.clipboard, cloud)
             if cancelled.is_set():
                 return Result(ConnectionResult(130, cancelled=True))
             progress(ProgressEvent("connecting", "FreeRDP connection started", cancellable=True))
-            process = subprocess.Popen(command)
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             while process.poll() is None:
                 if cancelled.wait(0.1):
                     progress(ProgressEvent("cancelling", "Stopping FreeRDP connection"))
@@ -310,17 +331,34 @@ class Application:
             return self._error("connection_failed", error, "Run eitaas doctor and correct failed checks.")
 
     @staticmethod
-    def _connection_command(client: Client, profile: Path, clipboard: bool) -> list[str]:
-        authority = "https://login.microsoftonline.us"
+    def _connection_command(
+        client: Client, profile: Path, clipboard: bool, cloud: str
+    ) -> list[str]:
+        cloud_settings = {
+            "azure_government": (
+                "https://login.microsoftonline.us",
+                "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access",
+            ),
+            "azure_commercial": (
+                "https://login.microsoftonline.com",
+                "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default%20openid%20profile%20offline_access",
+            ),
+        }
+        if cloud not in cloud_settings:
+            raise ValueError("profile cloud is not supported")
+        authority, scope = cloud_settings[cloud]
         callback = "https://login.microsoftonline.com/common/oauth2/nativeclient"
-        Application._validate_identity_endpoint(authority, {"login.microsoftonline.us"})
+        Application._validate_identity_endpoint(
+            authority, {"login.microsoftonline.us", "login.microsoftonline.com"}
+        )
         Application._validate_identity_endpoint(callback, {"login.microsoftonline.com"})
         return [
             client.path,
             str(profile),
             "/gateway:type:arm",
             "/sec:aad",
-            f"/azure:ad:{urllib.parse.urlsplit(authority).hostname},tenantid:common,avd-access:{callback}",
+            f"/azure:ad:{urllib.parse.urlsplit(authority).hostname},use-tenantid:on,"
+            f"avd-access:{callback},avd-scope:{scope}",
             "/smartcard",
             "+clipboard" if clipboard else "-clipboard",
         ]

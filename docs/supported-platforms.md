@@ -1,7 +1,14 @@
 # Supported platforms
 
-AVD connections require FreeRDP 3 compiled with AAD and PC/SC support. Package
-names alone are not treated as proof; `eitaas doctor` checks build capabilities.
+AVD connections require FreeRDP 3 compiled with AAD and PC/SC support plus a
+non-terminal authentication path. Package names alone are not treated as
+proof; `eitaas doctor` checks build capabilities and the live broker.
+
+Supported authentication paths are a Microsoft Identity Broker reachable over
+D-Bus by a FreeRDP SSO-MIB build, or an SDL FreeRDP client built with WebView.
+AAD without either path is reported as unavailable because FreeRDP otherwise
+falls back to printing an authorization URL and reading a callback from the
+terminal.
 
 Ubuntu 22.04 is not supported by the distribution dependency path because its
 standard repositories provide FreeRDP 2. Current Ubuntu and Fedora releases are
@@ -13,6 +20,7 @@ It is not an official Arch repository or AUR package. Arch currently ships
 FreeRDP 3 clients, including X11, Wayland, and SDL variants, but `eitaas doctor`
 must still confirm AAD and PC/SC capabilities at runtime.
 
-Under Wayland, automatic selection prefers a compatible XFreeRDP client through
-XWayland. SDL and native Wayland backends remain explicit choices until they
-pass the same AVD and smart-card tests.
+Under Wayland, automatic selection first requires secure authentication. A live
+identity broker permits the normal X11, SDL, then Wayland preference; without a
+broker, a WebView-enabled SDL client is selected. Native Wayland remains an
+explicit choice until it passes the same AVD and smart-card tests.

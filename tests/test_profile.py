@@ -3,11 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from eitaas.profile import ProfileError, inspect_profile, validate_profile
+from eitaas.profile import ProfileError, detect_cloud, inspect_profile, validate_profile
 
 
 class ProfileTests(unittest.TestCase):
-    def make_profile(self, content: str = "redirectsmartcards:i:1\n") -> Path:
+    def make_profile(
+        self,
+        content: str = "redirectsmartcards:i:1\nfull address:s:synthetic.wvd.azure.us\n",
+    ) -> Path:
         handle = tempfile.NamedTemporaryFile(suffix=".rdpw", delete=False)
         path = Path(handle.name)
         handle.write(content.encode())
@@ -37,6 +40,7 @@ class ProfileTests(unittest.TestCase):
             "diagnosticserviceurl:s:https://service.example.test/path\n"
             "remotedesktopname:s:personal desktop\n"
             "redirectsmartcards:i:1\n"
+            "full address:s:synthetic.wvd.azure.us\n"
         )
         fields = inspect_profile(path)["fields"]
         self.assertEqual(fields[0]["value"], "<redacted>")
@@ -44,6 +48,23 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(fields[2]["value"], "<redacted>")
         self.assertEqual(fields[3]["value"], "<redacted>")
         self.assertEqual(fields[4]["value"], "1")
+
+    def test_detects_government_cloud_without_returning_endpoint(self):
+        path = self.make_profile("gatewayhostname:s:gateway.wvd.azure.us\n")
+        self.assertEqual(detect_cloud(path), "azure_government")
+
+    def test_rejects_mixed_cloud_endpoints(self):
+        path = self.make_profile(
+            "gatewayhostname:s:gateway.wvd.azure.us\n"
+            "full address:s:host.wvd.microsoft.com\n"
+        )
+        with self.assertRaisesRegex(ProfileError, "mixed Azure cloud"):
+            detect_cloud(path)
+
+    def test_rejects_suffix_confusion(self):
+        path = self.make_profile("gatewayhostname:s:wvd.azure.us.example.invalid\n")
+        with self.assertRaisesRegex(ProfileError, "recognized Azure"):
+            detect_cloud(path)
 
 
 if __name__ == "__main__":

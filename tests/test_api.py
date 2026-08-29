@@ -14,7 +14,12 @@ class ApplicationAPITests(unittest.TestCase):
 
     def test_profile_result_uses_basename_only(self):
         with patch("eitaas.api.inspect_profile") as inspect:
-            inspect.return_value = {"size": 1, "mode": "0600", "fields": []}
+            inspect.return_value = {
+                "size": 1,
+                "mode": "0600",
+                "cloud": "azure_government",
+                "fields": [],
+            }
             result = Application().inspect_profile("/sensitive/location/example.rdpw")
         self.assertTrue(result.ok)
         self.assertEqual(result.value.display_name, "example.rdpw")
@@ -22,7 +27,12 @@ class ApplicationAPITests(unittest.TestCase):
 
     def test_diagnostics_do_not_expose_profile_path(self):
         with patch("eitaas.api.inspect_profile") as inspect:
-            inspect.return_value = {"size": 1, "mode": "0600", "fields": []}
+            inspect.return_value = {
+                "size": 1,
+                "mode": "0600",
+                "cloud": "azure_government",
+                "fields": [],
+            }
             report = Application().diagnostics("/sensitive/location/example.rdpw")
         self.assertTrue(report.ok)
         self.assertEqual(report.value.profile.display_name, "example.rdpw")

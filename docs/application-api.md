@@ -27,9 +27,11 @@ callbacks execute on the calling worker thread.
 FreeRDP child, waits up to five seconds, then kills it if required. Frontends
 must set the event during shutdown and wait for their worker to finish.
 
-The child currently owns its authentication interaction and standard streams.
-Future browser/callback integration must validate endpoints in the core and
-must never deliver raw callback URLs or tokens to presentation code.
+The child owns its identity-broker or embedded-WebView authentication
+interaction and does not inherit terminal streams. The core refuses clients
+that would use FreeRDP's terminal URL/callback fallback. Callback URLs,
+authorization codes, and tokens must not reach presentation code, process
+arguments, or logs.
 
 ## Compatibility
 

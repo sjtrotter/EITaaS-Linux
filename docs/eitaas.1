@@ -34,9 +34,13 @@ is specified.
 .PP
 Never publish real RDP/RDPW files or authentication callback URLs. See the
 installed SECURITY.md documentation for reporting guidance.
+.PP
+Connections require a live Microsoft Identity Broker or an SDL FreeRDP build
+with WebView support. Terminal URL and callback authentication is refused.
 .SH BACKENDS
-The automatic backend preference is XFreeRDP, SDL, then native Wayland. Every
-selected client must be FreeRDP 3 with AAD and PC/SC support.
+The automatic backend preference is XFreeRDP, SDL, then native Wayland after
+secure authentication capability is established. Every selected client must be
+FreeRDP 3 with AAD and PC/SC support.
 .SH EXIT STATUS
 Zero indicates success. One indicates completed diagnostics with unmet
 requirements. Two indicates invalid input or an operation error. A connection
