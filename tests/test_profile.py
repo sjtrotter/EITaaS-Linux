@@ -31,11 +31,19 @@ class ProfileTests(unittest.TestCase):
             validate_profile(link)
 
     def test_redacts_sensitive_fields(self):
-        path = self.make_profile("loadbalanceinfo:s:secret\nusername:s:user@example.test\nredirectsmartcards:i:1\n")
+        path = self.make_profile(
+            "loadbalanceinfo:s:secret\n"
+            "username:s:user@example.test\n"
+            "diagnosticserviceurl:s:https://service.example.test/path\n"
+            "remotedesktopname:s:personal desktop\n"
+            "redirectsmartcards:i:1\n"
+        )
         fields = inspect_profile(path)["fields"]
         self.assertEqual(fields[0]["value"], "<redacted>")
         self.assertEqual(fields[1]["value"], "<redacted>")
-        self.assertEqual(fields[2]["value"], "1")
+        self.assertEqual(fields[2]["value"], "<redacted>")
+        self.assertEqual(fields[3]["value"], "<redacted>")
+        self.assertEqual(fields[4]["value"], "1")
 
 
 if __name__ == "__main__":

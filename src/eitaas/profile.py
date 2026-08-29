@@ -47,11 +47,12 @@ def inspect_profile(path_value: str | os.PathLike[str]) -> dict[str, object]:
         if len(parts) != 3:
             continue
         name, field_type, value = parts
+        show_value = field_type.lower() == "i" and not SENSITIVE_FIELDS.search(name)
         fields.append(
             {
                 "name": name,
                 "type": field_type,
-                "value": "<redacted>" if SENSITIVE_FIELDS.search(name) else value,
+                "value": value if show_value else "<redacted>",
             }
         )
     return {
