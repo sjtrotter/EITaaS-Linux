@@ -23,6 +23,12 @@ Calls are synchronous. GUI frontends must run blocking operations on a worker
 thread and marshal progress events onto their toolkit event loop. Progress
 callbacks execute on the calling worker thread.
 
+`Application.doctor_async` and `Application.smartcard_status_async` return
+futures backed by bounded worker threads so GUI callers do not block their
+toolkit event loop on PC/SC subprocesses. The synchronous forms remain for the
+CLI. `doctor` includes the sanitized smart-card component summary and requires
+it to be healthy before reporting overall readiness.
+
 `Application.connect` accepts a `threading.Event`. Setting it terminates the
 FreeRDP child, waits up to five seconds, then kills it if required. Frontends
 must set the event during shutdown and wait for their worker to finish.

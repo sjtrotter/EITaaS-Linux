@@ -3,13 +3,14 @@
 
 Name:           eitaas-freerdp-webview
 Version:        3.31.0
-Release:        0.1%{?dist}
+Release:        0.3%{?dist}
 Summary:        Isolated FreeRDP WebView prototype for EITaaS
 License:        Apache-2.0 AND MIT
 URL:            https://github.com/FreeRDP/FreeRDP
 Source0:        https://github.com/FreeRDP/FreeRDP/archive/refs/tags/%{version}.tar.gz
 Source1:        https://github.com/akallabeth/webview/archive/%{webview_commit}/webview-%{webview_commit}.tar.gz
 Patch0:         0001-redact-webview-callback-errors.patch
+Patch1:         0002-add-pkcs11-webview-authentication.patch
 
 BuildRequires:  cmake
 BuildRequires:  gcc
@@ -28,12 +29,14 @@ BuildRequires:  gtk3-devel
 BuildRequires:  webkit2gtk4.1-devel
 
 Requires:       pcsc-lite
+Requires:       gnutls-utils
 
 %description
 Experimental SDL FreeRDP client with an embedded AAD WebView. It installs with
 private FreeRDP libraries in its own libexec directory and does not replace
-the Fedora FreeRDP packages. This package is not release-ready until the CAC
-and Azure Government hardware gates in EITaaS-Linux issue 27 pass.
+the Fedora FreeRDP packages. Its Azure Government, PIV authentication, and CAC
+redirection path is hardware-validated on Fedora 44; other distributions and
+display configurations still require separate validation.
 
 %prep
 %autosetup -n FreeRDP-%{version} -p1 -a 1
@@ -100,5 +103,12 @@ done
 %{_libexecdir}/eitaas-freerdp/lib64/libwinpr3.so.3*
 
 %changelog
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.3
+- Keep PIN-protected PIV identities selectable with ID-only key selectors
+
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.2
+- Pair PKCS11 certificate and private-key objects by ID
+- Filter the chooser to authentication certificates
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.1
 - Initial isolated WebView prototype
