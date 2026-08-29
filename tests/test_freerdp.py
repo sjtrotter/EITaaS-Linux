@@ -1,10 +1,16 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from eitaas.freerdp import Client, discover, identity_broker_available, select
+from eitaas.freerdp import CANDIDATES, Client, discover, identity_broker_available, select
 
 
 class FreeRDPTests(unittest.TestCase):
+    def test_isolated_webview_client_is_preferred(self):
+        self.assertEqual(
+            CANDIDATES["sdl"][0],
+            "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp",
+        )
+
     @patch("eitaas.freerdp.subprocess.run")
     @patch("eitaas.freerdp.shutil.which", return_value="/usr/bin/gdbus")
     def test_broker_check_queries_bus_without_activating_broker(self, which, run):
