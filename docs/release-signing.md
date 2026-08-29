@@ -22,7 +22,8 @@ release commit has passed CI and the manual AVD/CAC matrix.
 ## Checksums and provenance
 
 The workflow gathers the canonical source archive, Python wheel and sdist,
-SBOM, DEB, RPM/SRPM, and Arch package before generating `SHA256SUMS`. It then
+SBOM, DEB and Debian source package, RPM/SRPM, and Arch package before generating
+`SHA256SUMS`. It then
 checks the manifest itself. For a tag build, GitHub creates keyless provenance
 attestations after the protected environment is approved.
 

@@ -61,11 +61,17 @@ jobs:
       - run: >-
           lintian --suppress-tags
           bad-distribution-in-changes-file,initial-upload-closes-no-bugs
-          dist/eitaas-linux_0.1.0-1_amd64.changes
+          dist/*.changes
       - uses: actions/upload-artifact@v4
         with:
           name: release-deb
-          path: dist/*.deb
+          path: |
+            dist/*.deb
+            dist/*.dsc
+            dist/*.debian.tar.*
+            dist/*.orig.tar.*
+            dist/*.buildinfo
+            dist/*.changes
 
   rpm:
     needs: source-python

@@ -76,7 +76,7 @@ jobs:
       - run: >-
           lintian --suppress-tags
           bad-distribution-in-changes-file,initial-upload-closes-no-bugs
-          dist/eitaas-linux_0.1.0-1_amd64.changes
+          dist/*.changes
       - run: sudo apt-get install -y ./dist/eitaas-linux_0.1.0-1_all.deb
       - run: eitaas --version
       - name: Run installed diagnostics
@@ -90,6 +90,9 @@ jobs:
           name: deb-package
           path: |
             dist/*.deb
+            dist/*.dsc
+            dist/*.debian.tar.*
+            dist/*.orig.tar.*
             dist/*.buildinfo
             dist/*.changes
 
