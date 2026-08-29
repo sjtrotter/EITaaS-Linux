@@ -16,6 +16,8 @@ class Client:
     version: str
     aad: bool
     pcsc: bool
+    sso_mib: bool = False
+    webview: bool = False
 
     def public(self) -> dict[str, object]:
         return asdict(self)
@@ -23,7 +25,7 @@ class Client:
 
 CANDIDATES = {
     "x11": ("xfreerdp3", "xfreerdp"),
-    "sdl": ("sdl3-freerdp", "sdl-freerdp3", "sfreerdp3"),
+    "sdl": ("sdl3-freerdp", "sdl-freerdp", "sdl-freerdp3", "sfreerdp3"),
     "wayland": ("wlfreerdp3", "wlfreerdp"),
 }
 
@@ -49,7 +51,55 @@ def inspect_client(path: str, backend: str) -> Client:
         version=version,
         aad=bool(re.search(r"WITH_AAD=(?:ON|1)", build_output, re.I)),
         pcsc=bool(re.search(r"WITH_(?:PCSC|SMARTCARD_PCSC)=(?:ON|1)", build_output, re.I)),
+        sso_mib=bool(re.search(r"WITH_SSO_MIB=(?:ON|1)", build_output, re.I)),
+        webview=bool(re.search(r"WITH_WEBVIEW=(?:ON|1)", build_output, re.I)),
     )
+
+
+def identity_broker_available() -> bool:
+    """Check D-Bus registration without activating the identity broker."""
+    gdbus = shutil.which("gdbus")
+    if not gdbus:
+        return False
+    for method in ("ListNames", "ListActivatableNames"):
+        try:
+            result = subprocess.run(
+                [
+                    gdbus,
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.freedesktop.DBus",
+                    "--object-path",
+                    "/org/freedesktop/DBus",
+                    "--method",
+                    f"org.freedesktop.DBus.{method}",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if result.returncode == 0 and "'com.microsoft.identity.broker1'" in result.stdout:
+            return True
+    return False
+
+
+def secure_auth_available(client: Client, broker_available: bool) -> bool:
+    """Reject FreeRDP's terminal URL/callback fallback."""
+    return secure_auth_method(client, broker_available) != "unavailable"
+
+
+def secure_auth_method(client: Client, broker_available: bool) -> str:
+    if client.sso_mib and broker_available:
+        return "identity_broker"
+    if client.backend == "sdl" and client.webview:
+        return "embedded_webview"
+    return "unavailable"
 
 
 def discover(backend: str = "auto") -> list[Client]:
@@ -66,12 +116,20 @@ def discover(backend: str = "auto") -> list[Client]:
 
 def select(backend: str = "auto") -> Client:
     clients = discover(backend)
+    broker = identity_broker_available()
     for client in clients:
         major_match = re.match(r"(\d+)", client.version)
-        if major_match and int(major_match.group(1)) >= 3 and client.aad and client.pcsc:
+        if (
+            major_match
+            and int(major_match.group(1)) >= 3
+            and client.aad
+            and client.pcsc
+            and secure_auth_available(client, broker)
+        ):
             return client
     session = os.environ.get("XDG_SESSION_TYPE", "unknown")
     raise RuntimeError(
-        f"no compatible FreeRDP 3 client with AAD and PC/SC support found "
+        f"no compatible FreeRDP 3 client with AAD, PC/SC, and secure non-terminal "
+        f"authentication found "
         f"(requested backend: {backend}; session: {session})"
     )

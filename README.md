@@ -75,10 +75,20 @@ AVD authentication requires a FreeRDP 3 build with AAD support; CAC redirection
 also requires PC/SC support. Ubuntu 22.04's standard repository supplies
 FreeRDP 2 and is therefore not currently a supported target.
 
-The session type alone does not determine the correct client. Native Wayland
-FreeRDP has had upstream compatibility limitations, so automatic selection may
-prefer XFreeRDP through XWayland. The `doctor` command reports the session and
-available capabilities; `connect` supports an explicit backend override.
+Authentication must use either a live Microsoft Identity Broker through
+FreeRDP's SSO-MIB support or an SDL FreeRDP client built with WebView support.
+EITaaS-Linux refuses FreeRDP's terminal URL/callback fallback. Do not capture
+OAuth callbacks with browser developer tools or paste them into a terminal.
+
+The connection profile supplies the signed resource, tenant, and endpoint
+settings. EITaaS-Linux classifies only allowlisted endpoint suffixes, rejects
+mixed or unknown clouds, and supplies the matching AVD token audience. It does
+not modify the signed profile.
+
+The session type alone does not determine the correct client. Automatic
+selection considers authentication capability before backend preference. The
+`doctor` command reports the session, broker status, and each client's
+authentication mode; `connect` supports an explicit backend override.
 
 ## Smart-card permissions
 

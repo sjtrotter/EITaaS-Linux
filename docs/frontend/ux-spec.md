@@ -114,9 +114,11 @@ The progress view displays a concise phase and Cancel. Closing the application
 while FreeRDP is active prompts **Disconnect and quit** or **Keep working**. The
 frontend sets the core cancellation event and waits for cleanup.
 
-Authentication remains owned by FreeRDP until a separately reviewed browser
-handoff exists. The frontend must not scrape browser developer tools, embed a
-web view, collect callback URLs, or mirror child output into a GUI log.
+Authentication remains owned by a FreeRDP identity-broker or embedded-WebView
+path. The frontend must not scrape browser developer tools, embed a token in
+process arguments, collect callback URLs, or mirror child output into a GUI
+log. When neither secure path exists, connection is disabled and diagnostics
+identify the missing capability.
 
 ## Failures and recovery
 

@@ -15,7 +15,10 @@ class ConnectTests(unittest.TestCase):
     def profile(self) -> Path:
         handle = tempfile.NamedTemporaryFile(suffix=".rdpw", delete=False)
         path = Path(handle.name)
-        handle.write(b"redirectsmartcards:i:1\n")
+        handle.write(
+            b"redirectsmartcards:i:1\n"
+            b"full address:s:synthetic.wvd.azure.us\n"
+        )
         handle.close()
         path.chmod(0o600)
         self.addCleanup(path.unlink, missing_ok=True)
@@ -31,8 +34,13 @@ class ConnectTests(unittest.TestCase):
         command = popen.call_args.args[0]
         self.assertIn("/smartcard", command)
         self.assertIn("-clipboard", command)
+        self.assertTrue(any("www.wvd.azure.us" in item for item in command))
+        self.assertTrue(any("use-tenantid:on" in item for item in command))
         insecure_switch = "/cert:" + "ignore"
         self.assertNotIn(insecure_switch, command)
+        self.assertEqual(popen.call_args.kwargs["stdin"], -3)
+        self.assertEqual(popen.call_args.kwargs["stdout"], -3)
+        self.assertEqual(popen.call_args.kwargs["stderr"], -3)
 
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.select")
@@ -65,7 +73,9 @@ class ConnectTests(unittest.TestCase):
     def test_cli_uses_application_api(self, doctor):
         from eitaas.api import DoctorReport, Result
 
-        doctor.return_value = Result(DoctorReport("Linux", "x11", True, False, True, {}, (), True))
+        doctor.return_value = Result(
+            DoctorReport("Linux", "x11", True, False, True, {}, (), False, True)
+        )
         with redirect_stdout(StringIO()):
             self.assertEqual(main(["doctor", "--json"]), 0)
 

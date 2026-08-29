@@ -1,6 +1,6 @@
 screen mode id:i:2
 redirectsmartcards:i:1
 redirectclipboard:i:0
-full address:s:synthetic.invalid
+full address:s:synthetic.wvd.azure.us
 loadbalanceinfo:s:SYNTHETIC-NOT-A-REAL-ROUTING-TOKEN
 username:s:synthetic@example.invalid
