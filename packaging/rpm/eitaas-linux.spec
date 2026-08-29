@@ -4,7 +4,7 @@ Release:        1%{?dist}
 Summary:        Community Linux helper for EITaaS Azure Virtual Desktop
 License:        MIT
 URL:            https://github.com/sjtrotter/EITaaS-Linux
-Source0:        %{name}-%{version}.tar.gz
+Source0:        https://github.com/sjtrotter/EITaaS-Linux/archive/refs/tags/v%{version}.tar.gz
 BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools
@@ -23,7 +23,7 @@ safe FreeRDP client selection. A FreeRDP 3 build with AAD and PC/SC support is
 required for connections.
 
 %prep
-%autosetup
+%autosetup -n EITaaS-Linux-%{version}
 
 %build
 %pyproject_wheel
