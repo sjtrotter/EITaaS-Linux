@@ -23,8 +23,22 @@ jobs:
         env:
           PYTHONPATH: src
       - run: scripts/check-repository-artifacts.sh
+      - name: Require tag and project versions to match
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml)
+          test "$GITHUB_REF_NAME" = "v$version"
+      - name: Build and verify canonical source archive
+        run: |
+          archive=$(scripts/build-source-tarball.sh HEAD dist)
+          scripts/verify-source-tarball.py "$archive" --ref HEAD
+      - name: Verify deterministic source archive
+        run: |
+          mkdir reproducibility-check
+          scripts/build-source-tarball.sh HEAD reproducibility-check
+          cmp dist/eitaas-linux-*.tar.gz reproducibility-check/eitaas-linux-*.tar.gz
       - run: python -m build
-      - run: sha256sum dist/* > SHA256SUMS
+      - run: (cd dist && sha256sum * | LC_ALL=C sort -k2) > SHA256SUMS
       - run: cyclonedx-py environment --output-file sbom.cdx.json
       - uses: actions/upload-artifact@v4
         with:

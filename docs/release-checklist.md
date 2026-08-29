@@ -12,4 +12,7 @@ public test evidence.
 - Verify server certificate validation remains enabled.
 - Verify clipboard redirection is disabled by default.
 - Install, upgrade, and remove both DEB and RPM packages.
+- Confirm the release tag exactly matches the version in `pyproject.toml`.
+- Generate the canonical source tarball twice and confirm byte-for-byte output.
+- Verify the source tarball contains exactly the tagged Git tree and no private profiles, certificates, captures, or agent state.
 - Review the generated checksums and SBOM before approving publication.
