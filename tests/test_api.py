@@ -20,6 +20,20 @@ class ApplicationAPITests(unittest.TestCase):
         self.assertEqual(result.value.display_name, "example.rdpw")
         self.assertFalse(hasattr(result.value, "path"))
 
+    def test_diagnostics_do_not_expose_profile_path(self):
+        with patch("eitaas.api.inspect_profile") as inspect:
+            inspect.return_value = {"size": 1, "mode": "0600", "fields": []}
+            report = Application().diagnostics("/sensitive/location/example.rdpw")
+        self.assertTrue(report.ok)
+        self.assertEqual(report.value.profile.display_name, "example.rdpw")
+        self.assertNotIn("/sensitive/location", str(report.value))
+
+    def test_identity_endpoint_requires_allowlisted_https(self):
+        with self.assertRaises(ValueError):
+            Application._validate_identity_endpoint(
+                "http://login.microsoftonline.us", {"login.microsoftonline.us"}
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

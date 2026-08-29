@@ -1,6 +1,8 @@
 import tempfile
 import threading
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -64,7 +66,8 @@ class ConnectTests(unittest.TestCase):
         from eitaas.api import DoctorReport, Result
 
         doctor.return_value = Result(DoctorReport("Linux", "x11", True, False, True, {}, (), True))
-        self.assertEqual(main(["doctor", "--json"]), 0)
+        with redirect_stdout(StringIO()):
+            self.assertEqual(main(["doctor", "--json"]), 0)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Generic, Literal, TypeVar
 
 from . import certificates, doctor, smartcard
+from . import __version__
 from .freerdp import Client, select
 from .profile import inspect_profile, validate_profile
 from .redaction import redact
@@ -139,6 +140,15 @@ class ConnectionResult:
     cancelled: bool = False
 
 
+@dataclass(frozen=True)
+class DiagnosticReport:
+    application_version: str
+    doctor: DoctorReport | None
+    smartcard: SmartcardReport | None
+    profile: ProfileSummary | None
+    errors: tuple[ApplicationError, ...]
+
+
 def to_public_dict(value: object) -> object:
     """Convert API dataclasses into JSON-compatible public data."""
     if hasattr(value, "__dataclass_fields__"):
@@ -248,6 +258,25 @@ class Application:
         except Exception as error:
             return self._error("certificate_fetch_failed", error)
 
+    def diagnostics(self, profile: str | None = None) -> Result[DiagnosticReport]:
+        """Build a safe support report without full paths or raw command output."""
+        doctor_result = self.doctor()
+        smartcard_result = self.smartcard_status()
+        profile_result = self.inspect_profile(profile) if profile else None
+        results = [doctor_result, smartcard_result]
+        if profile_result:
+            results.append(profile_result)
+        errors = tuple(item.error for item in results if item.error is not None)
+        return Result(
+            DiagnosticReport(
+                application_version=__version__,
+                doctor=doctor_result.value,
+                smartcard=smartcard_result.value,
+                profile=profile_result.value if profile_result else None,
+                errors=errors,
+            )
+        )
+
     def connect(
         self,
         request: ConnectionRequest,
@@ -282,12 +311,24 @@ class Application:
 
     @staticmethod
     def _connection_command(client: Client, profile: Path, clipboard: bool) -> list[str]:
+        authority = "https://login.microsoftonline.us"
+        callback = "https://login.microsoftonline.com/common/oauth2/nativeclient"
+        Application._validate_identity_endpoint(authority, {"login.microsoftonline.us"})
+        Application._validate_identity_endpoint(callback, {"login.microsoftonline.com"})
         return [
             client.path,
             str(profile),
             "/gateway:type:arm",
             "/sec:aad",
-            "/azure:ad:login.microsoftonline.us,tenantid:common,avd-access:https://login.microsoftonline.com/common/oauth2/nativeclient",
+            f"/azure:ad:{urllib.parse.urlsplit(authority).hostname},tenantid:common,avd-access:{callback}",
             "/smartcard",
             "+clipboard" if clipboard else "-clipboard",
         ]
+
+    @staticmethod
+    def _validate_identity_endpoint(url: str, allowed_hosts: set[str]) -> None:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
+            raise ValueError("identity endpoint is not an approved HTTPS host")
+        if parsed.username or parsed.password:
+            raise ValueError("identity endpoint must not contain user information")

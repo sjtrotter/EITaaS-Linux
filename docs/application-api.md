@@ -14,6 +14,8 @@ modules directly, parse CLI output, or construct FreeRDP arguments.
 - Connection arguments and child-process output are not emitted as progress
   events.
 - The application layer never accepts, requests, or returns a CAC PIN.
+- `Application.diagnostics` composes a support-safe report from the same typed
+  results. It omits full profile paths, child output, and command arguments.
 
 ## Threading and lifecycle
 
