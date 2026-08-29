@@ -73,10 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:44
     steps:
-      - uses: actions/checkout@v4
       - run: >-
           dnf install -y git findutils rpm-build python3-devel
           python3-setuptools pyproject-rpm-macros python3-wheel rpmlint
+      - uses: actions/checkout@v4
       - run: scripts/build-rpm.sh
       - run: rpmlint packaging/rpm/eitaas-linux.spec dist/*.rpm
       - run: dnf install -y dist/eitaas-linux-0.1.0-1.fc44.noarch.rpm
