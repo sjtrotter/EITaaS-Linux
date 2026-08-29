@@ -401,9 +401,6 @@ class Application:
                     "-f",
                     "-multimon",
                     "-span",
-                    "-smart-sizing",
-                    "/size:75%",
-                    "+dynamic-resolution",
                 )
             )
         return command

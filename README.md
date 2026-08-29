@@ -66,8 +66,7 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    ```
 
    For profiles whose multimonitor settings produce incorrect scaling or
-   pointer alignment under XWayland, start with a resizable single-monitor
-   window:
+   pointer alignment under XWayland, start with a single-monitor window:
 
    ```bash
    eitaas connect Desktop.rdpw --single-monitor

@@ -1,6 +1,6 @@
 Name:           eitaas-linux
 Version:        0.1.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Community Linux helper for EITaaS Azure Virtual Desktop
 License:        MIT
 URL:            https://github.com/sjtrotter/EITaaS-Linux
@@ -47,6 +47,9 @@ PYTHONPATH=src %{python3} -m unittest discover -s tests -v
 %{_datadir}/zsh/site-functions/_eitaas
 
 %changelog
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-4
+- Preserve profile scaling in single-monitor mode
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-3
 - Add a resizable single-monitor connection mode
 

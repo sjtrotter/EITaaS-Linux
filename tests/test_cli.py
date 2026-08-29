@@ -88,14 +88,11 @@ class ConnectTests(unittest.TestCase):
         self.assertTrue(result.ok)
         command = popen.call_args.args[0]
         self.assertEqual(
-            command[-6:],
+            command[-3:],
             [
                 "-f",
                 "-multimon",
                 "-span",
-                "-smart-sizing",
-                "/size:75%",
-                "+dynamic-resolution",
             ],
         )
 
