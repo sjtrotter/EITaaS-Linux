@@ -13,6 +13,9 @@ public test evidence.
 - Verify clipboard redirection is disabled by default.
 - Install, upgrade, and remove both DEB and RPM packages.
 - Confirm the release tag exactly matches the version in `pyproject.toml`.
+- Run `scripts/check-version-consistency.py --tag vX.Y.Z` before creating the tag.
 - Generate the canonical source tarball twice and confirm byte-for-byte output.
 - Verify the source tarball contains exactly the tagged Git tree and no private profiles, certificates, captures, or agent state.
-- Review the generated checksums and SBOM before approving publication.
+- Approve the protected tag workflow and verify its GitHub provenance attestations.
+- Review the complete artifact set, generated checksums, and SBOM before publication.
+- Sign `SHA256SUMS` locally and publish its detached ASCII signature.

@@ -12,19 +12,20 @@ makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel
 _commit='c4f07c13ef27965c2d3f2a543f18b50faf5de79e'
 source=("$pkgname-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
 sha256sums=('4055095dab0cc2ecfd2dd16cd3582cd9c41a0c651049547b8389e526a579ed58')
+_source_dir="EITaaS-Linux-$_commit"
 
 build() {
-  cd "EITaaS-Linux-$_commit"
+  cd "$_source_dir"
   python -m build --wheel --no-isolation
 }
 
 check() {
-  cd "EITaaS-Linux-$_commit"
+  cd "$_source_dir"
   PYTHONPATH=src python -m unittest discover -s tests -v
 }
 
 package() {
-  cd "EITaaS-Linux-$_commit"
+  cd "$_source_dir"
 
   python -m installer --destdir="$pkgdir" dist/*.whl
   install -Dpm644 docs/eitaas.1 "$pkgdir/usr/share/man/man1/eitaas.1"
