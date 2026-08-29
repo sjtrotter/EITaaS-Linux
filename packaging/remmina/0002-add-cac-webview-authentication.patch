@@ -1,0 +1,33 @@
+From: EITaaS-Linux contributors <noreply@example.invalid>
+Subject: [PATCH] Add CAC authentication to the Remmina AAD WebView
+
+--- a/plugins/rdp/rdp_web_auth.c
++++ b/plugins/rdp/rdp_web_auth.c
+@@ -61,4 +61,8 @@
+ #include <winpr/wtypes.h>
+ #include <winpr/wlog.h>
++#include <sys/prctl.h>
++#include <sys/resource.h>
++
++#include "eitaas_cac_auth.c"
+ 
+ #define AUTH_CANCELLED "__AUTH_CANCELLED__"
+@@ -163,6 +167,9 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWid
+ }
+ 
+ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
++	const struct rlimit no_core = { 0, 0 };
++	(void)setrlimit(RLIMIT_CORE, &no_core);
++	(void)prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+ 	char* auth_uri = GET_AUTH_URI(gp);
+ 
+ 	GtkWidget *dialog = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+@@ -176,7 +183,8 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 
+ 	g_signal_connect(dialog, "delete-event", G_CALLBACK(delete_event_cb), gp);
+ 	g_signal_connect(webView, "decide-policy", G_CALLBACK(decide_policy_cb), gp);
++	g_signal_connect(webView, "authenticate", G_CALLBACK(eitaas_webview_authenticate), dialog);
+ 
+ 	gtk_widget_show_all(dialog);
+ 
+ 	return G_SOURCE_REMOVE;
