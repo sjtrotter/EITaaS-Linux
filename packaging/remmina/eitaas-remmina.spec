@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.1%{?dist}
+Release:        0.2%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -16,6 +16,7 @@ Source4:        eitaas-remmina
 Patch0:         0001-preserve-protected-rdpw-settings.patch
 Patch1:         0002-add-cac-webview-authentication.patch
 Patch2:         0003-keep-private-runtime-paths.patch
+Patch3:         0004-use-profile-avd-scope.patch
 
 BuildRequires:  cmake
 BuildRequires:  gcc
@@ -52,6 +53,7 @@ cp %{SOURCE3} "$remmina/plugins/rdp/eitaas_cac_auth.h"
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH0}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH1}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH2}
+patch --fuzz=0 -p1 -d "$remmina" < %{PATCH3}
 
 %build
 prefix=%{_libexecdir}/eitaas-remmina
@@ -102,5 +104,8 @@ grep -a -q 'Select smart-card authentication certificate' "$plugin"
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.2
+- Select Azure Government authority and scope for government RDPW profiles
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.1
 - Initial isolated protected-RDPW and CAC authentication prototype

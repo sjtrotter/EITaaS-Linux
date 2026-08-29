@@ -42,7 +42,7 @@ generic importer does not model.
  #include <freerdp/constants.h>
  #include <freerdp/error.h>
  #include <freerdp/event.h>
-@@ -1748,6 +1749,13 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1748,6 +1749,30 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  	channels = rfi->clientContext.context.channels;
  
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
@@ -52,6 +52,23 @@ generic importer does not model.
 +	                     rfi->clientContext.context.settings, rdpw_path) != 0) {
 +		REMMINA_PLUGIN_ERROR("Could not load the protected RDPW profile");
 +		return FALSE;
++	}
++	if (rdpw_path) {
++		const gchar *gateway = freerdp_settings_get_string(
++			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
++		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
++			if (!freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAzureActiveDirectory,
++			                                 "login.microsoftonline.us") ||
++			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAvdScope,
++			                                 "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access") ||
++			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
++			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
++				REMMINA_PLUGIN_ERROR("Could not configure Azure Government authentication");
++				return FALSE;
++			}
++		}
 +	}
  
  	gchar* ddir = remmina_plugin_service->file_get_user_datadir();

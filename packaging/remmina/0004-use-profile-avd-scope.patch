@@ -1,0 +1,9 @@
+From: EITaaS-Linux contributors <noreply@example.invalid>
+Subject: [PATCH] Use the AVD scope selected by the protected profile
+
+--- a/plugins/rdp/rdp_web_auth.c
++++ b/plugins/rdp/rdp_web_auth.c
+@@ -307 +307,2 @@
+-	const char* scope = "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default";
++	const char* scope = freerdp_settings_get_string(instance->context->settings,
++	                                                FreeRDP_GatewayAvdScope);

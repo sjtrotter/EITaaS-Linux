@@ -10,6 +10,12 @@ handle WebKitGTK client-certificate and PIN challenges with PKCS #11-backed
 CAC credentials. Only authentication, identity, and PIV-labelled certificates
 are shown. Core dumps are disabled before opening the authentication view.
 
+Authentication cloud selection is automatic. Protected profiles whose gateway
+ends in `.wvd.azure.us` use the Azure Government authority and AVD scope;
+commercial Azure profiles retain FreeRDP's normal defaults. Remmina's browser
+authentication reads the scope selected in the FreeRDP settings instead of a
+compiled-in commercial-cloud scope.
+
 Pinned Remmina source:
 
 - commit `030946c83fe1b7218a21b6d32f9c975b243b7031`
