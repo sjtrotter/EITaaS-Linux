@@ -1,0 +1,78 @@
+From: EITaaS-Linux contributors <noreply@example.invalid>
+Subject: [PATCH] Preserve protected RDPW settings
+
+Keep the source path for imported RDPW profiles and populate FreeRDP settings
+from the original file before Remmina applies user-visible preferences. This
+preserves signed AVD ARM, tenant, endpoint, and resource fields that Remmina's
+generic importer does not model.
+
+--- a/plugins/rdp/rdp_file.c
++++ b/plugins/rdp/rdp_file.c
+@@ -89,8 +89,11 @@ static void remmina_rdp_file_import_field(RemminaFile *remminafile, const gchar
+ 		}
+ 	} else if (g_strcmp0(key, "redirectprinters") == 0) {
+ 		remmina_plugin_service->file_set_int(remminafile, "shareprinter", (atoi(value) == 1));
+-	} else if (g_strcmp0(key, "redirectsmartcard") == 0) {
++	} else if (g_strcmp0(key, "redirectsmartcard") == 0 ||
++	           g_strcmp0(key, "redirectsmartcards") == 0) {
+ 		remmina_plugin_service->file_set_int(remminafile, "sharesmartcard", (atoi(value) == 1));
++	} else if (g_strcmp0(key, "enablerdsaadauth") == 0 && atoi(value) == 1) {
++		remmina_plugin_service->file_set_string(remminafile, "security", "aad");
+ 	} else if (g_strcmp0(key, "redirectclipboard") == 0) {
+ 		remmina_plugin_service->file_set_int(remminafile, "disableclipboard", (atoi(value) != 1));
+ 	} else if (g_strcmp0(key, "alternate shell") == 0) {
+@@ -206,6 +209,10 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 
+ 	remminafile = remmina_rdp_file_import_channel(channel);
+ 	g_io_channel_shutdown(channel, TRUE, &error);
++	if (remminafile && g_str_has_suffix(from_file, ".rdpw")) {
++		remmina_plugin_service->file_set_string(remminafile, "eitaas_rdpw_path", from_file);
++		remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
++	}
+ 
+ 	return remminafile;
+ }
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -71,6 +71,7 @@
+ #include <freerdp/client/channels.h>
+ #include <freerdp/client/cliprdr.h>
+ #include <freerdp/client/cmdline.h>
++#include <freerdp/client.h>
+ #include <freerdp/constants.h>
+ #include <freerdp/error.h>
+ #include <freerdp/event.h>
+@@ -1748,6 +1749,33 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+ 	channels = rfi->clientContext.context.channels;
+ 
+ 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
++	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile,
++	                                                               "eitaas_rdpw_path");
++	if (rdpw_path && freerdp_client_settings_parse_connection_file(
++	                     rfi->clientContext.context.settings, rdpw_path) != 0) {
++		REMMINA_PLUGIN_ERROR("Could not load the protected RDPW profile");
++		return FALSE;
++	}
++	if (rdpw_path) {
++		const gchar *gateway = freerdp_settings_get_string(
++			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
++		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
++			if (!freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAzureActiveDirectory,
++			                                 "login.microsoftonline.us") ||
++			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAvdScope,
++			                                 "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access") ||
++			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAvdAccessAadFormat,
++			                                 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
++			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
++			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
++				REMMINA_PLUGIN_ERROR("Could not configure Azure Government authentication");
++				return FALSE;
++			}
++		}
++	}
+ 
+ 	gchar* ddir = remmina_plugin_service->file_get_user_datadir();
+ 	datapath = g_build_path("/",
