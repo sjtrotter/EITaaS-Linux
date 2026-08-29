@@ -42,7 +42,7 @@ def inspect_client(path: str, backend: str) -> Client:
     version_output = _output(path, "/version")
     build_output = _output(path, "/buildconfig")
     match = re.search(r"(?:FreeRDP version|This is FreeRDP version)\s+([^\s]+)", version_output, re.I)
-    version = match.group(1) if match else version_output.strip().splitlines()[0] if version_output.strip() else "unknown"
+    version = match.group(1) if match else "unknown"
     return Client(
         path=path,
         backend=backend,
@@ -75,4 +75,3 @@ def select(backend: str = "auto") -> Client:
         f"no compatible FreeRDP 3 client with AAD and PC/SC support found "
         f"(requested backend: {backend}; session: {session})"
     )
-
