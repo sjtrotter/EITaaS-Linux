@@ -40,6 +40,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  source-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build and verify canonical source archive
+        run: |
+          archive=$(scripts/build-source-tarball.sh HEAD dist)
+          scripts/verify-source-tarball.py "$archive" --ref HEAD
+      - name: Verify deterministic output
+        run: |
+          mkdir reproducibility-check
+          scripts/build-source-tarball.sh HEAD reproducibility-check
+          cmp dist/eitaas-linux-*.tar.gz reproducibility-check/eitaas-linux-*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canonical-source-tarball
+          path: dist/eitaas-linux-*.tar.gz
+
   deb-package:
     runs-on: ubuntu-24.04
     steps:
