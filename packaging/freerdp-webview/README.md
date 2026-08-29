@@ -21,6 +21,8 @@ Required security properties:
 - apply `0001-redact-webview-callback-errors.patch` before building;
 - apply `0002-add-pkcs11-webview-authentication.patch` to handle
   certificate selection and PIN challenges with PKCS #11-backed credentials;
+- apply `0003-honor-disabled-display-options.patch` so command-line
+  single-monitor overrides can disable profile-provided display settings;
 - keep embedded CLI arguments in RDP files disabled;
 - keep FUSE clipboard file transfer disabled; and
 - install the executable as
@@ -44,8 +46,9 @@ The Fedora 44 hardware test confirmed two additional limitations:
 The successful test used Fedora 44 in a GNOME Wayland session with the SDL
 client forced through XWayland. A two-monitor profile had severe scaling and
 pointer-target alignment problems after connection, and the fullscreen toggle
-did not work. Multimonitor behavior is therefore not validated; issue #29
-tracks a reliable single-monitor fallback and display polish. Ubuntu, Arch
+did not work. Multimonitor behavior is therefore not validated. EITaaS offers
+an explicit resizable single-monitor fallback while issue #29 tracks hardware
+validation and further display polish. Ubuntu, Arch
 Linux, native Wayland, other desktop environments, CAC removal/reinsertion,
 and disconnect/reconnect still require their own manual release-matrix tests.
 

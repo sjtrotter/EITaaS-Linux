@@ -3,7 +3,7 @@
 
 Name:           eitaas-freerdp-webview
 Version:        3.31.0
-Release:        0.3%{?dist}
+Release:        0.4%{?dist}
 Summary:        Isolated FreeRDP WebView prototype for EITaaS
 License:        Apache-2.0 AND MIT
 URL:            https://github.com/FreeRDP/FreeRDP
@@ -11,6 +11,7 @@ Source0:        https://github.com/FreeRDP/FreeRDP/archive/refs/tags/%{version}.
 Source1:        https://github.com/akallabeth/webview/archive/%{webview_commit}/webview-%{webview_commit}.tar.gz
 Patch0:         0001-redact-webview-callback-errors.patch
 Patch1:         0002-add-pkcs11-webview-authentication.patch
+Patch2:         0003-honor-disabled-display-options.patch
 
 BuildRequires:  cmake
 BuildRequires:  gcc
@@ -103,6 +104,9 @@ done
 %{_libexecdir}/eitaas-freerdp/lib64/libwinpr3.so.3*
 
 %changelog
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.4
+- Honor disabled multimonitor and smart-sizing command-line overrides
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.3
 - Keep PIN-protected PIV identities selectable with ID-only key selectors
 

@@ -71,6 +71,36 @@ class ConnectTests(unittest.TestCase):
 
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.select")
+    def test_single_monitor_overrides_profile_display_settings(self, select_client, popen):
+        select_client.return_value = Client(
+            "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp",
+            "sdl",
+            "3.31.0",
+            True,
+            True,
+            True,
+            True,
+        )
+        popen.return_value = Mock(poll=Mock(return_value=0), returncode=0)
+        result = Application().connect(
+            ConnectionRequest(str(self.profile()), single_monitor=True)
+        )
+        self.assertTrue(result.ok)
+        command = popen.call_args.args[0]
+        self.assertEqual(
+            command[-6:],
+            [
+                "-f",
+                "-multimon",
+                "-span",
+                "-smart-sizing",
+                "/size:75%",
+                "+dynamic-resolution",
+            ],
+        )
+
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.select")
     def test_connection_can_be_cancelled(self, select_client, popen):
         select_client.return_value = Client("/usr/bin/xfreerdp3", "x11", "3.30.0", True, True)
         process = Mock(poll=Mock(return_value=None), returncode=-15)

@@ -39,6 +39,11 @@ def parser() -> argparse.ArgumentParser:
     connect_cmd.add_argument("profile")
     connect_cmd.add_argument("--backend", choices=("auto", "x11", "sdl", "wayland"), default="auto")
     connect_cmd.add_argument("--clipboard", action="store_true", help="enable bidirectional clipboard redirection")
+    connect_cmd.add_argument(
+        "--single-monitor",
+        action="store_true",
+        help="override profile display settings with a resizable single-monitor window",
+    )
     cert_cmd = commands.add_parser("certificates", help="fetch or inspect official certificate bundles")
     cert_commands = cert_cmd.add_subparsers(dest="certificate_command", required=True)
     cert_fetch = cert_commands.add_parser("fetch", help="download a digest-pinned official bundle")
@@ -72,7 +77,9 @@ def main(argv: list[str] | None = None) -> int:
             _print(result.value, args.json)
             return 0 if result.value and result.value.ready else 1
     elif args.command == "connect":
-        result = app.connect(ConnectionRequest(args.profile, args.backend, args.clipboard))
+        result = app.connect(
+            ConnectionRequest(args.profile, args.backend, args.clipboard, args.single_monitor)
+        )
         if result.ok:
             return result.value.exit_code if result.value else 2
     elif args.command == "certificates":

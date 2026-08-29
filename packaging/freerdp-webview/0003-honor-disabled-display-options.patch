@@ -1,0 +1,47 @@
+From: EITaaS-Linux contributors <noreply@example.invalid>
+Subject: [PATCH] Honor disabled display options
+
+Allow command-line options following an RDP file to disable multimonitor and
+smart sizing selected by the profile. This provides a reliable windowed
+single-monitor fallback for profiles authored on a different display layout.
+
+--- a/client/common/cmdline.c
++++ b/client/common/cmdline.c
+@@ -2908,7 +2908,7 @@ static int parse_dynamic_resolution_options(rdpSettings* settings,
+ 	WINPR_ASSERT(settings);
+ 	WINPR_ASSERT(arg);
+ 
+-	const BOOL val = arg->Value != nullptr;
++	const BOOL val = arg->Value == BoolValueTrue;
+ 
+ 	if (val && freerdp_settings_get_bool(settings, FreeRDP_SmartSizing))
+ 	{
+@@ -2929,14 +2929,17 @@ static int parse_smart_sizing_options(rdpSettings* settings, const COMMAND_LINE_
+ 	WINPR_ASSERT(settings);
+ 	WINPR_ASSERT(arg);
+ 
+-	if (freerdp_settings_get_bool(settings, FreeRDP_DynamicResolutionUpdate))
++	const BOOL val = arg->Value != BoolValueFalse;
++	if (val && freerdp_settings_get_bool(settings, FreeRDP_DynamicResolutionUpdate))
+ 	{
+ 		WLog_ERR(TAG, "Smart sizing and dynamic resolution are mutually exclusive options");
+ 		return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
+ 	}
+ 
+-	if (!freerdp_settings_set_bool(settings, FreeRDP_SmartSizing, TRUE))
++	if (!freerdp_settings_set_bool(settings, FreeRDP_SmartSizing, val))
+ 		return COMMAND_LINE_ERROR;
++	if (!val)
++		return 0;
+ 
+ 	if (arg->Value)
+ 	{
+@@ -4925,7 +4928,7 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings,
+ 		}
+ 		CommandLineSwitchCase(arg, "multimon")
+ 		{
+-			if (!freerdp_settings_set_bool(settings, FreeRDP_UseMultimon, TRUE))
++			if (!freerdp_settings_set_bool(settings, FreeRDP_UseMultimon, enable))
+ 				return fail_at(arg, COMMAND_LINE_ERROR);
+ 
+ 			if (arg->Flags & COMMAND_LINE_VALUE_PRESENT)

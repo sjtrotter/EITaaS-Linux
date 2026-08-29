@@ -33,6 +33,10 @@ it to be healthy before reporting overall readiness.
 FreeRDP child, waits up to five seconds, then kills it if required. Frontends
 must set the event during shutdown and wait for their worker to finish.
 
+`ConnectionRequest.single_monitor` appends reviewed FreeRDP display overrides
+after the protected profile. It disables fullscreen, multimonitor, spanning,
+and smart sizing; starts a 75-percent window; and enables dynamic resolution.
+
 The child owns its identity-broker or embedded-WebView authentication
 interaction and does not inherit terminal streams. The core refuses clients
 that would use FreeRDP's terminal URL/callback fallback. Callback URLs,

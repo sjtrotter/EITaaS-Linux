@@ -141,6 +141,7 @@ class ConnectionRequest:
     profile: str
     backend: Backend = "auto"
     clipboard: bool = False
+    single_monitor: bool = False
 
 
 @dataclass(frozen=True)
@@ -328,7 +329,9 @@ class Application:
             progress(ProgressEvent("selecting", "Selecting a compatible FreeRDP client"))
             client = select(request.backend)
             cloud = detect_cloud(profile)
-            command = self._connection_command(client, profile, request.clipboard, cloud)
+            command = self._connection_command(
+                client, profile, request.clipboard, cloud, request.single_monitor
+            )
             if cancelled.is_set():
                 return Result(ConnectionResult(130, cancelled=True))
             progress(ProgressEvent("connecting", "FreeRDP connection started", cancellable=True))
@@ -362,7 +365,7 @@ class Application:
 
     @staticmethod
     def _connection_command(
-        client: Client, profile: Path, clipboard: bool, cloud: str
+        client: Client, profile: Path, clipboard: bool, cloud: str, single_monitor: bool = False
     ) -> list[str]:
         cloud_settings = {
             "azure_government": (
@@ -382,7 +385,7 @@ class Application:
             authority, {"login.microsoftonline.us", "login.microsoftonline.com"}
         )
         Application._validate_identity_endpoint(callback, {"login.microsoftonline.com"})
-        return [
+        command = [
             client.path,
             str(profile),
             "/gateway:type:arm",
@@ -392,6 +395,18 @@ class Application:
             "/smartcard",
             "+clipboard" if clipboard else "-clipboard",
         ]
+        if single_monitor:
+            command.extend(
+                (
+                    "-f",
+                    "-multimon",
+                    "-span",
+                    "-smart-sizing",
+                    "/size:75%",
+                    "+dynamic-resolution",
+                )
+            )
+        return command
 
     @staticmethod
     def _validate_identity_endpoint(url: str, allowed_hosts: set[str]) -> None:

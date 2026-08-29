@@ -65,6 +65,14 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    eitaas connect Desktop.rdpw
    ```
 
+   For profiles whose multimonitor settings produce incorrect scaling or
+   pointer alignment under XWayland, start with a resizable single-monitor
+   window:
+
+   ```bash
+   eitaas connect Desktop.rdpw --single-monitor
+   ```
+
 Do not publish, attach, or commit the exported profile. Treat it as
 user/resource-specific connection material even when it does not contain a
 password.
