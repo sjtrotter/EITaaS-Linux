@@ -1,0 +1,36 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "product": {
+    "name": "EITaaS-Linux",
+    "subtitle": "Community AVD connection helper"
+  },
+  "layout": {
+    "compactMinimumWidth": 360,
+    "wideNavigationBreakpoint": 720,
+    "contentMaximumWidth": 960,
+    "minimumPointerTarget": 44
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 18,
+    "xl": 24
+  },
+  "shape": {
+    "cardRadius": 12,
+    "dialogRadius": 14
+  },
+  "semanticStatus": {
+    "ready": "success",
+    "checking": "progress",
+    "attention": "warning",
+    "unavailable": "error",
+    "unchecked": "neutral"
+  },
+  "guidance": {
+    "colorSource": "Use toolkit semantic colors; never encode status by color alone.",
+    "typography": "Use the desktop system font and native type scale.",
+    "motion": "Use native transitions only when reduced motion is not requested."
+  }
+}

@@ -103,3 +103,11 @@ will not download or trust certificates automatically.
 Project code is licensed under the MIT License. FreeRDP, OpenSC, pcsc-lite,
 distribution packages, certificates, documentation, services, and trademarks
 remain subject to their respective terms. See `LICENSE` and `NOTICE`.
+
+## Frontends
+
+The CLI, planned GTK 4/Libadwaita frontend, and planned Qt 6 frontend share one
+presentation-neutral application API. The shared interaction and accessibility
+specification is documented under `docs/frontend/`. The graphical design uses
+a familiar resource-card workflow with original EITaaS-Linux branding; it does
+not copy or impersonate Windows App.

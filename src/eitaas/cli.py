@@ -4,19 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 
 from . import __version__
-from .certificates import CertificateError, fetch as fetch_certificates, inspect as inspect_certificates
-from .doctor import healthy, report
-from .freerdp import select
-from .profile import ProfileError, inspect_profile, validate_profile
-from .redaction import redact
-from .smartcard import status
+from .api import Application, ConnectionRequest, Result, to_public_dict
 
 
 def _print(data: object, as_json: bool) -> None:
+    data = to_public_dict(data)
     if as_json:
         print(json.dumps(data, indent=2, sort_keys=True))
         return
@@ -59,40 +54,42 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    try:
-        if args.command == "doctor":
-            data = report()
-            _print(data, args.json)
-            return 0 if healthy(data) else 1
-        if args.command == "inspect-profile":
-            _print(inspect_profile(args.profile), args.json)
+    app = Application()
+    result: Result[object]
+    if args.command == "doctor":
+        result = app.doctor()
+        if result.ok:
+            _print(result.value, args.json)
+            return 0 if result.value and result.value.ready else 1
+    elif args.command == "inspect-profile":
+        result = app.inspect_profile(args.profile)
+        if result.ok:
+            _print(result.value, args.json)
             return 0
-        if args.command == "smartcard":
-            data = status()
-            _print(data, args.json)
-            return 0 if all(bool(item.get("ok")) for item in data.values()) else 1
-        if args.command == "connect":
-            profile = validate_profile(args.profile)
-            client = select(args.backend)
-            command = [
-                client.path,
-                str(profile),
-                "/gateway:type:arm",
-                "/sec:aad",
-                "/azure:ad:login.microsoftonline.us,tenantid:common,avd-access:https://login.microsoftonline.com/common/oauth2/nativeclient",
-                "/smartcard",
-                "+clipboard" if args.clipboard else "-clipboard",
-            ]
-            return subprocess.run(command, check=False).returncode
-        if args.command == "certificates":
-            if args.certificate_command == "fetch":
-                _print(fetch_certificates(args.url, args.sha256, args.output), args.json)
-            else:
-                _print(inspect_certificates(args.bundle), args.json)
+    elif args.command == "smartcard":
+        result = app.smartcard_status()
+        if result.ok:
+            _print(result.value, args.json)
+            return 0 if result.value and result.value.ready else 1
+    elif args.command == "connect":
+        result = app.connect(ConnectionRequest(args.profile, args.backend, args.clipboard))
+        if result.ok:
+            return result.value.exit_code if result.value else 2
+    elif args.command == "certificates":
+        result = (
+            app.fetch_certificates(args.url, args.sha256, args.output)
+            if args.certificate_command == "fetch"
+            else app.inspect_certificates(args.bundle)
+        )
+        if result.ok:
+            _print(result.value, args.json)
             return 0
-    except (OSError, ProfileError, CertificateError, RuntimeError, subprocess.SubprocessError) as error:
-        print(f"error: {redact(str(error))}", file=sys.stderr)
+    else:
         return 2
+    if result.error:
+        print(f"error [{result.error.code}]: {result.error.message}", file=sys.stderr)
+        if result.error.recovery:
+            print(f"recovery: {result.error.recovery}", file=sys.stderr)
     return 2
 
 
