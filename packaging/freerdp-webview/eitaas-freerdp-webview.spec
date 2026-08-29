@@ -3,7 +3,7 @@
 
 Name:           eitaas-freerdp-webview
 Version:        3.31.0
-Release:        0.5%{?dist}
+Release:        0.6%{?dist}
 Summary:        Isolated FreeRDP WebView prototype for EITaaS
 License:        Apache-2.0 AND MIT
 URL:            https://github.com/FreeRDP/FreeRDP
@@ -104,6 +104,9 @@ done
 %{_libexecdir}/eitaas-freerdp/lib64/libwinpr3.so.3*
 
 %changelog
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.6
+- Clear profile-selected monitor IDs when disabling multimonitor mode
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 3.31.0-0.5
 - Accept negative multimonitor and smart-sizing command-line forms
 
