@@ -48,7 +48,9 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    ```
 
 3. Install this project and distribution-provided dependencies once packaging
-   for your distribution is available.
+   for your distribution is available. Upstream packaging definitions are
+   provided for Debian/Ubuntu, Fedora, and Arch Linux; these are not official
+   distribution or AUR packages.
 4. Diagnose the system:
 
    ```bash

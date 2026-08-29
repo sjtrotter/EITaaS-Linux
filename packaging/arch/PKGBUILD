@@ -1,0 +1,39 @@
+# Maintainer: EITaaS-Linux contributors <sjtrotter@users.noreply.github.com>
+
+pkgname=eitaas-linux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Community Linux helper for EITaaS Azure Virtual Desktop'
+arch=('any')
+url='https://github.com/sjtrotter/EITaaS-Linux'
+license=('MIT')
+depends=('python' 'freerdp' 'opensc' 'pcsclite' 'ccid' 'pcsc-tools')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+_commit='c4f07c13ef27965c2d3f2a543f18b50faf5de79e'
+source=("$pkgname-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
+sha256sums=('4055095dab0cc2ecfd2dd16cd3582cd9c41a0c651049547b8389e526a579ed58')
+
+build() {
+  cd "EITaaS-Linux-$_commit"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "EITaaS-Linux-$_commit"
+  PYTHONPATH=src python -m unittest discover -s tests -v
+}
+
+package() {
+  cd "EITaaS-Linux-$_commit"
+
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dpm644 docs/eitaas.1 "$pkgdir/usr/share/man/man1/eitaas.1"
+  install -Dpm644 completions/eitaas.bash \
+    "$pkgdir/usr/share/bash-completion/completions/eitaas"
+  install -Dpm644 completions/_eitaas \
+    "$pkgdir/usr/share/zsh/site-functions/_eitaas"
+  install -Dpm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dpm644 NOTICE "$pkgdir/usr/share/doc/$pkgname/NOTICE"
+  install -Dpm644 SECURITY.md "$pkgdir/usr/share/doc/$pkgname/SECURITY.md"
+  install -Dpm644 SUPPORT.md "$pkgdir/usr/share/doc/$pkgname/SUPPORT.md"
+}
