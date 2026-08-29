@@ -29,6 +29,13 @@ The prototype is not release-ready until it passes the hardware gates in
 issue #27. In particular, a successful build does not prove that WebKitGTK can
 select a CAC certificate during Microsoft sign-in.
 
+The Fedora 44 hardware test confirmed two additional limitations:
+
+- native SDL3 Wayland crashes when its libdecor GTK event processing overlaps
+  WebKitGTK; EITaaS therefore forces this isolated client through XWayland; and
+- the upstream WebView wrapper does not handle WebKitGTK client-certificate or
+  certificate-PIN authentication requests, so CAC login is not yet available.
+
 Do not fetch an unpinned WebView branch during a release build. Supply the
 pinned WebView source as `external/webview`, which FreeRDP's build detects
 without network access.

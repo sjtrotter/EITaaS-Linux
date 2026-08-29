@@ -10,6 +10,7 @@ worker thread and must marshal updates onto the toolkit event loop.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 import urllib.parse
@@ -310,11 +311,19 @@ class Application:
             if cancelled.is_set():
                 return Result(ConnectionResult(130, cancelled=True))
             progress(ProgressEvent("connecting", "FreeRDP connection started", cancellable=True))
+            child_environment = None
+            if client.path == "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp":
+                # SDL3's Wayland/libdecor event pump races GTK3/WebKitGTK 4.1.
+                # Keep the isolated prototype on XWayland until upstream can
+                # safely run both event loops on native Wayland.
+                child_environment = os.environ.copy()
+                child_environment["SDL_VIDEODRIVER"] = "x11"
             process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=child_environment,
             )
             while process.poll() is None:
                 if cancelled.wait(0.1):
