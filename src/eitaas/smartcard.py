@@ -27,7 +27,8 @@ def status() -> dict[str, object]:
     else:
         result["pcscd"] = {"available": False, "ok": False, "summary": "systemctl not found"}
     if shutil.which("pcsc_scan"):
-        result["reader"] = _run(["pcsc_scan", "-n"])
+        # Reader-only mode exits after enumeration and avoids ATR/card output.
+        result["reader"] = _run(["pcsc_scan", "-r"])
     else:
         result["reader"] = {"available": False, "ok": False, "summary": "pcsc_scan not found"}
     if shutil.which("pkcs11-tool"):
