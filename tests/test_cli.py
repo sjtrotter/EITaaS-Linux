@@ -1,8 +1,10 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from eitaas.api import Application, ConnectionRequest
 from eitaas.cli import main
 from eitaas.freerdp import Client
 
@@ -17,25 +19,52 @@ class ConnectTests(unittest.TestCase):
         self.addCleanup(path.unlink, missing_ok=True)
         return path
 
-    @patch("eitaas.cli.subprocess.run")
-    @patch("eitaas.cli.select")
-    def test_secure_connection_defaults(self, select_client, run):
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.select")
+    def test_secure_connection_defaults(self, select_client, popen):
         select_client.return_value = Client("/usr/bin/xfreerdp3", "x11", "3.30.0", True, True)
-        run.return_value = Mock(returncode=0)
-        self.assertEqual(main(["connect", str(self.profile())]), 0)
-        command = run.call_args.args[0]
+        popen.return_value = Mock(poll=Mock(return_value=0), returncode=0)
+        result = Application().connect(ConnectionRequest(str(self.profile())))
+        self.assertTrue(result.ok)
+        command = popen.call_args.args[0]
         self.assertIn("/smartcard", command)
         self.assertIn("-clipboard", command)
         insecure_switch = "/cert:" + "ignore"
         self.assertNotIn(insecure_switch, command)
 
-    @patch("eitaas.cli.subprocess.run")
-    @patch("eitaas.cli.select")
-    def test_clipboard_is_explicit(self, select_client, run):
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.select")
+    def test_clipboard_is_explicit(self, select_client, popen):
         select_client.return_value = Client("/usr/bin/xfreerdp3", "x11", "3.30.0", True, True)
-        run.return_value = Mock(returncode=0)
-        main(["connect", str(self.profile()), "--clipboard"])
-        self.assertIn("+clipboard", run.call_args.args[0])
+        popen.return_value = Mock(poll=Mock(return_value=0), returncode=0)
+        result = Application().connect(ConnectionRequest(str(self.profile()), clipboard=True))
+        self.assertTrue(result.ok)
+        self.assertIn("+clipboard", popen.call_args.args[0])
+
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.select")
+    def test_connection_can_be_cancelled(self, select_client, popen):
+        select_client.return_value = Client("/usr/bin/xfreerdp3", "x11", "3.30.0", True, True)
+        process = Mock(poll=Mock(return_value=None), returncode=-15)
+        process.wait.return_value = -15
+        popen.return_value = process
+        cancel = threading.Event()
+
+        def progress(event):
+            if event.phase == "connecting":
+                cancel.set()
+
+        result = Application().connect(ConnectionRequest(str(self.profile())), progress, cancel)
+        self.assertTrue(result.ok)
+        self.assertTrue(result.value.cancelled)
+        process.terminate.assert_called_once()
+
+    @patch("eitaas.cli.Application.doctor")
+    def test_cli_uses_application_api(self, doctor):
+        from eitaas.api import DoctorReport, Result
+
+        doctor.return_value = Result(DoctorReport("Linux", "x11", True, False, True, {}, (), True))
+        self.assertEqual(main(["doctor", "--json"]), 0)
 
 
 if __name__ == "__main__":
