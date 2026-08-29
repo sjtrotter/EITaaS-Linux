@@ -1,0 +1,56 @@
+# EITaaS/AVD connection material and authentication captures
+*.rdp
+*.rdpw
+!tests/fixtures/synthetic.rdpw
+auth-callback*
+oauth-callback*
+*.har
+*.pcap
+*.pcapng
+
+# Keys, certificates, and certificate bundles
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.p7b
+*.p7c
+
+# Agent and local automation state
+.agents/
+.agent/
+.codex/
+.claude/
+.cursor/
+.windsurf/
+.aider*
+AGENTS.local.md
+CLAUDE.local.md
+
+# Python, tests, builds, packages, and logs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+*.deb
+*.rpm
+*.log
+*.tmp
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

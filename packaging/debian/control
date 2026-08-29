@@ -1,0 +1,16 @@
+Source: eitaas-linux
+Section: utils
+Priority: optional
+Maintainer: EITaaS-Linux contributors
+Build-Depends: debhelper-compat (= 13), dh-python, pybuild-plugin-pyproject, python3-all, python3-setuptools
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/sjtrotter/EITaaS-Linux
+
+Package: eitaas-linux
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}, python3, freerdp3-x11, opensc, pcscd, pcsc-tools, libccid, libpcsclite1
+Description: community Linux helper for EITaaS Azure Virtual Desktop
+ Provides read-only diagnostics, protected RDPW profile handling, smart-card
+ checks, and safe FreeRDP client selection. A FreeRDP 3 build with AAD and
+ PC/SC support is required for connections.
