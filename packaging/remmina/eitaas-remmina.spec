@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.2%{?dist}
+Release:        0.3%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -104,6 +104,9 @@ grep -a -q 'Select smart-card authentication certificate' "$plugin"
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.3
+- Use the registered AVD native-client callback for government profiles
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.2
 - Select Azure Government authority and scope for government RDPW profiles
 

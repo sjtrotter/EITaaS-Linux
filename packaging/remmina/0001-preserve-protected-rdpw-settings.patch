@@ -42,7 +42,7 @@ generic importer does not model.
  #include <freerdp/constants.h>
  #include <freerdp/error.h>
  #include <freerdp/event.h>
-@@ -1748,6 +1749,30 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1748,6 +1749,33 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  	channels = rfi->clientContext.context.channels;
  
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
@@ -63,6 +63,9 @@ generic importer does not model.
 +			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
 +			                                 FreeRDP_GatewayAvdScope,
 +			                                 "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access") ||
++			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAvdAccessAadFormat,
++			                                 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
 +			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
 +			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
 +				REMMINA_PLUGIN_ERROR("Could not configure Azure Government authentication");

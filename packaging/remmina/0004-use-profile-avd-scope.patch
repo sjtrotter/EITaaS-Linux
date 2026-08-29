@@ -7,3 +7,9 @@ Subject: [PATCH] Use the AVD scope selected by the protected profile
 -	const char* scope = "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default";
 +	const char* scope = freerdp_settings_get_string(instance->context->settings,
 +	                                                FreeRDP_GatewayAvdScope);
+@@ -329,2 +330,3 @@
+-	winpr_asprintf(&redirect_uri, &redirect_uri_len,
+-	               "https%%3A%%2F%%2F%s%%2F%s%%2Foauth2%%2Fnativeclient", base, tenantid);
++	const char* redirect_format = freerdp_settings_get_string(
++	    instance->context->settings, FreeRDP_GatewayAvdAccessAadFormat);
++	winpr_asprintf(&redirect_uri, &redirect_uri_len, redirect_format, base, tenantid);

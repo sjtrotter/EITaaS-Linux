@@ -14,7 +14,10 @@ Authentication cloud selection is automatic. Protected profiles whose gateway
 ends in `.wvd.azure.us` use the Azure Government authority and AVD scope;
 commercial Azure profiles retain FreeRDP's normal defaults. Remmina's browser
 authentication reads the scope selected in the FreeRDP settings instead of a
-compiled-in commercial-cloud scope.
+compiled-in commercial-cloud scope. Government profiles retain the registered
+commercial `common/oauth2/nativeclient` callback used by FreeRDP's working AVD
+command-line flow; the authorization authority and resource scope remain in
+Azure Government.
 
 Pinned Remmina source:
 
