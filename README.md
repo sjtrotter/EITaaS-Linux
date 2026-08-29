@@ -1,92 +1,105 @@
-# Sonic-Boom-Linux
-Sonic Boom AVD with CAC passthrough on Linux  
-**Note:** This process has only been tested on Ubuntu 22.04 x86_64
+# EITaaS-Linux
 
-## Background
-Currently, Microsoft does not provide an official Linux client to connect to Azure Virtual Desktop (AVD). Linux users must use the AVD web client, which does [not support](https://usaf.dps.mil/sites/SBVP/SitePages/AVD---FAQs.aspx) Common Access Card (CAC) passthrough. Lack of CAC passthrough prevents authenticating to websites and signing documents. This project aims to fix these problems.
+Community tooling for connecting to an Azure Virtual Desktop (AVD) workspace
+from Linux with Common Access Card (CAC) redirection through FreeRDP.
 
-CAC passthrough is officially supported using the [Windows App](https://apps.microsoft.com/detail/9n1f85v9t8bn?hl=en-US&gl=US) on Windows operating systems.
+The project began as documentation for the Sonic Boom pilot. It is independent
+community work and is not endorsed by Microsoft, the Department of Defense,
+the Department of the Air Force, or the operators of Enterprise IT as a
+Service. See `NOTICE` for the complete statement.
 
-## Instructions
-1. Visit [https://rdweb.wvd.azure.us/arm/webclient](https://rdweb.wvd.azure.us/arm/webclient)
-    - Click the settings cog and select "Download the rdp file"
-    - Click "Desktop" to download the `Desktop.rdpw` file
+> [!WARNING]
+> This repository is under active development. Microsoft does not provide a
+> supported native Linux Windows App client. Confirm that your organization
+> permits FreeRDP before using it.
 
-2. Install dependencies
+## Why this exists
 
-    ```bash
-    sudo apt update && sudo apt install -y \
-        freerdp3-x11 \
-        pcscd \
-        pcsc-tools \
-        libccid \
-        opensc \
-        libpcsclite1
-    ```
+The AVD web client works on Linux but does not redirect smart cards. Smart-card
+redirection is needed for CAC-authenticated sites and signing applications
+inside a remote session. EITaaS-Linux checks the local system and safely invokes
+a compatible FreeRDP 3 client using a profile manually exported from the AVD
+web client.
 
-3. Check smart card reader and CAC
-    - Ensure the following commands run without root permissions (do NOT use sudo)
+## Security defaults
 
-    ```bash
-    pcsc_scan -c
-    pkcs11-tool --test --login
-    ```
+- Server certificate verification remains enabled. The project does not use a
+  certificate-bypass switch in its normal connection path.
+- No all-users pcsc-lite or polkit override is installed or recommended.
+- The tool never asks for or records a CAC PIN.
+- Real `.rdp` and `.rdpw` profiles, OAuth callbacks, keys, certificates, packet
+  captures, and local agent state are excluded from Git.
+- Connection profiles should be owned by the current user and mode `0600`.
+- Clipboard redirection is off unless the user explicitly requests it.
 
-    - If either command fails, you may need to modify pcsc permissions
+On a shared computer, another process running as the same Linux account may be
+able to access an inserted smart card. Polkit cannot isolate mutually
+untrusted processes belonging to one user. Remove the CAC when it is not in use.
 
-    ```bash
-    sudo mkdir -p /etc/polkit-1/localauthority/50-local.d/
-    sudo mkdir -p /etc/polkit-1/rules.d/
-    
-    sudo tee /etc/polkit-1/localauthority/50-local.d/99-pcscd.pkla > /dev/null <<EOF
-    [Allow pcscd access for all users]
-    Identity=unix-user:*
-    Action=org.debian.pcsc-lite.access_pcsc;org.debian.pcsc-lite.access_card;org.pcsc-lite.access_pcsc;org.pcsc-lite.access_card
-    ResultAny=yes
-    ResultInactive=yes
-    ResultActive=yes
-    EOF
-    
-    sudo tee /etc/polkit-1/rules.d/99-pcscd.rules > /dev/null <<EOF
-    polkit.addRule(function(action, subject) {
-        if (action.id.indexOf("pcsc-lite.access_pcsc") > -1 || action.id.indexOf("pcsc-lite.access_card") > -1) {
-            return polkit.Result.YES;
-        }
-    });
-    EOF
-    
-    sudo systemctl restart polkit
-    sudo systemctl restart pcscd
-    ```
+## Current workflow
 
-4. Launch connection
+1. Sign in to the authorized Azure US Government web client supplied by your
+   organization and manually export the desktop `.rdpw` profile. Microsoft does
+   not document a supported public API for automating this export.
+2. Restrict it before use:
 
-    ```bash
-    xfreerdp3 Desktop.rdpw \
-        /gateway:type:arm \
-        /sec:aad \
-        /azure:ad:login.microsoftonline.us,tenantid:common,avd-access:https://login.microsoftonline.com/common/oauth2/nativeclient \
-        /cert:ignore \
-        /smartcard \
-        +clipboard
-    ```
+   ```bash
+   chmod 600 Desktop.rdpw
+   ```
 
-5. Authenticate and capture redirection URLs
-    - Copy the authentication link(s) from xfreerdp3
-    - Open Dev Tools -> Network Tab -> Click "Keep log" -> Start recording
-    - Paste the link and authenticate
-    - Find "nativeclient?code=..." -> Right click -> Copy -> Copy URL
-    - Paste the redirection URL back into xfreerdp3
-    - The connection may require multiple authentications
+3. Install this project and distribution-provided dependencies once packaging
+   for your distribution is available.
+4. Diagnose the system:
 
-6. Test CAC passthrough
-   - In the RDP session, attempt CAC authentication on a website (such as [LeaveWeb](https://leave.af.mil/login/1))
+   ```bash
+   eitaas doctor
+   eitaas smartcard status
+   eitaas inspect-profile Desktop.rdpw
+   ```
 
-## Todo
-- Script this process for ease of use
-- Test on non-Debian distros
+5. Connect:
 
-## Alternative Methods
-- [winboat](https://github.com/winboat-org/winboat)
-- [windows-app-linux](https://github.com/imamAtif/windows-app-linux) (does NOT support CAC passthrough)
-- [windows-app-for-linux](https://github.com/mariuszkopowski/windows-app-for-linux) (does NOT support CAC passthrough)
+   ```bash
+   eitaas connect Desktop.rdpw
+   ```
+
+Do not publish, attach, or commit the exported profile. Treat it as
+user/resource-specific connection material even when it does not contain a
+password.
+
+## FreeRDP and desktop support
+
+AVD authentication requires a FreeRDP 3 build with AAD support; CAC redirection
+also requires PC/SC support. Ubuntu 22.04's standard repository supplies
+FreeRDP 2 and is therefore not currently a supported target.
+
+The session type alone does not determine the correct client. Native Wayland
+FreeRDP has had upstream compatibility limitations, so automatic selection may
+prefer XFreeRDP through XWayland. The `doctor` command reports the session and
+available capabilities; `connect` supports an explicit backend override.
+
+## Smart-card permissions
+
+First use your distribution's default pcsc-lite policy. Do not run smart-card
+tests with `sudo`. If access is denied, diagnose the daemon, socket, session,
+reader, and middleware separately before changing authorization policy.
+
+EITaaS-Linux does not install a policy override. A future optional policy must
+use exact action identifiers, a dedicated group, and active local sessions; it
+must never authorize every account or inactive sessions.
+
+## Certificates
+
+DoD PKI trust is separate from AVD gateway certificate verification. Never work
+around an AVD certificate error by disabling verification.
+
+Certificate tooling will use official HTTPS sources, show fingerprints, keep
+self-signed trust anchors distinct from intermediates, and require explicit
+confirmation before changing a user or system trust store. Package installation
+will not download or trust certificates automatically.
+
+## Licensing
+
+Project code is licensed under the MIT License. FreeRDP, OpenSC, pcsc-lite,
+distribution packages, certificates, documentation, services, and trademarks
+remain subject to their respective terms. See `LICENSE` and `NOTICE`.

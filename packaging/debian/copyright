@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: eitaas-linux
+Source: https://github.com/sjtrotter/EITaaS-Linux
+
+Files: *
+Copyright: 2026 Finn Westenfelder and EITaaS-Linux contributors
+License: MIT
+ See /usr/share/common-licenses/MIT on Debian systems or the upstream LICENSE.
