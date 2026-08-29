@@ -109,7 +109,7 @@ jobs:
           archive=$(scripts/build-source-tarball.sh HEAD dist)
           scripts/build-rpm.sh "$archive"
       - run: rpmlint packaging/rpm/eitaas-linux.spec dist/*.rpm
-      - run: dnf install -y dist/eitaas-linux-0.1.0-1.fc44.noarch.rpm
+      - run: dnf install -y dist/eitaas-linux-*.noarch.rpm
       - run: eitaas --version
       - name: Run installed diagnostics
         run: |

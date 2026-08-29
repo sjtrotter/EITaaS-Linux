@@ -41,6 +41,24 @@ class ConnectTests(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["stdin"], -3)
         self.assertEqual(popen.call_args.kwargs["stdout"], -3)
         self.assertEqual(popen.call_args.kwargs["stderr"], -3)
+        self.assertIsNone(popen.call_args.kwargs["env"])
+
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.select")
+    def test_isolated_webview_client_uses_xwayland(self, select_client, popen):
+        select_client.return_value = Client(
+            "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp",
+            "sdl",
+            "3.31.0",
+            True,
+            True,
+            True,
+            True,
+        )
+        popen.return_value = Mock(poll=Mock(return_value=0), returncode=0)
+        result = Application().connect(ConnectionRequest(str(self.profile())))
+        self.assertTrue(result.ok)
+        self.assertEqual(popen.call_args.kwargs["env"]["SDL_VIDEODRIVER"], "x11")
 
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.select")

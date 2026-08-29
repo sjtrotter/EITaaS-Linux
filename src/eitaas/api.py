@@ -10,9 +10,11 @@ worker thread and must marshal updates onto the toolkit event loop.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 import urllib.parse
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Generic, Literal, TypeVar
@@ -26,6 +28,7 @@ from .redaction import redact
 T = TypeVar("T")
 Backend = Literal["auto", "x11", "sdl", "wayland"]
 ProgressCallback = Callable[["ProgressEvent"], None]
+_BACKGROUND_OPERATIONS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="eitaas-api")
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,7 @@ class DoctorReport:
     freerdp: tuple[FreeRDPClientSummary, ...]
     identity_broker: bool
     ready: bool
+    smartcard: SmartcardReport | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +184,7 @@ class Application:
     def doctor(self) -> Result[DoctorReport]:
         try:
             data = doctor.report()
+            smartcard_result = self.smartcard_status()
             clients = tuple(
                 FreeRDPClientSummary(
                     backend=str(item["backend"]),
@@ -202,11 +207,21 @@ class Application:
                     tools={str(key): bool(value) for key, value in data["tools"].items()},
                     freerdp=clients,
                     identity_broker=bool(data["identity_broker"]),
-                    ready=doctor.healthy(data),
+                    ready=bool(
+                        doctor.healthy(data)
+                        and smartcard_result.ok
+                        and smartcard_result.value
+                        and smartcard_result.value.ready
+                    ),
+                    smartcard=smartcard_result.value,
                 )
             )
         except Exception as error:
             return self._error("doctor_failed", error)
+
+    def doctor_async(self) -> Future[Result[DoctorReport]]:
+        """Run all doctor checks away from a GUI toolkit event loop."""
+        return _BACKGROUND_OPERATIONS.submit(self.doctor)
 
     def inspect_profile(self, path: str) -> Result[ProfileSummary]:
         try:
@@ -245,6 +260,10 @@ class Application:
         except Exception as error:
             return self._error("smartcard_check_failed", error)
 
+    def smartcard_status_async(self) -> Future[Result[SmartcardReport]]:
+        """Run bounded PC/SC and middleware checks on a worker thread."""
+        return _BACKGROUND_OPERATIONS.submit(self.smartcard_status)
+
     def inspect_certificates(self, path: str) -> Result[CertificateBundleReport]:
         try:
             data = certificates.inspect(path)
@@ -276,7 +295,10 @@ class Application:
     def diagnostics(self, profile: str | None = None) -> Result[DiagnosticReport]:
         """Build a safe support report without full paths or raw command output."""
         doctor_result = self.doctor()
-        smartcard_result = self.smartcard_status()
+        smartcard_result = Result(
+            doctor_result.value.smartcard if doctor_result.value else None,
+            doctor_result.error,
+        )
         profile_result = self.inspect_profile(profile) if profile else None
         results = [doctor_result, smartcard_result]
         if profile_result:
@@ -310,11 +332,19 @@ class Application:
             if cancelled.is_set():
                 return Result(ConnectionResult(130, cancelled=True))
             progress(ProgressEvent("connecting", "FreeRDP connection started", cancellable=True))
+            child_environment = None
+            if client.path == "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp":
+                # SDL3's Wayland/libdecor event pump races GTK3/WebKitGTK 4.1.
+                # Keep the isolated prototype on XWayland until upstream can
+                # safely run both event loops on native Wayland.
+                child_environment = os.environ.copy()
+                child_environment["SDL_VIDEODRIVER"] = "x11"
             process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=child_environment,
             )
             while process.poll() is None:
                 if cancelled.wait(0.1):

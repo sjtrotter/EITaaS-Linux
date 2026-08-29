@@ -25,7 +25,13 @@ class Client:
 
 CANDIDATES = {
     "x11": ("xfreerdp3", "xfreerdp"),
-    "sdl": ("sdl3-freerdp", "sdl-freerdp", "sdl-freerdp3", "sfreerdp3"),
+    "sdl": (
+        "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp",
+        "sdl3-freerdp",
+        "sdl-freerdp",
+        "sdl-freerdp3",
+        "sfreerdp3",
+    ),
     "wayland": ("wlfreerdp3", "wlfreerdp"),
 }
 
