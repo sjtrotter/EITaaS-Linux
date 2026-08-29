@@ -12,3 +12,5 @@ if git grep -n -E '(/cert:ignore|Identity=unix-user:\*|ResultInactive=yes)' -- '
     printf 'Unsafe connection or smart-card policy guidance detected.\n' >&2
     exit 1
 fi
+
+scripts/check-version-consistency.py

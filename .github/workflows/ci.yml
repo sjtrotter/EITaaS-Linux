@@ -48,6 +48,7 @@ jobs:
           fetch-depth: 0
       - name: Build and verify canonical source archive
         run: |
+          scripts/check-version-consistency.py
           archive=$(scripts/build-source-tarball.sh HEAD dist)
           scripts/verify-source-tarball.py "$archive" --ref HEAD
       - name: Verify deterministic output
@@ -68,7 +69,10 @@ jobs:
           sudo apt-get update && sudo apt-get install -y
           build-essential debhelper dh-python pybuild-plugin-pyproject python3-all
           python3-setuptools python3-wheel lintian
-      - run: scripts/build-deb.sh
+      - name: Build DEB from canonical source
+        run: |
+          archive=$(scripts/build-source-tarball.sh HEAD dist)
+          scripts/build-deb.sh "$archive"
       - run: >-
           lintian --suppress-tags
           bad-distribution-in-changes-file,initial-upload-closes-no-bugs
@@ -97,7 +101,10 @@ jobs:
           dnf install -y git findutils rpm-build python3-devel
           python3-setuptools pyproject-rpm-macros python3-wheel rpmlint
       - uses: actions/checkout@v4
-      - run: scripts/build-rpm.sh
+      - name: Build RPM from canonical source
+        run: |
+          archive=$(scripts/build-source-tarball.sh HEAD dist)
+          scripts/build-rpm.sh "$archive"
       - run: rpmlint packaging/rpm/eitaas-linux.spec dist/*.rpm
       - run: dnf install -y dist/eitaas-linux-0.1.0-1.fc44.noarch.rpm
       - run: eitaas --version
@@ -125,7 +132,10 @@ jobs:
         run: |
           useradd --create-home builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
-          runuser -u builder -- scripts/build-arch.sh
+          runuser -u builder -- sh -c '
+            archive=$(scripts/build-source-tarball.sh HEAD dist)
+            scripts/build-arch.sh "$archive"
+          '
       - run: namcap packaging/arch/PKGBUILD dist/*.pkg.tar.zst
       - run: pacman -U --noconfirm dist/eitaas-linux-*.pkg.tar.zst
       - run: eitaas --version

@@ -23,7 +23,7 @@ safe FreeRDP client selection. A FreeRDP 3 build with AAD and PC/SC support is
 required for connections.
 
 %prep
-%autosetup -n EITaaS-Linux-%{version}
+%autosetup -n eitaas-linux-%{version}
 
 %build
 %pyproject_wheel

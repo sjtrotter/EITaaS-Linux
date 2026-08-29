@@ -106,6 +106,10 @@ Project code is licensed under the MIT License. FreeRDP, OpenSC, pcsc-lite,
 distribution packages, certificates, documentation, services, and trademarks
 remain subject to their respective terms. See `LICENSE` and `NOTICE`.
 
+Release candidates include SHA-256 manifests and, for approved tag builds,
+keyless GitHub provenance attestations. The release signing and verification
+procedure is documented in `docs/release-signing.md`.
+
 ## Frontends
 
 The CLI, planned GTK 4/Libadwaita frontend, and planned Qt 6 frontend share one

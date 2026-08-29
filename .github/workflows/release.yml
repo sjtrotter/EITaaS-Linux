@@ -9,12 +9,13 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  source-python:
     if: github.repository == 'sjtrotter/EITaaS-Linux'
     runs-on: ubuntu-latest
-    environment: release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -23,11 +24,10 @@ jobs:
         env:
           PYTHONPATH: src
       - run: scripts/check-repository-artifacts.sh
+      - run: scripts/check-version-consistency.py
       - name: Require tag and project versions to match
         if: github.ref_type == 'tag'
-        run: |
-          version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml)
-          test "$GITHUB_REF_NAME" = "v$version"
+        run: scripts/check-version-consistency.py --tag "$GITHUB_REF_NAME"
       - name: Build and verify canonical source archive
         run: |
           archive=$(scripts/build-source-tarball.sh HEAD dist)
@@ -38,12 +38,120 @@ jobs:
           scripts/build-source-tarball.sh HEAD reproducibility-check
           cmp dist/eitaas-linux-*.tar.gz reproducibility-check/eitaas-linux-*.tar.gz
       - run: python -m build
-      - run: (cd dist && sha256sum * | LC_ALL=C sort -k2) > SHA256SUMS
-      - run: cyclonedx-py environment --output-file sbom.cdx.json
+      - run: cyclonedx-py environment --output-file dist/sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-source-python
+          path: dist/*
+
+  deb:
+    needs: source-python
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source-python
+          path: source-artifacts
+      - run: >-
+          sudo apt-get update && sudo apt-get install -y
+          build-essential debhelper dh-python pybuild-plugin-pyproject python3-all
+          python3-setuptools python3-wheel lintian
+      - run: scripts/build-deb.sh source-artifacts/eitaas-linux-*.tar.gz
+      - run: >-
+          lintian --suppress-tags
+          bad-distribution-in-changes-file,initial-upload-closes-no-bugs
+          dist/eitaas-linux_0.1.0-1_amd64.changes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-deb
+          path: dist/*.deb
+
+  rpm:
+    needs: source-python
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - run: >-
+          dnf install -y git findutils rpm-build python3-devel
+          python3-setuptools pyproject-rpm-macros python3-wheel rpmlint
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source-python
+          path: source-artifacts
+      - run: scripts/build-rpm.sh source-artifacts/eitaas-linux-*.tar.gz
+      - run: rpmlint packaging/rpm/eitaas-linux.spec dist/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-rpm
+          path: dist/*.rpm
+
+  arch:
+    needs: source-python
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - run: >-
+          pacman -Syu --noconfirm --needed base-devel git namcap
+          python-build python-installer python-setuptools python-wheel
+          freerdp opensc pcsclite ccid pcsc-tools
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source-python
+          path: source-artifacts
+      - name: Build package as an unprivileged user
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- scripts/build-arch.sh source-artifacts/eitaas-linux-*.tar.gz
+      - run: namcap packaging/arch/PKGBUILD dist/*.pkg.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-arch
+          path: dist/*.pkg.tar.zst
+
+  assemble:
+    needs: [source-python, deb, rpm, arch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+      - name: Generate and verify checksum manifest
+        run: |
+          cd release-artifacts
+          find . -maxdepth 1 -type f -printf '%f\0' \
+            | LC_ALL=C sort -z \
+            | xargs -0 sha256sum > SHA256SUMS
+          sha256sum --check SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: unsigned-release-candidate
-          path: |
-            dist/*
-            SHA256SUMS
-            sbom.cdx.json
+          path: release-artifacts/*
+
+  attest:
+    if: github.ref_type == 'tag'
+    needs: assemble
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-release-candidate
+          path: release-artifacts
+      - name: Attest release artifacts and checksum manifest
+        uses: actions/attest@v4
+        with:
+          subject-path: release-artifacts/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attested-release-candidate
+          path: release-artifacts/*
