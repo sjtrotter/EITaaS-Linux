@@ -20,7 +20,6 @@ Build-Depends:
  libsoup-3.0-dev,
  libssh-dev,
  libssl-dev,
- libusb-1.0-0-dev,
  libwebkit2gtk-4.1-dev,
  ninja-build,
  patch,
@@ -52,7 +51,7 @@ Depends:
 Suggests: zsh
 # Issue #80: this package supersedes the former split packages. Existing
 # installations of either are removed and replaced on upgrade.
-Provides: eitaas-remmina, eitaas-linux-gui
+Provides: eitaas-remmina (= ${binary:Version}), eitaas-linux-gui (= ${binary:Version})
 Breaks: eitaas-remmina, eitaas-linux-gui
 Replaces: eitaas-remmina, eitaas-linux-gui
 Description: EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI

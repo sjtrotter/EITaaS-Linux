@@ -96,7 +96,7 @@ jobs:
           dh-python dpkg-dev gettext git gnutls-bin libcurl4-openssl-dev
           libgtk-3-dev libicu-dev libjson-c-dev libjson-glib-dev libkrb5-dev
           libpcsclite-dev libsecret-1-dev libsodium-dev libsoup-3.0-dev
-          libssh-dev libssl-dev libusb-1.0-0-dev libwebkit2gtk-4.1-dev
+          libssh-dev libssl-dev libwebkit2gtk-4.1-dev
           lintian ninja-build opensc patch pcscd pybuild-plugin-pyproject
           python3 python3-all python3-setuptools python3-wheel zlib1g-dev
       - uses: actions/checkout@v4
@@ -159,10 +159,11 @@ jobs:
       - run: >-
           dnf install -y git findutils rpm-build rpmlint
           python3-devel python3-setuptools pyproject-rpm-macros python3-wheel
-          desktop-file-utils appstream cmake gcc gcc-c++ ninja-build patch
-          gtk3-devel json-c-devel json-glib-devel krb5-devel libcurl-devel
-          libicu-devel libsecret-devel libsodium-devel libsoup3-devel
-          libssh-devel openssl-devel pcsc-lite-devel webkit2gtk4.1-devel
+          desktop-file-utils appstream cmake gcc gcc-c++ gettext ninja-build
+          patch gtk3-devel json-c-devel json-glib-devel krb5-devel
+          libcurl-devel libicu-devel libsecret-devel libsodium-devel
+          libsoup3-devel libssh-devel openssl-devel
+          pcsc-lite-devel webkit2gtk4.1-devel zlib-devel
       - uses: actions/checkout@v4
       - name: Build the combined package from canonical source
         run: |

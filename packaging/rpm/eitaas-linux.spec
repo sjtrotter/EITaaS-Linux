@@ -3,8 +3,8 @@
 %global remmina_version 1.4.43
 %global remmina_commit 030946c83fe1b7218a21b6d32f9c975b243b7031
 %global private_prefix %{_libexecdir}/eitaas-remmina
-# The private prefix ships stripped release binaries; no separate debuginfo
-# package is produced for this prototype.
+# No separate debuginfo package is produced for this prototype: the private
+# prefix ships the release binaries as built, unstripped.
 %global debug_package %{nil}
 
 Name:           eitaas-linux
@@ -29,6 +29,7 @@ BuildRequires:  appstream
 BuildRequires:  cmake
 BuildRequires:  gcc
 BuildRequires:  gcc-c++
+BuildRequires:  gettext
 BuildRequires:  ninja-build
 BuildRequires:  patch
 BuildRequires:  gtk3-devel
@@ -44,6 +45,7 @@ BuildRequires:  libssh-devel
 BuildRequires:  openssl-devel
 BuildRequires:  pcsc-lite-devel
 BuildRequires:  webkit2gtk4.1-devel
+BuildRequires:  zlib-devel
 
 Requires:       python3
 Requires:       gnutls-utils
@@ -63,6 +65,9 @@ Requires:       libadwaita
 # eitaas-remmina <= %%{remmina_version}-0.15 and the GUI was eitaas-linux-gui
 # < %%{version}-%%{release}; the matching Provides are one revision above each
 # Obsoletes bound so this package never obsoletes itself.
+# %%{remmina_version} is the bundled Remmina pin, and the retired package
+# used it as its own version. If the bundle is ever re-pinned, both lines
+# below must keep covering 1.4.43-0.15, the last release that shipped.
 Obsoletes:      eitaas-remmina < %{remmina_version}-1
 Provides:       eitaas-remmina = %{remmina_version}-1
 Obsoletes:      eitaas-linux-gui < %{version}-%{release}
@@ -94,6 +99,7 @@ cmake -S FreeRDP-%{freerdp_version} -B freerdp-build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%{private_prefix}" \
   -DCMAKE_INSTALL_LIBDIR=lib64 \
   -DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
+  -DCHANNEL_URBDRC=OFF \
   -DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF \
   -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF -DWITH_DOCUMENTATION=OFF -DWITH_FUSE=OFF \
   -DWITH_CUPS=OFF -DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
@@ -109,10 +115,11 @@ cmake -S Remmina-%{remmina_commit} -B remmina-build -G Ninja \
   -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib64:$ORIGIN/../..' \
   -DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
   -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
+  -DWITH_CUPS=OFF -DWITH_AVAHI=OFF \
   -DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF \
   -DWITH_TIP=OFF -DWITH_MANPAGES=OFF -DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF \
   -DWITH_GVNC=OFF -DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF \
-  -DWITH_XDMCP=OFF -DWITH_NX=OFF
+  -DWITH_XDMCP=OFF -DWITH_NX=OFF -DWITH_PYTHONLIBS=OFF
 cmake --build remmina-build --parallel 1
 
 %install

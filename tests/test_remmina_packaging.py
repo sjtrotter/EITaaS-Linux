@@ -217,10 +217,18 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             with self.subTest(field=field):
                 declared = re.search(rf"(?m)^{field}: (.+)$", CONTROL)
                 self.assertIsNotNone(declared)
-                self.assertEqual(
-                    sorted(name.strip() for name in declared.group(1).split(",")),
-                    sorted(superseded),
-                )
+                names = [
+                    re.sub(r"\(.*\)", "", name).strip()
+                    for name in declared.group(1).split(",")
+                ]
+                self.assertEqual(sorted(names), sorted(superseded))
+        # The Provides carries this package's version so a versioned
+        # dependency on either retired name still resolves.
+        self.assertIn(
+            "Provides: eitaas-remmina (= ${binary:Version}), "
+            "eitaas-linux-gui (= ${binary:Version})",
+            CONTROL,
+        )
 
         # Arch: conflicts + replaces + provides.
         for field in ("provides", "conflicts", "replaces"):
@@ -232,16 +240,22 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
                     sorted(superseded),
                 )
 
-        # The lifecycle tests exercise the upgrade where the tooling allows it.
-        for script, marker in (
-            ("test-deb-lifecycle.sh", "is still installed after the upgrade"),
-            ("test-rpm-lifecycle.sh", "is still installed after the upgrade"),
-        ):
+        # The lifecycle tests exercise the upgrade where the tooling allows it,
+        # against the EVRs the retired packages really last shipped, so a
+        # narrowed Obsoletes/Breaks bound fails the test instead of silently
+        # stranding an installed system.
+        deb = (PROJECT_ROOT / "scripts" / "test-deb-lifecycle.sh").read_text()
+        rpm = (PROJECT_ROOT / "scripts" / "test-rpm-lifecycle.sh").read_text()
+        for script, body in (("test-deb-lifecycle.sh", deb), ("test-rpm-lifecycle.sh", rpm)):
             with self.subTest(script=script):
-                text = (PROJECT_ROOT / "scripts" / script).read_text()
-                self.assertIn(marker, text)
-                for name in superseded:
-                    self.assertIn(f"stub {name}", text)
+                self.assertIn("is still installed after the upgrade", body)
+                for name in ("eitaas-linux", *superseded):
+                    self.assertIn(f"stub {name}", body)
+        self.assertIn("LAST_EITAAS_LINUX=0.1.0-1", deb)
+        self.assertIn("LAST_EITAAS_REMMINA=1.4.43+eitaas0.15", deb)
+        self.assertIn("stub eitaas-linux 0.1.0 7", rpm)
+        self.assertIn("stub eitaas-remmina 1.4.43 0.15", rpm)
+        self.assertIn("stub eitaas-linux-gui 0.1.0 7", rpm)
         self.assertIn(str(version), CHANGELOG)
 
     def test_runtime_dependencies_are_consolidated_without_internal_recommends(self):
@@ -290,6 +304,48 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertNotIn("Recommends:", CONTROL)
         self.assertNotIn("optdepends=", PKGBUILD)
 
+    def test_usb_redirection_is_compiled_out_of_every_recipe(self):
+        """The product redirects smart cards over PC/SC, never USB devices.
+
+        FreeRDP enables its urbdrc channel whenever libusb happens to be
+        installed, so leaving the channel to chance made the shipped content
+        depend on the builder's host. Every recipe disables it explicitly and
+        no recipe or package job depends on libusb, which also makes the RPM,
+        DEB, and Arch payloads identical.
+        """
+        for name, recipe in RECIPES.items():
+            with self.subTest(recipe=name):
+                self.assertIn("-DCHANNEL_URBDRC=OFF", recipe)
+                self.assertIn("-DWITH_PCSC=ON", recipe)
+                self.assertNotIn("libusb", recipe)
+        for name, path in (
+            ("packaging/debian/control", CONTROL),
+            ("packaging/remmina/README.md", (PACKAGE_DIR / "README.md").read_text()),
+        ):
+            with self.subTest(document=name):
+                self.assertNotIn("libusb", path)
+        # remmina-upstream-series builds a stock FreeRDP for a plugin compile
+        # check and is out of scope; the package jobs precede it in the file.
+        package_jobs = WORKFLOW.split("  remmina-upstream-series:", 1)[0]
+        self.assertNotIn("libusb", package_jobs)
+
+    def test_remmina_configure_flags_match_across_recipes(self):
+        """One Remmina feature set, so the three payloads cannot drift apart."""
+        flags = (
+            "-DWITH_FREERDP3=ON", "-DWITH_RDP_AUTH_AAD=ON", "-DWITH_SSO_MIB=OFF",
+            "-DWITH_GCRYPT=OFF", "-DWITH_VTE=OFF", "-DHAVE_LIBAPPINDICATOR=OFF",
+            "-DWITH_CUPS=OFF", "-DWITH_AVAHI=OFF", "-DWITH_LIBVNCSERVER=OFF",
+            "-DWITH_SPICE=OFF", "-DWITH_NEWS=OFF", "-DWITH_STATS=OFF",
+            "-DWITH_TIP=OFF", "-DWITH_MANPAGES=OFF", "-DWITH_ICON_CACHE=OFF",
+            "-DWITH_WWW=OFF", "-DWITH_GVNC=OFF", "-DWITH_X2GO=OFF",
+            "-DWITH_KF5WALLET=OFF", "-DWITH_ST=OFF", "-DWITH_XDMCP=OFF",
+            "-DWITH_NX=OFF", "-DWITH_PYTHONLIBS=OFF",
+        )
+        for name, recipe in RECIPES.items():
+            for flag in flags:
+                with self.subTest(recipe=name, flag=flag):
+                    self.assertIn(flag, recipe)
+
     def test_every_recipe_ships_the_whole_product(self):
         """One package carries the private client, the CLI, and the GUI."""
         for name, recipe in RECIPES.items():
@@ -319,8 +375,13 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         # Debian artifact file names carry no epoch; both consumers strip one.
         self.assertIn("version=${version#*:}", builder)
         self.assertIn("DEB_VERSION=${deb_version#*:}", WORKFLOW)
-        # The lifecycle downgrade target is derived from the package under test.
-        self.assertIn('prior_version="$expected_version~0"', lifecycle)
+        # The lifecycle scripts pin the retired packages' real last-shipped
+        # EVRs on purpose (asserted separately), so they are exempt from the
+        # bundled-Remmina-version rule below but not from the other pins.
+        exempt = {
+            "scripts/test-deb-lifecycle.sh",
+            "scripts/test-rpm-lifecycle.sh",
+        }
         # The RPM and Arch builders read the project version from pyproject.
         for name, script in (
             ("scripts/build-rpm.sh", (PROJECT_ROOT / "scripts" / "build-rpm.sh").read_text()),
@@ -352,6 +413,8 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         }
         for label, value in pinned.items():
             for name, consumer in consumers.items():
+                if label == "bundled remmina version" and name in exempt:
+                    continue
                 with self.subTest(pinned=label, consumer=name):
                     self.assertNotIn(value, consumer)
     def test_pinned_manifest_matches_rpm_spec(self):

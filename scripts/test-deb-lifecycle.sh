@@ -8,7 +8,6 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 
-project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 package=$(readlink -f -- "$1")
 expected_version=$(dpkg-deb -f "$package" Version)
 work=$(mktemp -d)
@@ -36,15 +35,13 @@ do
     { echo "missing from package payload: $path" >&2; exit 1; }
 done
 
-# Stand in for the pre-#80 world: the split eitaas-linux, eitaas-remmina, and
-# eitaas-linux-gui packages, none of which carried Breaks/Replaces/Provides.
-# The eitaas-linux stub's version is derived from the package under test (a
-# "~" suffix always sorts before the unsuffixed version in Debian's
-# comparison), so installing the package under test is a genuine upgrade for
-# whatever the changelog records; the stub is Architecture: all like its
-# predecessor, so the transition to an architecture-specific package is
-# exercised too.
-prior_version="$expected_version~0"
+# Stand in for the pre-#80 world with the exact versions those packages last
+# shipped, so tightening Breaks/Replaces to a narrower range fails this test
+# instead of silently stranding a real installation. None of them carried
+# Breaks/Replaces/Provides, and all three were Architecture: all, so the
+# transition to an architecture-specific package is exercised too.
+LAST_EITAAS_LINUX=0.1.0-1
+LAST_EITAAS_REMMINA=1.4.43+eitaas0.15
 
 stub() {
   rm -rf "$work/stub"
@@ -60,16 +57,13 @@ stub() {
   } >"$work/stub/DEBIAN/control"
   dpkg-deb --build "$work/stub" "$work/$1-old.deb" >/dev/null
 }
-stub eitaas-linux "$prior_version"
-# The superseded bundle version is recorded in the shared manifest.
-remmina_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["package_version"])' \
-  "$project_root/packaging/remmina/sources.json")
-stub eitaas-remmina "$remmina_version"
-stub eitaas-linux-gui "$prior_version"
+stub eitaas-linux "$LAST_EITAAS_LINUX"
+stub eitaas-remmina "$LAST_EITAAS_REMMINA"
+stub eitaas-linux-gui "$LAST_EITAAS_LINUX"
 
 apt-get install -y "$work/eitaas-linux-old.deb" "$work/eitaas-remmina-old.deb" \
   "$work/eitaas-linux-gui-old.deb" >/dev/null
-test "$(dpkg-query -W -f='${Version}' eitaas-linux)" = "$prior_version"
+test "$(dpkg-query -W -f='${Version}' eitaas-linux)" = "$LAST_EITAAS_LINUX"
 
 # Breaks/Replaces/Provides must retire both split packages on upgrade.
 apt-get install -y "$package" >/dev/null

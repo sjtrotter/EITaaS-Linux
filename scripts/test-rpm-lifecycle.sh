@@ -9,7 +9,6 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 
-project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 package=$(readlink -f -- "$1")
 expected_version=$(rpm -qp --queryformat '%{VERSION}-%{RELEASE}' "$package")
 work=$(mktemp -d)
@@ -35,10 +34,10 @@ do
     { echo "missing from package payload: $path" >&2; exit 1; }
 done
 
-# Stand in for the pre-#80 world: eitaas-remmina and eitaas-linux-gui carried
-# no Obsoletes of their own, so minimal stand-ins with the versions those
-# packages last shipped are enough to prove the Obsoletes in the combined spec
-# retire them.
+# Stand in for the pre-#80 world with the exact EVRs those packages last
+# shipped, so tightening an Obsoletes bound fails this test instead of
+# silently stranding a real installation. eitaas-linux was noarch, so the
+# upgrade to an architecture-specific package is exercised too.
 stub() {
   mkdir -p "$work/rpmbuild/SPECS"
   {
@@ -59,16 +58,15 @@ stub() {
   rpmbuild --define "_topdir $work/rpmbuild" --define 'dist %{nil}' \
     -bb "$work/rpmbuild/SPECS/$1.spec" >/dev/null
 }
-# The superseded bundle version is recorded in the shared manifest; the
-# stand-in release sorts below the Obsoletes bound in the combined spec.
-remmina_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["package_version"])' \
-  "$project_root/packaging/remmina/sources.json")
-stub eitaas-remmina "$remmina_version" 0
-stub eitaas-linux-gui "${expected_version%-*}" 0
+stub eitaas-linux 0.1.0 7
+stub eitaas-remmina 1.4.43 0.15
+stub eitaas-linux-gui 0.1.0 7
 
-dnf install -y "$work"/rpmbuild/RPMS/noarch/eitaas-remmina-*.rpm \
+dnf install -y "$work"/rpmbuild/RPMS/noarch/eitaas-linux-0.1.0-7.noarch.rpm \
+  "$work"/rpmbuild/RPMS/noarch/eitaas-remmina-*.rpm \
   "$work"/rpmbuild/RPMS/noarch/eitaas-linux-gui-*.rpm >/dev/null
-rpm -q eitaas-remmina eitaas-linux-gui
+rpm -q eitaas-linux eitaas-remmina eitaas-linux-gui
+test "$(rpm -q --queryformat '%{VERSION}-%{RELEASE}' eitaas-linux)" = 0.1.0-7
 
 # Obsoletes/Provides must retire both split packages on install.
 dnf install -y "$package" >/dev/null

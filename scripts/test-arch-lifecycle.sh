@@ -25,8 +25,8 @@ for path in \
   usr/lib/eitaas-remmina/lib/remmina/plugins/remmina-plugin-rdp.so \
   usr/share/applications/org.eitaas.Helper.desktop \
   usr/share/mime/packages/eitaas-rdpw.xml \
-  usr/share/man/man1/eitaas.1 \
-  usr/share/man/man1/eitaas-gui.1 \
+  usr/share/man/man1/eitaas.1.gz \
+  usr/share/man/man1/eitaas-gui.1.gz \
   usr/share/doc/eitaas-linux/sources.json \
   usr/share/licenses/eitaas-linux/THIRD_PARTY_NOTICES.md \
   usr/share/licenses/eitaas-linux/Remmina-COPYING \
