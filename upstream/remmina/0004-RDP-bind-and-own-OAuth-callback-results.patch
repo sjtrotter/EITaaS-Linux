@@ -1,6 +1,6 @@
-From e94bf92b1b813918abd1047367f209f54518395b Mon Sep 17 00:00:00 2001
+From cb7cb20f278f05204f3c4af2e4ca431d861f7839 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 11:49:19 -0500
+Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 4/5] RDP: bind and own OAuth callback results
 
 The WebKit OAuth flow accepted any redirect observed by the web view as

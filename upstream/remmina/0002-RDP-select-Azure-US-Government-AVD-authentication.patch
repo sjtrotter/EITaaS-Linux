@@ -1,6 +1,6 @@
-From 821fb28b4b429d7b7852cfe4b3bbab27d2697ca9 Mon Sep 17 00:00:00 2001
+From 3b4eb7823076a5b195b9c4814a342f8d1704db25 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 11:49:19 -0500
+Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 2/5] RDP: select Azure US Government AVD authentication
 
 FreeRDP defaults the AVD OAuth authority, scope, and redirect format to
@@ -26,10 +26,10 @@ reviewed and tested by the author.
  1 file changed, 19 insertions(+)
 
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index e19779627..5875acc26 100644
+index 8da6c8452..3c623ffa3 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
-@@ -1758,6 +1758,25 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1766,6 +1766,25 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  			return FALSE;
  		}
  		g_free(filtered);

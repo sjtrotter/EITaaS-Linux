@@ -246,7 +246,7 @@ those gates are attested.
 The contrib branch heads cited above (`cb56a41f3`, `46aa744f3`, `a25a3c2d7`,
 `b7c20fa7b`, `2c2442d7b`) and the later `-issue60`/`-issue61` branches
 (PRs #67 and #68) are superseded by the single linear series
-`contrib/eitaas-series-v2` (head `894157195`, five commits on
+`contrib/eitaas-series-v2` (head `c8530d951`, five commits on
 `c620366ed`), exported as `upstream/remmina/0001..0005-*.patch`. The
 consolidation squashed every fix-up into its logical change, resolved the
 `rdp_web_auth.c` overlap so the token path uses the configured scope, and

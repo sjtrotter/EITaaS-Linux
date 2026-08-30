@@ -3,26 +3,26 @@
 This directory contains a generic, unbranded patch series prepared against
 Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`. It is one
 linear series exported with `git format-patch` from the local GitLab-fork
-branch `contrib/eitaas-series-v2` (head `894157195`); each commit is a
+branch `contrib/eitaas-series-v2` (head `c8530d951`); each commit is a
 complete logical change with no fix-up of an earlier commit:
 
-1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`8772b37fa`) reads a
+1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`fb4db9ea7`) reads a
    protected `.rdpw` profile once into a bounded buffer, imports the generic
    fields from that buffer, and passes only an explicit AVD
    routing/authentication allowlist to FreeRDP's native parser before
    connecting;
 2. `0002-RDP-select-Azure-US-Government-AVD-authentication.patch`
-   (`821fb28b4`) selects the Azure US Government authority, scope, and
+   (`3b4eb7823`) selects the Azure US Government authority, scope, and
    redirect format for gateways in the public `.wvd.azure.us` namespace;
 3. `0003-RDP-honor-configured-AVD-scope-and-redirect-format.patch`
-   (`6f46c7ed7`) makes the WebKit token path consume FreeRDP's configured AVD
+   (`8010014ef`) makes the WebKit token path consume FreeRDP's configured AVD
    scope and redirect format after validating the cloud/client combination;
-4. `0004-RDP-bind-and-own-OAuth-callback-results.patch` (`e94bf92b1`)
+4. `0004-RDP-bind-and-own-OAuth-callback-results.patch` (`cb7cb20f2`)
    replaces the polled, borrowed callback URI with a reference-counted OAuth
    transaction: exact redirect/state validation, PKCE S256, one terminal
    result, a finite wait, and a dialog torn down with its transaction; and
 5. `0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch`
-   (`894157195`) handles WebKitGTK client-certificate and certificate-PIN
+   (`c8530d951`) handles WebKitGTK client-certificate and certificate-PIN
    challenges with bounded, cancellable PKCS #11 discovery, asynchronous
    certificate loading, origin-bound PIN transactions, and a held toplevel;
    the sources compile only when `WITH_RDP_AUTH_AAD` is enabled.

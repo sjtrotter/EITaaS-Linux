@@ -232,6 +232,15 @@ jobs:
     container: ubuntu:24.04
     env:
       REMMINA_BASE: c620366ed85def5c3de2549eec7fcbef577281d8
+      REMMINA_CMAKE_FLAGS: >-
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-Wall
+        -DWITH_FREERDP3=ON -DWITH_RDP=ON -DWITH_SSO_MIB=OFF
+        -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF
+        -DWITH_CUPS=OFF -DWITH_AVAHI=OFF
+        -DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF
+        -DWITH_TIP=OFF -DWITH_MANPAGES=OFF -DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF
+        -DWITH_GVNC=OFF -DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF
+        -DWITH_XDMCP=OFF -DWITH_NX=OFF -DWITH_PYTHONLIBS=OFF
     steps:
       - name: Install build dependencies
         env:
@@ -244,15 +253,29 @@ jobs:
           libsodium-dev libsoup-3.0-dev libssh-dev libssl-dev
           libusb-1.0-0-dev libwebkit2gtk-4.1-dev ninja-build python3 zlib1g-dev
       - uses: actions/checkout@v4
-      - name: Build the pinned FreeRDP
+      - name: Read the FreeRDP pin
         run: |
           read_manifest() {
             python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"]["freerdp"][sys.argv[2]])' \
               packaging/remmina/sources.json "$1"
           }
-          version=$(read_manifest version)
-          curl -fsSL -o freerdp.tar.gz "$(read_manifest url)"
-          echo "$(read_manifest sha256)  freerdp.tar.gz" | sha256sum -c -
+          {
+            echo "FREERDP_VERSION=$(read_manifest version)"
+            echo "FREERDP_URL=$(read_manifest url)"
+            echo "FREERDP_SHA256=$(read_manifest sha256)"
+          } >>"$GITHUB_ENV"
+      - name: Restore the installed FreeRDP from cache
+        id: freerdp-cache
+        uses: actions/cache@v4
+        with:
+          path: freerdp-prefix
+          key: remmina-upstream-series-freerdp-${{ env.FREERDP_SHA256 }}-ubuntu-24.04
+      - name: Build the pinned FreeRDP
+        if: steps.freerdp-cache.outputs.cache-hit != 'true'
+        run: |
+          version=$FREERDP_VERSION
+          curl -fsSL -o freerdp.tar.gz "$FREERDP_URL"
+          echo "$FREERDP_SHA256  freerdp.tar.gz" | sha256sum -c -
           tar -xzf freerdp.tar.gz
           cmake -S "FreeRDP-$version" -B freerdp-build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/freerdp-prefix" \
@@ -271,21 +294,23 @@ jobs:
           git -C remmina checkout -q FETCH_HEAD
           git -C remmina -c user.name=ci -c user.email=ci@example.invalid am "$PWD"/upstream/remmina/*.patch
           git -C remmina log --oneline "FETCH_HEAD..HEAD"
-      - name: Build remmina-plugin-rdp with WebKit AAD enabled and disabled
+      - name: Build remmina-plugin-rdp at every commit (bisectable), then the tip without AAD
         run: |
-          for aad in ON OFF; do
-            cmake -S remmina -B "remmina-build-$aad" -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/freerdp-prefix" \
-              -DCMAKE_C_FLAGS=-Wall \
-              -DWITH_FREERDP3=ON -DWITH_RDP=ON -DWITH_RDP_AUTH_AAD=$aad -DWITH_SSO_MIB=OFF \
-              -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
-              -DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF \
-              -DWITH_TIP=OFF -DWITH_MANPAGES=OFF -DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF \
-              -DWITH_GVNC=OFF -DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF \
-              -DWITH_XDMCP=OFF -DWITH_NX=OFF
-            cmake --build "remmina-build-$aad" --target remmina-plugin-rdp --parallel "$(nproc)"
-            test -f "remmina-build-$aad/plugins/rdp/remmina-plugin-rdp.so"
+          build() {
+            cmake -S remmina -B "remmina-build-$1" -G Ninja \
+              -DCMAKE_PREFIX_PATH="$PWD/freerdp-prefix" -DWITH_RDP_AUTH_AAD=$1 $REMMINA_CMAKE_FLAGS
+            cmake --build "remmina-build-$1" --target remmina-plugin-rdp --parallel "$(nproc)"
+            test -f "remmina-build-$1/plugins/rdp/remmina-plugin-rdp.so"
+          }
+          tip=$(git -C remmina rev-parse HEAD)
+          for commit in $(git -C remmina rev-list --reverse "FETCH_HEAD..$tip"); do
+            git -C remmina checkout -q "$commit"
+            echo "::group::AAD=ON $(git -C remmina log --oneline -1)"
+            build ON
+            echo "::endgroup::"
           done
+          git -C remmina checkout -q "$tip"
+          build OFF
           # The PKCS #11 sources are gated on the AAD feature.
           ! grep -q rdp_web_auth_pkcs11 remmina-build-OFF/build.ninja
 

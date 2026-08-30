@@ -483,11 +483,10 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
     def test_series_touches_only_the_rdp_plugin(self):
         for patch in self.patches:
             with self.subTest(patch=patch.name):
+                # The series is an RDP-plugin change only; widen this deliberately
+                # if a future commit must touch the top-level build.
                 for path in re.findall(r"^\+\+\+ b/(\S+)$", self.texts[patch.name], re.MULTILINE):
-                    self.assertTrue(
-                        path.startswith("plugins/rdp/") or path == "CMakeLists.txt" or path.startswith("cmake/"),
-                        path,
-                    )
+                    self.assertTrue(path.startswith("plugins/rdp/"), path)
 
     def test_series_carries_no_downstream_branding(self):
         for patch in self.patches:
@@ -513,8 +512,7 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
     def test_readme_documents_the_base_commit_and_git_am(self):
         readme = (UPSTREAM_DIR / "README.md").read_text()
         self.assertIn(self.REMMINA_BASE, readme)
-        self.assertIn("git am", readme)
-        self.assertNotIn("lexical order", readme)
+        self.assertIn(f"git checkout {self.REMMINA_BASE}\ngit am /path/to/EITaaS-Linux/upstream/remmina/*.patch", readme)
         for patch in self.patches:
             self.assertIn(patch.name, readme)
         self.assertIn("tested with FreeRDP 3.31.0", readme)
@@ -524,9 +522,14 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
         job = WORKFLOW.split("remmina-upstream-series:", 1)[1]
         self.assertIn(self.REMMINA_BASE, job)
         self.assertIn("git am", job)
-        self.assertIn("for aad in ON OFF; do", job)
-        self.assertIn("-DWITH_RDP_AUTH_AAD=$aad", job)
+        self.assertIn("-DWITH_RDP_AUTH_AAD=$1", job)
+        self.assertIn("rev-list --reverse", job)
+        self.assertIn("build ON", job)
+        self.assertIn("build OFF", job)
         self.assertIn("--target remmina-plugin-rdp", job)
+        # Remmina's find_suggested_package() is fatal unless WITH_<PKG>=OFF.
+        for flag in ("-DWITH_AVAHI=OFF", "-DWITH_CUPS=OFF", "-DWITH_PYTHONLIBS=OFF"):
+            self.assertIn(flag, job)
 
 
 if __name__ == "__main__":

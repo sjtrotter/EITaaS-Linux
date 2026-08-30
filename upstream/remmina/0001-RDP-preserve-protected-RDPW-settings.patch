@@ -1,6 +1,6 @@
-From 8772b37fa15ce409fec6914ba887e7e2389e7c8d Mon Sep 17 00:00:00 2001
+From fb4db9ea7e6b7026ddfd7a410b0abfa8a0ce0f43 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 11:49:19 -0500
+Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 1/5] RDP: preserve protected RDPW settings
 
 Azure Virtual Desktop publishes protected connection files (.rdpw) whose
@@ -30,8 +30,8 @@ This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.
 ---
  plugins/rdp/rdp_file.c   | 132 ++++++++++++++++++++++++++++++++++++++-
- plugins/rdp/rdp_plugin.c | 116 ++++++++++++++++++++++++++++------
- 2 files changed, 228 insertions(+), 20 deletions(-)
+ plugins/rdp/rdp_plugin.c |  97 ++++++++++++++++++++++++++++
+ 2 files changed, 228 insertions(+), 1 deletion(-)
 
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
 index e93a6aef7..82a6125e7 100644
@@ -203,18 +203,10 @@ index e93a6aef7..82a6125e7 100644
  	}
  
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 5aff61676..e19779627 100644
+index 5aff61676..8da6c8452 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
-@@ -35,7 +35,6 @@
-  *
-  */
- 
--
- #define _GNU_SOURCE
- 
- #include "remmina/plugin.h"
-@@ -71,6 +70,7 @@
+@@ -71,6 +71,7 @@
  #include <freerdp/client/channels.h>
  #include <freerdp/client/cliprdr.h>
  #include <freerdp/client/cmdline.h>
@@ -222,7 +214,7 @@ index 5aff61676..e19779627 100644
  #include <freerdp/constants.h>
  #include <freerdp/error.h>
  #include <freerdp/event.h>
-@@ -154,6 +154,9 @@ static void freerdp_abort_connect_context(rdpContext* context) {
+@@ -154,6 +155,9 @@ static void freerdp_abort_connect_context(rdpContext* context) {
  
  RemminaPluginService *remmina_plugin_service = NULL;
  
@@ -232,59 +224,7 @@ index 5aff61676..e19779627 100644
  static BOOL gfx_h264_available = FALSE;
  
  /* Compatibility: these functions have been introduced with https://github.com/FreeRDP/FreeRDP/commit/8c5d96784d
-@@ -266,7 +269,6 @@ static BOOL rf_process_event_queue(RemminaProtocolWidget *gp)
- 		return true;
- 
- 	input = rfi->clientContext.context.input;
--
- 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
- 
- 	while ((event = (RemminaPluginRdpEvent *)g_async_queue_try_pop(rfi->event_queue)) != NULL) {
-@@ -630,11 +632,9 @@ static BOOL rf_end_paint(rdpContext *context)
- 
- 	remmina_rdp_event_queue_ui_async(rfi->protocol_widget, ui);
- 
--
- 	gdi->primary->hdc->hwnd->invalid->null = TRUE;
- 	gdi->primary->hdc->hwnd->ninvalid = 0;
- 
--
- 	return TRUE;
- }
- 
-@@ -854,7 +854,6 @@ static BOOL remmina_rdp_post_connect(freerdp *instance)
- 	const char* KeyboardRemappingList =
- 	    freerdp_settings_get_string(instance->context->settings, FreeRDP_KeyboardRemappingList);
- 
--
- #if FREERDP_CHECK_VERSION(3, 11, 0)
- 	rfi->remap_table = freerdp_keyboard_remap_string_to_list(KeyboardRemappingList);
- 	if (!rfi->remap_table)
-@@ -913,7 +912,6 @@ static BOOL remmina_rdp_authenticate(freerdp *instance, char **username, char **
- 			remmina_plugin_service->file_set_string(remminafile, "password", NULL);
- 		}
- 
--
- 		if (s_username) g_free(s_username);
- 		if (s_password) g_free(s_password);
- 		if (s_domain) g_free(s_domain);
-@@ -965,7 +963,6 @@ static BOOL remmina_rdp_gw_authenticate(freerdp *instance, char **username, char
- 									NULL);
- 	}
- 
--
- 	if (ret == GTK_RESPONSE_OK) {
- 		s_username = remmina_plugin_service->protocol_plugin_init_get_username(gp);
- 		if (s_username) freerdp_settings_set_string(rfi->clientContext.context.settings, FreeRDP_GatewayUsername, s_username);
-@@ -1169,7 +1166,6 @@ static BOOL remmina_rdp_choose_smartcard(freerdp* instance, SmartcardCertInfo**
- 	return client_cli_choose_smartcard(instance, cert_list, count, choice, gateway);
- }
- 
--
- static BOOL remmina_rdp_present_gateway_message(freerdp* instance, UINT32 type, BOOL isDisplayMandatory,
-                                            BOOL isConsentMandatory, size_t length,
-                                            const WCHAR* message)
-@@ -1748,6 +1744,21 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1748,6 +1752,21 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  	channels = rfi->clientContext.context.channels;
  
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
@@ -306,94 +246,7 @@ index 5aff61676..e19779627 100644
  
  	gchar* ddir = remmina_plugin_service->file_get_user_datadir();
  	datapath = g_build_path("/",
-@@ -1786,14 +1797,12 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
- 			return FALSE;
- 		}
- 
--
- 		if (!freerdp_assistance_populate_settings_from_assistance_file(file, rfi->clientContext.context.settings)){
- 			REMMINA_PLUGIN_DEBUG("Could not populate settings from assistance file");
- 			return FALSE;
- 		}
- 	}
- 
--
- #if defined(PROXY_TYPE_IGNORE)
- 	if (!remmina_plugin_service->file_get_int(remminafile, "useproxyenv", FALSE) ? TRUE : FALSE) {
- 		REMMINA_PLUGIN_DEBUG("Not using system proxy settings");
-@@ -1907,7 +1916,6 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
- 	h = freerdp_settings_get_uint32(rfi->clientContext.context.settings, FreeRDP_DesktopHeight);
- 	REMMINA_PLUGIN_DEBUG("Resolution set after workarounds: %dx%d", w, h);
- 
--
- 	if (remmina_plugin_service->file_get_string(remminafile, "username"))
- 		freerdp_settings_set_string(rfi->clientContext.context.settings, FreeRDP_Username, remmina_plugin_service->file_get_string(remminafile, "username"));
- 
-@@ -2082,7 +2090,6 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
- 		}
- 	}
- 
--
- 	if (remmina_plugin_service->file_get_string(remminafile, "loadbalanceinfo")) {
- 		const gchar *tmp = strdup(remmina_plugin_service->file_get_string(remminafile, "loadbalanceinfo"));
- 		freerdp_settings_set_pointer_len(rfi->clientContext.context.settings, FreeRDP_LoadBalanceInfo, tmp, strlen(tmp));
-@@ -2339,7 +2346,6 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
- 		g_free(p);
- 	}
- 
--
- 	cs = remmina_plugin_service->file_get_string(remminafile, "freerdp_log_level");
- 	if (cs != NULL && cs[0] != '\0')
- 		REMMINA_PLUGIN_DEBUG("Log level set to to %s", cs);
-@@ -2356,7 +2362,6 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
- 		WLog_AddStringLogFilters(NULL);
- 	}
- 
--
- 	cs = remmina_plugin_service->file_get_string(remminafile, "usb");
- 	if (cs != NULL && cs[0] != '\0') {
- 		CLPARAM **p;
-@@ -2874,7 +2879,6 @@ static gpointer remmina_rdp_main_thread(gpointer data)
- 	/* cleanup */
- 	g_idle_add(complete_cleanup_on_main_thread, (gpointer)rfi);
- 
--
- 	return NULL;
- }
- 
-@@ -2945,7 +2949,6 @@ static gboolean remmina_rdp_open_connection(RemminaProtocolWidget *gp)
- 
- 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
- 
--
- 	if (pthread_create(&rfi->remmina_plugin_thread, NULL, remmina_rdp_main_thread, gp)) {
- 		remmina_plugin_service->protocol_plugin_set_error(gp, "%s",
- 								  "Could not start pthread.");
-@@ -3002,7 +3005,6 @@ static gboolean remmina_rdp_close_connection(RemminaProtocolWidget *gp)
- 		return FALSE;
- 	}
- 
--
- 	if (rfi && rfi->clipboard.srv_clip_data_wait == SCDW_BUSY_WAIT) {
- 		REMMINA_PLUGIN_DEBUG("[RDP] requesting clipboard transfer to abort");
- 		/* Allow clipboard transfer from server to terminate */
-@@ -3170,7 +3172,6 @@ static gpointer log_level[] =
- 	NULL
- };
- 
--
- /* Array of key/value pairs for quality selection */
- static gpointer quality_list[] =
- {
-@@ -3299,7 +3300,6 @@ static gchar audio_tooltip[] =
- 	   "  • sys:oss,dev:1,format:1\n"
- 	   "  • sys:alsa");
- 
--
- static gchar usb_tooltip[] =
- 	N_("Options for redirection of USB device:\n"
- 	   "  • [dbg,][id:<vid>:<pid>#…,][addr:<bus>:<addr>#…,][auto]\n"
-@@ -3633,3 +3633,81 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
+@@ -3633,3 +3652,81 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
  
  	return TRUE;
  }

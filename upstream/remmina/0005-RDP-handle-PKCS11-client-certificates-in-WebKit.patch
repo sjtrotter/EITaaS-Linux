@@ -1,6 +1,6 @@
-From 894157195791d4e2c1cf686840ab5deaec8627db Mon Sep 17 00:00:00 2001
+From c8530d951dd7c0059f9b3b768d39d5f2e7e32b65 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 11:49:19 -0500
+Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 5/5] RDP: handle PKCS11 client certificates in WebKit
 
 Certificate-based authentication in Azure AD challenges the embedded web
@@ -10,13 +10,13 @@ certificate lives on a smart card, for its PIN. WebKitGTK surfaces both as
 users could not sign in through the embedded browser.
 
 Handle WebKitAuthenticationRequest for client certificates and certificate
-PINs. Certificates are discovered with p11-kit's "p11tool --list-all-certs"
+PINs. Certificates are discovered with p11-kit's "p11tool --list-certs --only-urls"
 under a cancellable, time-bounded subprocess; the user chooses one in a
 dialog and the selected certificate is loaded through GTlsCertificate off
 the GTK thread with a bounded loading dialog so the main loop stays
 responsive. A PIN prompt is accepted only for the certificate transaction
-that presented the certificate, is served at most once per transaction,
-and expires. Every challenge is bound to the verified https
+that presented the certificate, is answered once per challenge plus any
+WebKit-initiated retry, and expires. Every challenge is bound to the verified https
 authentication host recorded on the web view: only that authority and its
 certauth. subdomain can receive a certificate, and the relationship is
 defined in one place. The toplevel window is held with a reference across
@@ -87,7 +87,7 @@ index f94639bda..ac69cf89f 100644
  
 diff --git a/plugins/rdp/rdp_web_auth_pkcs11.c b/plugins/rdp/rdp_web_auth_pkcs11.c
 new file mode 100644
-index 000000000..c33be240f
+index 000000000..e37cac50b
 --- /dev/null
 +++ b/plugins/rdp/rdp_web_auth_pkcs11.c
 @@ -0,0 +1,669 @@
@@ -293,8 +293,8 @@ index 000000000..c33be240f
 + * has already shown its error (unless the user cancelled) and leaves exactly
 + * one challenge cancellation to the caller.
 + */
-+static GTlsCertificate *load_certificate_async(RemminaAuthToplevel *		toplevel,
-+					       const RemminaPkcs11Certificate * choice)
++static GTlsCertificate *load_certificate_async(RemminaAuthToplevel *toplevel,
++					       const RemminaPkcs11Certificate *choice)
 +{
 +	RemminaCertificateLoad *load = g_new0(RemminaCertificateLoad, 1);
 +
@@ -466,8 +466,8 @@ index 000000000..c33be240f
 +		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
 +				    "PKCS11 token count exceeded its limit");
 +	for (guint i = 0; (!error || !*error) && i < tokens->len && i < PKCS11_MAX_TOKENS; i++) {
-+		const gchar *cert_args[] = { PKCS11_TOOL,	       "--list-certs", "--only-urls",
-+					     g_ptr_array_index(tokens, i),	       NULL };
++		const gchar *cert_args[] = { PKCS11_TOOL, "--list-certs", "--only-urls",
++					     g_ptr_array_index(tokens, i), NULL };
 +		GPtrArray *certs = command_urls(cert_args, cancellable, error);
 +		if ((!error || !*error) && certs->len > PKCS11_MAX_CERTIFICATES - result->len)
 +			g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
