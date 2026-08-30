@@ -6,6 +6,12 @@
 // normalised by the helper and must fail closed. Compiled and run by tests/test_remmina_packaging.py when
 // a C compiler and WebKitGTK development files are available.
 
+// The source is normally included into rdp_web_auth.c, where Remmina's plugin
+// service provides these; the harness routes them to GLib's log domain.
+#include <glib.h>
+#define REMMINA_PLUGIN_DEBUG(fmt, ...) g_debug(fmt, ##__VA_ARGS__)
+#define REMMINA_PLUGIN_WARNING(fmt, ...) g_warning(fmt, ##__VA_ARGS__)
+
 #include "../../packaging/remmina/eitaas_cac_auth.c"
 
 #include <stdio.h>

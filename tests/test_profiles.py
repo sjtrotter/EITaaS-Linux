@@ -28,6 +28,7 @@ class ProfileStoreTests(unittest.TestCase):
             {
                 "XDG_DATA_HOME": str(self.home / "share"),
                 "XDG_CONFIG_HOME": str(self.home / "config"),
+                "XDG_STATE_HOME": str(self.home / "state"),
             },
         )
         environment.start()

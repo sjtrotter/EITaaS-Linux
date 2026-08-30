@@ -94,7 +94,43 @@ the pinned Remmina and FreeRDP versions from the installed
 manifest (or "unknown"), whether the installed FreeRDP client library links
 SSO-MIB, identity-broker registration on the session bus, the PC/SC socket,
 and the presence of smart-card tools. Readiness requires the launcher, the
-private client, and healthy smart-card checks.
+private client, and healthy smart-card checks. The report also names the
+newest session log written by
+.B eitaas connect
+as
+.BR latest_session_log .
+.SH SESSION LOGS
+Every connection writes the client's standard output and error, redacted
+line by line, to
+.I $XDG_STATE_HOME/eitaas-remmina/logs/session-TIMESTAMP-PID.log
+(default
+.IR ~/.local/state/eitaas-remmina/logs/ ;
+directory mode 0700, files mode 0600, about 2 MiB each, the newest five
+kept). The first lines record the helper version, the profile basename, and
+the number of
+.B remmina
+processes already running; the last line is
+.BR exit=CODE .
+The bundled client logs each smart-card authentication stage as
+.BR "smartcard-auth: CODE" .
+The codes are stable: challenge-received, challenge-accepted,
+origin-rejected, discovery-start, discovery-token-skipped-trust,
+discovery-token-empty, discovery-finished, discovery-busy, discovery-empty,
+discovery-timeout, discovery-error, discovery-cancelled,
+discovery-result-discarded, certificate-selected, certificate-submitted,
+selection-cancelled, load-start, load-finished, load-timeout, load-error,
+load-cancelled, load-result-discarded, pin-requested, pin-submitted,
+pin-rejected, pin-cancelled, and oneshot-quit; the README lists the
+parameters of each. Every dialog the client shows is logged at warning level
+with the same code. The launcher enables the
+.B remmina
+debug domain (G_MESSAGES_DEBUG) so these lines reach the session log and a
+terminal; Remmina additionally appends its debug output to
+.IR $TMPDIR/remmina_log_file.log .
+The "remmina instances already running" header counts every process named
+.B remmina
+(any Remmina binary, not only the bundled one). Certificate labels, PKCS #11
+URIs, PINs, and tokens are never logged.
 .SH PROFILE STORE
 .B eitaas profile import
 requires a regular .rdpw file owned by the caller, at most 1 MiB, not a

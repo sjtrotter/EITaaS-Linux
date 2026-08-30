@@ -346,3 +346,22 @@ def exit_text(exit_code: int, cancelled: bool) -> str | None:
     if exit_code == 0:
         return None
     return _("The remote desktop client exited with status {code}.").format(code=exit_code)
+
+
+def diagnostic_text(exit_code: int, reason_lines: tuple[str, ...], log_path: str | None) -> str:
+    """In-place text for a failed run: status, the last reason-code lines, and where the log is.
+
+    The lines come from the redacted session log and carry only stable reason
+    codes, counts, and Remmina warnings; the full log is offered through a copy
+    button rather than shown.
+    """
+    parts = [exit_text(exit_code, False)
+             or _("The remote desktop client exited normally but reported smart-card warnings.")]
+    if reason_lines:
+        parts.append(_("Last diagnostic lines:"))
+        parts.extend(reason_lines)
+    else:
+        parts.append(_("The client reported no smart-card diagnostic lines."))
+    if log_path:
+        parts.append(_("Diagnostic log: {path}").format(path=log_path))
+    return "\n".join(part for part in parts if part)

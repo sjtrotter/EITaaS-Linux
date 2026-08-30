@@ -1,6 +1,10 @@
+import io
+import os
+import shutil
 import subprocess
 import tempfile
 import threading
+import json
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -14,6 +18,19 @@ LAUNCHER = "/usr/bin/eitaas-remmina"
 
 
 class LaunchTests(unittest.TestCase):
+    def setUp(self):
+        # Session logs must never land in the developer's real state directory.
+        state = tempfile.mkdtemp(prefix="eitaas-state-")
+        self.addCleanup(shutil.rmtree, state, True)
+        environment = patch.dict(os.environ, {"XDG_STATE_HOME": state})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    @staticmethod
+    def child(**attributes) -> Mock:
+        """A mocked Popen whose (empty) stdout pipe lets the reader thread finish."""
+        return Mock(stdout=io.BytesIO(b""), **attributes)
+
     def profile(self) -> Path:
         handle = tempfile.NamedTemporaryFile(suffix=".rdpw", delete=False)
         path = Path(handle.name)
@@ -29,18 +46,19 @@ class LaunchTests(unittest.TestCase):
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
     def test_launcher_receives_fixed_argv_and_no_stdio(self, find_launcher, popen):
-        popen.return_value = Mock(poll=Mock(return_value=0), returncode=0)
+        popen.return_value = self.child(poll=Mock(return_value=0), returncode=0)
         profile = self.profile()
         result = Application().launch(ConnectionRequest(str(profile)))
         self.assertTrue(result.ok)
-        self.assertEqual(result.value, ConnectionResult(0))
+        self.assertEqual((result.value.exit_code, result.value.cancelled), (0, False))
+        self.assertTrue(result.value.log_path.startswith(os.environ["XDG_STATE_HOME"]))
         self.assertEqual(popen.call_args.args, ([LAUNCHER, str(profile)],))
         self.assertEqual(
             popen.call_args.kwargs,
             {
                 "stdin": subprocess.DEVNULL,
-                "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
             },
         )
 
@@ -66,7 +84,7 @@ class LaunchTests(unittest.TestCase):
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
     def test_launch_can_be_cancelled(self, find_launcher, popen):
-        process = Mock(poll=Mock(return_value=None), returncode=-15)
+        process = self.child(poll=Mock(return_value=None), returncode=-15)
         process.wait.return_value = -15
         popen.return_value = process
         cancel = threading.Event()
@@ -77,20 +95,20 @@ class LaunchTests(unittest.TestCase):
 
         result = Application().launch(ConnectionRequest(str(self.profile())), progress, cancel)
         self.assertTrue(result.ok)
-        self.assertEqual(result.value, ConnectionResult(130, cancelled=True))
+        self.assertEqual((result.value.exit_code, result.value.cancelled), (130, True))
         process.terminate.assert_called_once()
         process.kill.assert_not_called()
 
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
     def test_child_that_exits_normally_during_cancel_keeps_its_status(self, find_launcher, popen):
-        process = Mock(poll=Mock(return_value=None), returncode=2)
+        process = self.child(poll=Mock(return_value=None), returncode=2)
         process.wait.return_value = 2
         popen.return_value = process
         cancel = threading.Event()
         cancel_when_started = lambda event: cancel.set() if event.phase == "starting" else None
         result = Application().launch(ConnectionRequest(str(self.profile())), cancel_when_started, cancel)
-        self.assertEqual(result.value, ConnectionResult(2, cancelled=True))
+        self.assertEqual((result.value.exit_code, result.value.cancelled), (2, True))
 
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
@@ -108,7 +126,7 @@ class LaunchTests(unittest.TestCase):
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
     def test_unresponsive_child_is_killed_after_terminate(self, find_launcher, popen):
-        process = Mock(poll=Mock(return_value=None), returncode=-9)
+        process = self.child(poll=Mock(return_value=None), returncode=-9)
         process.wait.side_effect = [subprocess.TimeoutExpired("eitaas-remmina", 5), -9]
         popen.return_value = process
         cancel = threading.Event()
@@ -119,7 +137,7 @@ class LaunchTests(unittest.TestCase):
 
         result = Application().launch(ConnectionRequest(str(self.profile())), progress, cancel)
         self.assertTrue(result.ok)
-        self.assertEqual(result.value, ConnectionResult(130, cancelled=True))
+        self.assertEqual((result.value.exit_code, result.value.cancelled), (130, True))
         process.terminate.assert_called_once()
         process.kill.assert_called_once()
 
@@ -142,10 +160,16 @@ class LaunchTests(unittest.TestCase):
             True, True, "/usr/libexec/eitaas-remmina/bin/remmina", "1.4.43", "3.31.0", True
         )
         doctor.return_value = Result(
-            DoctorReport("Linux", "x11", True, False, True, {}, bundle, False, True)
+            DoctorReport("Linux", "x11", True, False, True, {}, bundle, False, True,
+                         latest_session_log="/home/u/.local/state/eitaas-remmina/logs/session-1.log")
         )
-        with redirect_stdout(StringIO()):
+        output = StringIO()
+        with redirect_stdout(output):
             self.assertEqual(main(["doctor", "--json"]), 0)
+        self.assertEqual(
+            json.loads(output.getvalue())["latest_session_log"],
+            "/home/u/.local/state/eitaas-remmina/logs/session-1.log",
+        )
 
 
 if __name__ == "__main__":

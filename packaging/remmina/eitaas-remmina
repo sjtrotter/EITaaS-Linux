@@ -20,13 +20,22 @@ mkdir -p "$state_home"
 [ -d "$config_root" ] || mkdir -m 700 "$config_root"
 export XDG_CONFIG_HOME="$config_root"
 export EITAAS_REMMINA_ONESHOT=1
+# Remmina's REMMINA_PLUGIN_DEBUG lines are g_debug() in the "remmina" domain,
+# which GLib drops unless the domain is enabled; the helper's session log and
+# a terminal both need them. Remmina additionally appends its debug lines to
+# $TMPDIR/remmina_log_file.log (upstream behaviour).
+export G_MESSAGES_DEBUG="${G_MESSAGES_DEBUG:-remmina}"
 
 for client in \
 	/usr/libexec/eitaas-remmina/bin/remmina \
 	/usr/lib/eitaas-remmina/bin/remmina
 do
 	if [ -x "$client" ]; then
-		exec "$client" --no-tray-icon --connect="$profile"
+		# A private GApplication id keeps this one-shot client its own primary
+		# instance: with the shared org.remmina.Remmina id, an already running
+		# distribution Remmina would receive --connect and handle it without
+		# the smart-card patches. Remmina passes G_APPLICATION_CAN_OVERRIDE_APP_ID.
+		exec "$client" --gapplication-app-id=org.eitaas.Remmina --no-tray-icon --connect="$profile"
 	fi
 done
 

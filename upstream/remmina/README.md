@@ -3,7 +3,7 @@
 This directory contains a generic, unbranded patch series prepared against
 Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`. It is one
 linear series exported with `git format-patch` from the local GitLab-fork
-branch `contrib/eitaas-series-v2` (head `c8530d951`); each commit is a
+branch `contrib/eitaas-series-v3-logging-main` (head `6d75d9fe9`); each commit is a
 complete logical change with no fix-up of an earlier commit:
 
 1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`fb4db9ea7`) reads a
@@ -22,9 +22,12 @@ complete logical change with no fix-up of an earlier commit:
    transaction: exact redirect/state validation, PKCE S256, one terminal
    result, a finite wait, and a dialog torn down with its transaction; and
 5. `0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch`
-   (`c8530d951`) handles WebKitGTK client-certificate and certificate-PIN
+   (`6d75d9fe9`) handles WebKitGTK client-certificate and certificate-PIN
    challenges with bounded, cancellable PKCS #11 discovery, asynchronous
-   certificate loading, origin-bound PIN transactions, and a held toplevel;
+   certificate loading, origin-bound PIN transactions, and a held toplevel,
+   and logs every stage through `REMMINA_PLUGIN_DEBUG`/`REMMINA_PLUGIN_WARNING`
+   with stable `smartcard-auth: <code>` reason codes (counts, the verified
+   sign-in host, and codes only; no URIs, labels, PINs, or callback URLs);
    the sources compile only when `WITH_RDP_AUTH_AAD` is enabled.
 
 The patches deliberately omit EITaaS branding, one-shot lifecycle behavior,
@@ -43,7 +46,12 @@ queue in `packaging/remmina/`. No upstream merge request should be opened
 until the corresponding issue has a developer-attested verification comment.
 The earlier three-branch exports (`contrib/rdpw-govcloud`,
 `contrib/avd-settings-auth`, `contrib/webkit-pkcs11-auth` and their
-`-issue60`/`-issue61` follow-ups) are superseded by this series.
+`-issue60`/`-issue61` follow-ups) and the `contrib/eitaas-series-v2`/`-v2b`
+branches are superseded by this series. The same logging commit rebased onto
+the SSO-MIB-off / FreeRDP 3.30-wording series of `contrib/eitaas-series-v2b`
+(EITaaS-Linux #81) is pushed as `contrib/eitaas-series-v3-logging` (head
+`383b1e56e`, identical plugin tree); whichever of the two lands second is
+re-exported from the other.
 
 ## FreeRDP compatibility
 

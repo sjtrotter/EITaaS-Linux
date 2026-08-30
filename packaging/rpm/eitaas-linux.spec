@@ -1,6 +1,6 @@
 Name:           eitaas-linux
 Version:        0.1.0
-Release:        3%{?dist}
+Release:        6%{?dist}
 Summary:        Community Linux helper for EITaaS Azure Virtual Desktop
 License:        MIT
 URL:            https://github.com/sjtrotter/EITaaS-Linux
@@ -95,6 +95,13 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.eitaas.Helper.met
 %{_mandir}/man1/eitaas-gui.1*
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-6
+- Show the diagnostic log whenever a smart-card stage warned, even on exit 0
+
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-5
+- Capture the client's output into a redacted per-session log
+- Show reason-code lines and a copy-log button after a failed connection
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-3
 - Add the gui subpackage with the optional GTK 4 / Libadwaita helper
 

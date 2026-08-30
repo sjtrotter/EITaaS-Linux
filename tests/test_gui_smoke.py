@@ -181,5 +181,46 @@ class HelperWindowSmokeTests(unittest.TestCase):
             self.assertTrue(widget.get_focusable() or widget.get_can_focus(), widget)
 
 
+    def test_failed_exit_shows_reason_lines_and_copy_button(self):
+        self.window.import_profile(self.download())
+        wait_until(lambda: len(self.window.profiles) == 1)
+        logs = self.home / "state" / "eitaas-remmina" / "logs"
+        logs.mkdir(parents=True)
+        log = logs / "session-20260830T120000-1.log"
+        log.write_text(
+            "Connecting to: host\n"
+            "(remmina-WARNING) smartcard-auth: discovery-empty: No usable certificates for login.example\n"
+            "exit=2\n"
+        )
+        copied = []
+        with patch.dict(os.environ, {"XDG_STATE_HOME": str(self.home / "state")}), \
+                patch.object(self.core, "launch", return_value=Result(ConnectionResult(2, log_path=str(log)))), \
+                patch.object(self.window, "copy_text", side_effect=copied.append):
+            self.window.start_connection()
+            wait_until(lambda: self.window.copy_log_button.get_visible())
+            text = self.window.error_label.get_label()
+            self.assertIn("status 2", text)
+            self.assertIn("discovery-empty", text)
+            self.assertIn(str(log), text)
+            self.window.copy_log_button.emit("clicked")
+        self.assertEqual(copied, [log.read_text()])
+        self.assertTrue(self.window.connect_button.get_visible())
+
+        with patch.object(self.core, "launch", return_value=Result(ConnectionResult(0))):
+            self.window.start_connection()
+            wait_until(lambda: self.window.worker is None)
+            pump(0.1)
+        self.assertFalse(self.window.copy_log_button.get_visible())
+        self.assertFalse(self.window.error_label.get_visible())
+
+        # A clean exit that still logged a smart-card warning shows the diagnostics.
+        with patch.dict(os.environ, {"XDG_STATE_HOME": str(self.home / "state")}), \
+                patch.object(self.core, "launch",
+                             return_value=Result(ConnectionResult(0, log_path=str(log), log_warnings=1))):
+            self.window.start_connection()
+            wait_until(lambda: self.window.copy_log_button.get_visible())
+        self.assertIn("discovery-empty", self.window.error_label.get_label())
+
+
 if __name__ == "__main__":
     unittest.main()

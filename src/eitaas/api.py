@@ -11,6 +11,7 @@ worker thread and must marshal updates onto the toolkit event loop.
 from __future__ import annotations
 
 import datetime
+import stat
 import subprocess
 import threading
 import urllib.parse
@@ -25,6 +26,8 @@ from .profile import inspect_profile
 from .redaction import redact
 
 T = TypeVar("T")
+# Longest line the session-log reader accepts in one read; longer output is split.
+_MAX_LOG_LINE = 64 * 1024
 ProgressCallback = Callable[["ProgressEvent"], None]
 _BACKGROUND_OPERATIONS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="eitaas-api")
 
@@ -81,6 +84,7 @@ class DoctorReport:
     identity_broker: bool
     ready: bool
     smartcard: SmartcardReport | None = None
+    latest_session_log: str | None = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +162,19 @@ class ConnectionRequest:
 class ConnectionResult:
     exit_code: int
     cancelled: bool = False
+    log_path: str | None = None
+    # ``smartcard-auth:`` warning lines seen in the session log; a failed
+    # smart-card stage can end with exit status 0 when the user closes the window.
+    log_warnings: int = 0
+
+
+@dataclass(frozen=True)
+class SessionLogSummary:
+    """A redacted session log: its location, the reason-code lines, and the full text."""
+
+    path: str
+    reason_lines: tuple[str, ...]
+    text: str
 
 
 @dataclass(frozen=True)
@@ -223,6 +240,9 @@ class Application:
                         and smartcard_result.value.ready
                     ),
                     smartcard=smartcard_result.value,
+                    latest_session_log=(
+                        str(data["latest_session_log"]) if data.get("latest_session_log") else None
+                    ),
                 )
             )
         except Exception as error:
@@ -399,7 +419,9 @@ class Application:
 
         Without an explicit ``request.profile`` the stored default profile
         (``eitaas profile import``) is used. The child receives exactly ``[launcher, profile]`` with no shell, no
-        environment changes, and all standard streams on ``DEVNULL``. Endpoint
+        environment changes, stdin on ``DEVNULL``, and stdout/stderr on a pipe
+        that a reader thread drains into a private, redacted session log
+        (``remmina.SessionLog``); nothing is printed to a terminal. Endpoint
         allowlisting and the refusal of terminal OAuth are enforced inside the
         bundled client (Remmina patches), not here.
         """
@@ -414,12 +436,15 @@ class Application:
             if cancelled.is_set():
                 return Result(ConnectionResult(130, cancelled=True))
             progress(ProgressEvent("starting", "Remote desktop client started", cancellable=True))
+            log = self._open_session_log(profile)
             process = subprocess.Popen(
                 [launcher, str(profile)],
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE if log else subprocess.DEVNULL,
+                stderr=subprocess.STDOUT if log else subprocess.DEVNULL,
             )
+            reader = self._start_output_reader(process, log)
+            was_cancelled = False
             while process.poll() is None:
                 if cancelled.wait(0.1):
                     progress(ProgressEvent("cancelling", "Stopping remote desktop client"))
@@ -429,8 +454,80 @@ class Application:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
-                    code = process.returncode
-                    return Result(ConnectionResult(130 if code < 0 else code, cancelled=True))
-            return Result(ConnectionResult(process.returncode or 0))
+                    was_cancelled = True
+                    break
+            code = process.returncode
+            if was_cancelled and code < 0:
+                code = 130
+            log_path = self._close_session_log(log, reader, code, process.stdout)
+            return Result(ConnectionResult(code or 0, cancelled=was_cancelled, log_path=log_path,
+                                           log_warnings=log.warnings if log else 0))
         except Exception as error:
             return self._error("launch_failed", error, "Run eitaas doctor and correct failed checks.")
+
+    @staticmethod
+    def _open_session_log(profile: Path) -> remmina.SessionLog | None:
+        """Best effort: a log that cannot be created must not prevent connecting."""
+        try:
+            log = remmina.SessionLog.open()
+        except OSError:
+            return None
+        log.write(f"eitaas-linux {__version__} profile={profile.name}")
+        log.write(f"remmina instances already running: {remmina.running_remmina_instances()}")
+        return log
+
+    @staticmethod
+    def _start_output_reader(
+        process: subprocess.Popen, log: remmina.SessionLog | None
+    ) -> threading.Thread | None:
+        """Drain the child's pipe on a daemon thread so the child never blocks on a full pipe."""
+        if log is None or process.stdout is None:
+            return None
+        stream = process.stdout
+
+        def pump() -> None:
+            try:
+                for raw in iter(lambda: stream.readline(_MAX_LOG_LINE), b""):
+                    log.write(raw.decode("utf-8", errors="replace"))
+            except (OSError, ValueError, TypeError):
+                pass  # a broken pipe ends logging, never the connection
+
+        thread = threading.Thread(target=pump, name="eitaas-session-log", daemon=True)
+        thread.start()
+        return thread
+
+    @staticmethod
+    def _close_session_log(
+        log: remmina.SessionLog | None,
+        reader: threading.Thread | None,
+        exit_code: int | None,
+        process_stdout: object = None,
+    ) -> str | None:
+        if log is None:
+            return None
+        if reader is not None:
+            # A grandchild holding the pipe open must not stall the result;
+            # closing our end of the pipe lets the reader thread finish.
+            reader.join(timeout=2)
+            if process_stdout is not None:
+                try:
+                    process_stdout.close()
+                except OSError:
+                    pass
+        log.close(exit_code)
+        return str(log.path)
+
+    def session_log(self, path: str) -> Result[SessionLogSummary]:
+        """Read one session log written by ``launch``; only files inside the log directory are served."""
+        try:
+            candidate = Path(path)
+            directory = remmina.session_log_dir().resolve()
+            if candidate.parent.resolve() != directory or not candidate.name.startswith(remmina.SESSION_LOG_PREFIX):
+                raise ValueError("not a session log")
+            info = candidate.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_size > remmina.SESSION_LOG_LIMIT + 4096:
+                raise ValueError("not a session log")
+            text = candidate.read_text(encoding="utf-8", errors="replace")
+            return Result(SessionLogSummary(str(candidate), remmina.reason_lines(text), text))
+        except Exception as error:
+            return self._error("session_log_failed", error)

@@ -566,3 +566,133 @@ class RemminaSpecCheckTests(unittest.TestCase):
                     len([line for line in removed_lines if literal in line]) + 1,
                     f"{literal!r} is removed by a later patch",
                 )
+
+
+class SmartcardDiagnosticsTests(unittest.TestCase):
+    """Issue #82: both trees log every stage with the same stable reason codes."""
+
+    REASON_CODES = (
+        "challenge-received",
+        "challenge-accepted",
+        "origin-rejected",
+        "discovery-start",
+        "discovery-finished",
+        "discovery-busy",
+        "discovery-empty",
+        "discovery-timeout",
+        "discovery-cancelled",
+        "discovery-token-empty",
+        "discovery-token-skipped-trust",
+        "certificate-selected",
+        "certificate-submitted",
+        "selection-cancelled",
+        "load-start",
+        "load-finished",
+        "load-timeout",
+        "load-error",
+        "load-cancelled",
+        "pin-requested",
+        "pin-submitted",
+        "pin-rejected",
+        "pin-cancelled",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        cls.upstream = (UPSTREAM_DIR / "0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch").read_text()
+
+    def test_reason_codes_exist_in_both_trees(self):
+        for source in (self.downstream, self.upstream):
+            self.assertIn('#define SMARTCARD_AUTH_LOG "smartcard-auth: "', source)
+            for code in self.REASON_CODES:
+                with self.subTest(code=code):
+                    self.assertIn(f'"{code}', source)
+            # Dialogs and warnings share one code: show_error takes it explicitly.
+            self.assertIn("static void show_error(", source)
+            self.assertIn("const gchar *code, const gchar *message)", source)
+            self.assertIn("REMMINA_PLUGIN_WARNING(SMARTCARD_AUTH_LOG", source)
+            self.assertIn("REMMINA_PLUGIN_DEBUG(SMARTCARD_AUTH_LOG", source)
+            # Loader errors are cut before any embedded PKCS #11 URI.
+            self.assertIn('strstr(message, "pkcs11:")', source)
+
+    def test_only_counts_and_hosts_are_formatted_into_log_lines(self):
+        for source in (self.downstream, self.upstream):
+            for line in source.splitlines():
+                if "SMARTCARD_AUTH_LOG" not in line:
+                    continue
+                for forbidden in ("label", "certificate_uri", "private_key_uri", "gtk_entry_get_text", "uri)"):
+                    self.assertNotIn(forbidden, line, line)
+
+    def test_downstream_logs_label_filter_counts_and_application_id(self):
+        self.assertIn("label-filter kept=%u dropped=%u", self.downstream)
+        self.assertIn("stats->dropped++", self.downstream)
+        self.assertIn("g_application_get_is_remote", self.downstream)
+        self.assertIn("oneshot-quit", self.downstream)
+        self.assertNotIn("label-filter", self.upstream)
+
+    def test_label_filter_keeps_opensc_piv_authentication_labels(self):
+        """OpenSC's PIV emulation labels (pkcs15-piv.c) must pass the downstream filter."""
+        match = re.search(r"static gboolean authentication_label\(const gchar \*label\)\n\{(.*?)\n\}", self.downstream, re.S)
+        self.assertIsNotNone(match)
+        needles = re.findall(r'strstr\(lower, "([^"]+)"\)', match.group(1))
+        self.assertTrue(needles)
+
+        def kept(label):
+            return any(needle in label.lower() for needle in needles)
+
+        self.assertTrue(kept("Certificate for PIV Authentication"))
+        self.assertTrue(kept("Certificate for Card Authentication"))
+        self.assertFalse(kept("Certificate for Digital Signature"))
+        self.assertFalse(kept("Certificate for Key Management"))
+        self.assertFalse(kept("Retired Certificate for Key Management 1"))
+
+    def test_discovery_tolerates_empty_tokens_in_both_trees(self):
+        for source in (self.downstream, self.upstream):
+            self.assertNotIn("g_subprocess_wait_check", source)
+            self.assertIn('#define PKCS11_TRUST_MODEL "p11-kit-trust"', source)
+            self.assertIn("stats->empty_tokens++", source)
+            self.assertIn("stats->trust_skipped++", source)
+            self.assertIn('"PKCS11 token discovery failed (exit status %d)"', source)
+            self.assertIn('"PKCS11 certificate listing failed (exit status %d)"', source)
+            self.assertIn('"PKCS11 discovery tool terminated by signal"', source)
+
+    def test_discovery_against_a_fake_p11tool(self):
+        """Compile the discovery harness with a scratch shell script as PKCS11_TOOL."""
+        cc = shutil.which("cc")
+        pkg_config = shutil.which("pkg-config")
+        if not cc or not pkg_config:
+            self.skipTest("cc or pkg-config missing")
+        module = next(
+            (name for name in ("webkit2gtk-4.1", "webkit2gtk-4.0")
+             if subprocess.run([pkg_config, "--exists", name]).returncode == 0),
+            None,
+        )
+        if module is None:
+            self.skipTest("no webkit2gtk pkg-config module")
+        flags = subprocess.run([pkg_config, "--cflags", "--libs", module],
+                               check=True, capture_output=True, text=True).stdout.split()
+        harness = PROJECT_ROOT / "tests" / "c" / "test_pkcs11_discovery.c"
+        with tempfile.TemporaryDirectory() as workdir:
+            tool = Path(workdir) / "p11tool"
+            shutil.copy(PROJECT_ROOT / "tests" / "c" / "fake-p11tool.sh", tool)
+            tool.chmod(0o700)
+            binary = Path(workdir) / "test_pkcs11_discovery"
+            subprocess.run(
+                [cc, "-std=gnu11", "-Wall", "-Werror", f'-DPKCS11_TOOL="{tool}"',
+                 str(harness), "-o", str(binary), *flags],
+                check=True, timeout=120,
+            )
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_launcher_uses_a_private_gapplication_id(self):
+        launcher = (PACKAGE_DIR / "eitaas-remmina").read_text()
+        self.assertIn("--gapplication-app-id=org.eitaas.Remmina --no-tray-icon --connect=", launcher)
+        self.assertIn("does not share an application id", (PACKAGE_DIR / "README.md").read_text())
+
+    def test_reason_codes_are_documented(self):
+        for path in (PROJECT_ROOT / "README.md", PROJECT_ROOT / "docs" / "eitaas.1", PROJECT_ROOT / "docs" / "eitaas-gui.1"):
+            with self.subTest(path=path.name):
+                self.assertIn("smartcard-auth", path.read_text())
+        self.assertIn("G_MESSAGES_DEBUG=remmina eitaas-remmina", (PROJECT_ROOT / "README.md").read_text())

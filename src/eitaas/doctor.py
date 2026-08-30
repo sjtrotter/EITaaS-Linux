@@ -26,6 +26,7 @@ def report() -> dict[str, object]:
             for name in ("pcsc_scan", "pkcs11-tool", "systemctl", "openssl", "certutil")
         },
         "pcsc_socket": bool(system_socket.exists() or (pcsc_socket and pcsc_socket.exists())),
+        "latest_session_log": remmina.latest_session_log(),
     }
 
 
