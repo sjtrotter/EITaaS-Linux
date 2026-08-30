@@ -18,6 +18,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn("-DWITH_PCSC=ON", rules)
         self.assertIn("-DWITH_SSO_MIB=OFF", rules)
         self.assertIn("--parallel 1", rules)
+        self.assertIn("override_dh_installdocs:", rules)
 
     def test_debian_source_preparation_reads_shared_manifest(self):
         preparer = (PROJECT_ROOT / "scripts" / "prepare-remmina-deb-source.py").read_text()
