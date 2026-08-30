@@ -1,14 +1,15 @@
 # CLAUDE.md — EITaaS-Linux
 
 Guidance for AI agents (Claude, Codex, subagents) working in this repository.
-Humans own every decision; AI assistance must be disclosed in upstream submissions.
+Humans own every decision. Issues #49–#64 require AI assistance to be disclosed in any
+upstream Remmina/FreeRDP submission; treat that as policy.
 
 ## What this repository is
 
 Community Linux tooling for Azure Virtual Desktop (US Government cloud) with CAC
 smart-card redirection. Two deliverables:
 
-- `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|smartcard|inspect-profile|certificates`).
+- `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|smartcard|certificates`).
   `api.py` is the presentation-neutral facade; frontends never import platform modules directly.
 - `packaging/remmina/` — the product client: an isolated one-shot Remmina 1.4.43 + FreeRDP 3.31.0
   bundle with downstream patches and `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth).
@@ -24,19 +25,25 @@ no connection-manager mode, no Flatpak/AppImage.
 - Never capture, log, or persist a CAC PIN, OAuth callback, token, or real `.rdpw` content.
   Test fixtures are synthetic (`tests/fixtures/synthetic.rdpw`) — no tenant/workspace/gateway values.
 - Refuse FreeRDP's terminal URL/callback OAuth fallback; only identity-broker or embedded WebView.
-- Profiles: regular file, owned by the user, mode `0600`, ≤ 1 MiB, `lstat`/`O_NOFOLLOW`, one immutable buffer.
-- Errors cross the API boundary already redacted (`redaction.redact`). No full paths, no raw child output.
+- Python profiles: regular file, owned by the user, mode `0600`, ≤ 1 MiB, checked via `lstat`
+  (`profile.validate_profile`; the subsequent read-by-path is a known small TOCTOU gap — do not widen it).
+- C profiles (Remmina patches): `O_NOFOLLOW` + `fstat`, ≤ 1 MiB, one immutable buffer parsed once pre-connect.
+- Errors cross the API boundary through `redaction.redact` (JWTs, `key=value` secrets, URL query values);
+  API results expose basenames, never full profile paths; child output is never returned.
 - Child processes: fixed argv, no shell, timeouts, bounded output, stdio to `DEVNULL` unless required.
-- Untrusted `.rdpw` content reaches FreeRDP's native parser only through the explicit allowlist.
-- OAuth: `state` + PKCE S256, exact callback scheme/host/port/path, one terminal result per transaction.
+- Untrusted `.rdpw` content reaches FreeRDP's native parser only through the explicit allowlist
+  (`packaging/remmina/0006-*.patch`, `upstream/remmina/0005-*.patch`).
+- OAuth: `state` + PKCE S256, exact callback scheme/host/port/path, one terminal result per transaction
+  (`packaging/remmina/0006-*.patch`, `upstream/remmina/0007/0009-*.patch`; remaining gaps tracked in #60).
 - No polkit/pcsc-lite overrides, no automatic trust-store changes, no `sudo` in diagnostics.
 
 ## Engineering standards
 
 **Single source of truth (SSOT).**
-- Version pins, patch order, and downstream sources live only in `packaging/remmina/sources.json`;
-  RPM spec, Debian, Arch, CI, and lifecycle scripts derive from it (`scripts/check-version-consistency.py`
-  guards the Python package version). Never hard-code a version string a manifest already holds.
+- Version pins, patch order, and downstream sources live in `packaging/remmina/sources.json`; it is the
+  intended SSOT for the Remmina bundle (aligning CI/spec/script strings to it is tracked in #64).
+  `scripts/check-version-consistency.py` guards the Python package version across pyproject/RPM/DEB/Arch.
+  Never add a new hard-coded version string a manifest already holds.
 - Cloud constants (authorities, scopes, hosts) are defined once per language and referenced.
 - The downstream patch queue and the upstream series must implement the *same* behavior; a fix
   applied to one must be applied to the other in the same PR.
@@ -56,7 +63,7 @@ Every PR keeps the suite green and CI green (`.github/workflows/ci.yml`).
 ## Remmina / FreeRDP upstream conventions
 
 Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows Remmina's style:
-- Format with `.uncrustify-remmina.cfg` from the Remmina tree (tabs, 8-column indent,
+- Format with `.uncrustify-remmina.cfg` from a Remmina checkout (not vendored here; tabs, 8-column indent,
   `type *name` pointer spacing, function-definition brace on its own line, `if (x) {` on one line).
 - GLib/GTK idioms: `g_*` allocators paired with `g_free`, WinPR/FreeRDP allocations with `free`;
   GTK calls on the main thread only; `g_object_ref` anything used across a nested main loop.
@@ -72,14 +79,14 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
 1. Work from a GitHub issue with acceptance criteria; file one if none exists.
 2. Branch per issue, one PR per issue, PR body references the issue and lists verification commands run.
 3. Every PR receives an independent adversarial review before merge; findings are fixed on the same PR.
-4. Security gate issues (#49–#64) close only after: equivalent downstream + upstream change,
+4. Gate issues #49–#64 (security/reliability/upstream/packaging) close only after: equivalent downstream + upstream change,
    behavioral tests, sanitizer run where applicable, developer attestation, and hardware validation
    where the criteria require it. Never tick a checkbox on behalf of the developer.
 5. Do not push to the GitLab fork or open upstream merge requests; commit locally and report SHAs.
-6. Orchestrate, don't monopolize: the lead agent plans and delegates well-bounded work to the
+6. Orchestrate non-trivial work: the lead agent plans and delegates well-bounded tasks to the
    appropriate tier of subagent **and to Codex harnesses** (`codex exec`, `codex exec review`) —
-   use both where they fit (Codex for independent implementation/review passes and second
-   opinions; Claude subagents for worktree-isolated fixes and fresh-context adversarial review).
+   Codex for independent implementation/review passes and second opinions; Claude subagents for
+   worktree-isolated fixes and fresh-context adversarial review. Trivial edits need no delegation.
    Subagents may delegate further. Every delegated change still lands as a reviewed PR.
 7. Do not commit `.build/`, `dist/`, real profiles, keys, captures, or agent state
    (`.claude/`, `.codex/`, `.agents/`, `AGENTS.local.md`, `CLAUDE.local.md`) — see `.gitignore`.
@@ -88,5 +95,6 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
 
 - Pinned Remmina source for downstream work: `Remmina-030946c8…` (see `sources.json`); build recipe in
   `packaging/remmina/eitaas-remmina.spec` / `debian/rules` / `arch/PKGBUILD`.
-- Local build trees may exist under `.build/` (ignored); reuse `.build/remmina-poc/prefix` for FreeRDP 3.31.0.
+- Local build trees may exist under `.build/` (ignored, machine-local); if present, `.build/remmina-poc/prefix`
+  holds an installed FreeRDP 3.31.0 for plugin builds.
 - Support matrix and gates: `docs/supported-platforms.md`. Release: `docs/release-checklist.md`.
