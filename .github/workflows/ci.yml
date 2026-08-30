@@ -152,3 +152,52 @@ jobs:
         with:
           name: arch-package
           path: dist/*.pkg.tar.zst
+
+  remmina-deb-package:
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      matrix:
+        include:
+          - name: ubuntu-24.04
+            image: ubuntu:24.04
+          - name: debian-13
+            image: debian:13
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: >-
+          apt-get update && apt-get install -y
+          build-essential cmake debhelper devscripts dpkg-dev gettext git
+          gnutls-bin libcurl4-openssl-dev libgtk-3-dev libicu-dev libjson-c-dev
+          libjson-glib-dev libkrb5-dev libpcsclite-dev libsecret-1-dev
+          libsodium-dev libsoup-3.0-dev libssh-dev libssl-dev
+          libusb-1.0-0-dev libwebkit2gtk-4.1-dev lintian ninja-build opensc
+          patch pcscd python3 zlib1g-dev
+      - uses: actions/checkout@v4
+      - name: Build binary and native source packages
+        run: scripts/build-remmina-deb.sh
+      - name: Verify Debian policy metadata
+        run: lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license dist/eitaas-remmina_1.4.43+eitaas0.8_amd64.changes
+      - name: Test install, upgrade, dependencies, and removal
+        run: scripts/test-remmina-deb-lifecycle.sh dist/eitaas-remmina_1.4.43+eitaas0.8_amd64.deb
+      - name: Verify corresponding source contents
+        run: |
+          target=$(mktemp -d)
+          dpkg-source --extract dist/eitaas-remmina_1.4.43+eitaas0.8.dsc "$target/source"
+          test -f "$target/source/FreeRDP-3.31.0/LICENSE"
+          test -f "$target/source/Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031/COPYING"
+          test -f "$target/source/patches/0004-use-profile-avd-scope.patch"
+          test -f "$target/source/sources.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remmina-deb-${{ matrix.name }}
+          path: |
+            dist/eitaas-remmina*.deb
+            dist/eitaas-remmina*.ddeb
+            dist/eitaas-remmina*.dsc
+            dist/eitaas-remmina*.tar.xz
+            dist/eitaas-remmina*.buildinfo
+            dist/eitaas-remmina*.changes

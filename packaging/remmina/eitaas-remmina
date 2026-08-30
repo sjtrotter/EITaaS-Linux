@@ -18,4 +18,15 @@ config_root=${XDG_STATE_HOME:-"$HOME/.local/state"}/eitaas-remmina
 mkdir -p -m 700 "$config_root"
 export XDG_CONFIG_HOME="$config_root"
 export EITAAS_REMMINA_ONESHOT=1
-exec /usr/libexec/eitaas-remmina/bin/remmina --no-tray-icon --connect="$profile"
+
+for client in \
+	/usr/libexec/eitaas-remmina/bin/remmina \
+	/usr/lib/eitaas-remmina/bin/remmina
+do
+	if [ -x "$client" ]; then
+		exec "$client" --no-tray-icon --connect="$profile"
+	fi
+done
+
+echo "eitaas-remmina: private Remmina client is not installed" >&2
+exit 127

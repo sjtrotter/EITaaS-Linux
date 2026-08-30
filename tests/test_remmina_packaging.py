@@ -11,6 +11,27 @@ MANIFEST = json.loads((PACKAGE_DIR / "sources.json").read_text())
 
 
 class RemminaPackagingComplianceTests(unittest.TestCase):
+    def test_native_debian_recipe_uses_private_prefix_and_embedded_auth(self):
+        rules = (PACKAGE_DIR / "debian" / "rules").read_text()
+        self.assertIn("PREFIX = /usr/lib/eitaas-remmina", rules)
+        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", rules)
+        self.assertIn("-DWITH_PCSC=ON", rules)
+        self.assertIn("-DWITH_SSO_MIB=OFF", rules)
+        self.assertIn("--parallel 1", rules)
+        self.assertIn("override_dh_installdocs:", rules)
+
+    def test_debian_source_preparation_reads_shared_manifest(self):
+        preparer = (PROJECT_ROOT / "scripts" / "prepare-remmina-deb-source.py").read_text()
+        self.assertIn('package_dir / "sources.json"', preparer)
+        self.assertIn('manifest["patches"]', preparer)
+        self.assertIn('metadata["sha256"]', preparer)
+        self.assertIn('remmina_dir / "data" / "reports"', preparer)
+
+    def test_launcher_supports_rpm_and_debian_private_prefixes(self):
+        launcher = (PACKAGE_DIR / "eitaas-remmina").read_text()
+        self.assertIn("/usr/libexec/eitaas-remmina/bin/remmina", launcher)
+        self.assertIn("/usr/lib/eitaas-remmina/bin/remmina", launcher)
+
     def test_pinned_manifest_matches_rpm_spec(self):
         freerdp = MANIFEST["sources"]["freerdp"]
         remmina = MANIFEST["sources"]["remmina"]
