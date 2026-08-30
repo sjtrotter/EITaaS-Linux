@@ -1,3 +1,4 @@
+import time
 import unittest
 
 from eitaas.redaction import redact
@@ -76,12 +77,89 @@ class RedactionTests(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual(redact(line), expected)
 
+    def test_camelcase_compound_keys_are_redacted(self):
+        # FreeRDP's ARM gateway parses camelCase JSON fields, so the sensitive
+        # word carries no "_"/"-" separator; the compound-key prefix has to
+        # accept a lower-to-upper boundary as well (issue #88 re-review).
+        self.assertEqual(
+            redact('{"redirectedAuthBlob":"synthetic-blob-value"}'),
+            '{"redirectedAuthBlob":"<redacted>"}',
+        )
+        cases = {
+            '{"redirectedAuthGuid": "synthetic-guid-value"}':
+                '{"redirectedAuthGuid": "<redacted>"}',
+            '{"RedirectionGuid":"synthetic-guid-value"}':
+                '{"RedirectionGuid":"<redacted>"}',
+            '{"authBlob":"synthetic-blob-value"}': '{"authBlob":"<redacted>"}',
+            '{"sessionState":"synthetic-state-value"}':
+                '{"sessionState":"<redacted>"}',
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(redact(line), expected)
+        # The same compounds outside JSON reach the bare key=value rule.
+        for line in (
+            "redirectedAuthBlob=synthetic-blob-value",
+            "RedirectionGuid: synthetic-guid-value",
+            "unable to set RedirectionGuid=synthetic-guid-value",
+        ):
+            with self.subTest(line=line):
+                redacted = redact(line)
+                self.assertNotIn("synthetic", redacted, redacted)
+                self.assertIn("<redacted>", redacted)
+
+    def test_freerdp_affinity_log_lines_are_redacted(self):
+        # The exact WLOG_INFO calls in libfreerdp/core/gateway/wst.c, as the
+        # session log receives them (WinPR prefixes level and logger name).
+        # Both forms are covered, so no bundled FreeRDP patch demoting the
+        # line is needed (issue #88).
+        prefix = "[INFO][com.freerdp.core.gateway.wst] - "
+        cases = {
+            prefix + "Got ARRAffinity cookie         synthetic-affinity-value":
+                prefix + "Got ARRAffinity cookie         <redacted>",
+            prefix + "Got ARRAffinitySameSite cookie synthetic-samesite-value":
+                prefix + "Got ARRAffinitySameSite cookie <redacted>",
+            # ... and the header those values are read back out of.
+            "Set-Cookie: ARRAffinity=synthetic-affinity-value; Path=/; HttpOnly; Secure":
+                "Set-Cookie: ARRAffinity=<redacted>",
+            "Set-Cookie: ARRAffinitySameSite=synthetic-samesite-value; SameSite=None":
+                "Set-Cookie: ARRAffinitySameSite=<redacted>",
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(redact(line), expected)
+
+    def test_quoted_values_may_contain_escaped_quotes(self):
+        # A JSON escape must not end the value early and leave the tail of the
+        # secret behind in the log.
+        self.assertEqual(
+            redact(r'{"authBlob":"synthetic\"blob\"value"}'),
+            '{"authBlob":"<redacted>"}',
+        )
+        self.assertEqual(
+            redact(r'{"access_token":"a\\","code":"synthetic-code"}'),
+            '{"access_token":"<redacted>","code":"<redacted>"}',
+        )
+
+    def test_long_hyphenated_line_does_not_backtrack(self):
+        # The compound-key prefix has to stay linear. A [\w-]* run overlaps the
+        # separator that follows it, which costs 20 s+ on a 16 KiB "a-a-a-..."
+        # line; the bound here is generous so CI load cannot flake it.
+        line = "a-" * 32768
+        start = time.perf_counter()
+        self.assertEqual(redact(line), line)
+        self.assertLess(time.perf_counter() - start, 5.0)
+
     def test_redaction_is_idempotent(self):
         for line in (
             '{"access_token":"synthetic"}',
+            '{"redirectedAuthBlob":"synthetic-blob-value"}',
+            '{"RedirectionGuid":"synthetic-guid-value"}',
             "Set-Cookie: ARRAffinity=synthetic-affinity-value",
             "Got ARRAffinity cookie synthetic-affinity-value",
+            "Got ARRAffinitySameSite cookie synthetic-samesite-value",
             "password=synthetic",
+            "redirectedAuthBlob=synthetic-blob-value",
             "using Bearer synthetic-opaque-value",
         ):
             with self.subTest(line=line):
@@ -122,6 +200,20 @@ class LogRedactionTests(unittest.TestCase):
                 " unverified-host=login.microsoftonline.us port=443 proxy=0 retry=0"
                 " application=org.eitaas.Remmina remote=0)")
         self.assertEqual(redact(line), line)
+
+    def test_diagnostic_lines_survive_the_compound_key_rule(self):
+        # Relaxing the compound-key prefix to camelCase must not start eating
+        # the launcher's own stage lines, exit codes, or profile basenames.
+        for line in (
+            "avd-arm: response-timeout-ms=60000",
+            "smartcard-auth: discovery-finished (tokens=3 certificates=4)",
+            "smartcard-auth: origin-rejected (origin-host-mismatch)",
+            "oneshot-quit (application=)",
+            "using profile synthetic.rdpw",
+            "exit=0",
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(redact(line), line)
 
 
 if __name__ == "__main__":

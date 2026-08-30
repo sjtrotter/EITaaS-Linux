@@ -229,7 +229,22 @@ each, the newest five kept). The last line is `exit=<code>`.
   `com.freerdp.core.gateway.http` — so no `WLOG_LEVEL`/`WLOG_FILTER` export is
   set. Session-log lines are redacted before they are written (JWTs, `Bearer`
   values in any casing, quoted-JSON token fields, `Set-Cookie`/`ARRAffinity`
-  cookie values, sensitive `key=value` pairs, and URL query values).
+  cookie values, sensitive `key=value` pairs — including camelCase compounds
+  such as `redirectedAuthBlob` and `RedirectionGuid` — and URL query values).
+  FreeRDP logs the Azure `ARRAffinity`/`ARRAffinitySameSite` routing cookies at
+  INFO level in `libfreerdp/core/gateway/wst.c`, so those values are redacted
+  in the session log rather than suppressed at the source; no `WLOG_FILTER` or
+  bundled FreeRDP patch is used for them.
+
+  **Older logs are not cleaned retroactively.** Session logs written by earlier
+  builds — the `eitaas-linux` 0.1.x CLI and the split-package installs that
+  preceded it, together with bundle releases up to `1.4.43+eitaas0.15` — may
+  still contain unredacted Azure `ARRAffinity` routing cookies; the cookie
+  rules ship in the `eitaas-linux` 0.2.x package. They are load-balancer
+  routing values, not credentials, but they are server-issued and
+  session-scoped: review a log before attaching it to a support request, or
+  delete `$XDG_STATE_HOME/eitaas-remmina/logs/` and let the next connection
+  recreate it.
 
 ## Bundled client and desktop support
 
