@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Stephen Trotter
 //
 // Behavioral test for PKCS #11 certificate discovery in eitaas_cac_auth.c,
-// driven by a fake p11tool (a shell script compiled in as PKCS11_TOOL).
+// driven by a fake p11tool (a shell script compiled in as REMMINA_P11TOOL).
 // Issue #82: p11tool exits non-zero for a token without matching objects
 // (p11-kit's trust tokens come first), which used to abort discovery before
 // the smart card was ever queried. Compiled and run by
@@ -29,10 +29,18 @@ int main(void)
 	int failures = 0;
 	EitaasDiscoveryStats stats = { 0 };
 	GError *error = NULL;
+	/* The build pins REMMINA_P11TOOL to the fake tool; resolve it the way the
+	   dialog does. */
+	gchar *tool = pkcs11_tool_path();
+
+	if (!tool) {
+		fprintf(stderr, "FAIL: the pinned p11tool was not resolved\n");
+		return 1;
+	}
 
 	/* Trust token first, then an empty token, then the PIV token. */
 	g_setenv("FAKE_P11TOOL_MODE", "piv", TRUE);
-	GPtrArray *certs = enumerate_certificates(NULL, &stats, &error);
+	GPtrArray *certs = enumerate_certificates(tool, NULL, &stats, &error);
 	failures += check(error == NULL, "discovery succeeds despite an empty token");
 	if (error)
 		fprintf(stderr, "  error: %s\n", error->message);
@@ -50,7 +58,7 @@ int main(void)
 	/* A token listing failure stays fatal. */
 	memset(&stats, 0, sizeof(stats));
 	g_setenv("FAKE_P11TOOL_MODE", "tokens-fail", TRUE);
-	certs = enumerate_certificates(NULL, &stats, &error);
+	certs = enumerate_certificates(tool, NULL, &stats, &error);
 	failures += check(error != NULL, "token listing failure is an error");
 	failures += check(certs->len == 0, "no certificates after a token listing failure");
 	g_ptr_array_unref(certs);
@@ -59,7 +67,7 @@ int main(void)
 	/* Non-zero exit together with URL output is malformed and fatal. */
 	memset(&stats, 0, sizeof(stats));
 	g_setenv("FAKE_P11TOOL_MODE", "malformed", TRUE);
-	certs = enumerate_certificates(NULL, &stats, &error);
+	certs = enumerate_certificates(tool, NULL, &stats, &error);
 	failures += check(error != NULL, "URLs with a non-zero exit status are rejected");
 	g_ptr_array_unref(certs);
 	g_clear_error(&error);
@@ -67,7 +75,7 @@ int main(void)
 	/* A tool killed by a signal is never an empty token. */
 	memset(&stats, 0, sizeof(stats));
 	g_setenv("FAKE_P11TOOL_MODE", "signal", TRUE);
-	certs = enumerate_certificates(NULL, &stats, &error);
+	certs = enumerate_certificates(tool, NULL, &stats, &error);
 	failures += check(error != NULL && strstr(error->message, "signal") != NULL,
 	                  "signal death of p11tool is a discovery error");
 	failures += check(stats.empty_tokens == 1, "the empty token before the PIV token is still counted");
@@ -77,10 +85,11 @@ int main(void)
 	/* Only empty tokens: no error, zero certificates (the "no usable" dialog path). */
 	memset(&stats, 0, sizeof(stats));
 	g_setenv("FAKE_P11TOOL_MODE", "all-empty", TRUE);
-	certs = enumerate_certificates(NULL, &stats, &error);
+	certs = enumerate_certificates(tool, NULL, &stats, &error);
 	failures += check(error == NULL && certs->len == 0, "all-empty tokens yield zero certificates without error");
 	failures += check(stats.empty_tokens == 1 && stats.trust_skipped == 1, "empty token counted, trust token skipped");
 	g_ptr_array_unref(certs);
 	g_clear_error(&error);
+	g_free(tool);
 	return failures ? 1 : 0;
 }

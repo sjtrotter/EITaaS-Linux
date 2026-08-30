@@ -114,6 +114,7 @@ cmake -S Remmina-%{remmina_commit} -B remmina-build -G Ninja \
   -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
   -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib64:$ORIGIN/../..' \
   -DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
+  -DREMMINA_P11TOOL=/usr/bin/p11tool \
   -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
   -DWITH_CUPS=OFF -DWITH_AVAHI=OFF \
   -DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF \
@@ -175,7 +176,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.eitaas.Helper.met
 plugin=%{buildroot}%{private_prefix}/lib64/remmina/plugins/remmina-plugin-rdp.so
 test -x %{buildroot}%{private_prefix}/bin/remmina
 test -f "$plugin"
-grep -a -q 'Protected RDPW profile contains invalid or disallowed settings' "$plugin"
+grep -a -q 'The stored connection file holds invalid or disallowed settings.' "$plugin"
 grep -a -q 'Select smart-card authentication certificate' "$plugin"
 test -x %{buildroot}%{_bindir}/eitaas-remmina
 license_dir=%{buildroot}%{_licensedir}/%{name}

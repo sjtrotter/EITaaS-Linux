@@ -1,0 +1,419 @@
+From 2f5e58e5bbee380a918e8ef523420c192e23731a Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 17:07:42 -0500
+Subject: [PATCH 7/7] RDP: test the protected connection-file helpers
+
+Nothing in the tree exercised the code that reads and filters a protected
+connection file, although it is the part of the RDP plugin that handles a
+file from outside the profile store: bounds and ownership checks, two text
+encodings, the ARM classification, and the allowlist that decides what
+reaches FreeRDP's native parser.
+
+Add a CTest target for those helpers. rdp_rdpw.c depends on GLib alone, so
+the test links it directly and needs neither FreeRDP, a display, nor a
+session; it covers the size bound and the file-type check, the refusal to
+follow a symbolic link, UTF-8 and UTF-16 decoding of the same file, invalid
+and NUL-bearing text, the three classifications, the keys the allowlist keeps
+and drops, the refusal of a buffer holding an embedded "/" command-line
+argument, that a carriage return inside a line hides nothing from either the
+allowlist or the classification, and that a value carrying a carriage return
+cannot swallow the setting behind it when the importer reads the same lines.
+
+Testing is opt-in: -DBUILD_TESTING=ON adds the target and enables ctest,
+and a default build is unchanged. The fixture is a synthetic Azure Virtual
+Desktop file whose hosts, tenant, and user are invented and which carries
+no signature.
+
+Build and run it with:
+
+    cmake -S . -B build -DBUILD_TESTING=ON
+    cmake --build build --target test-rdp-rdpw
+    ctest --test-dir build
+
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
+
+This change was prepared with AI assistance (Claude, Anthropic) and was
+reviewed and tested by the author.
+---
+ CMakeLists.txt                      |   6 +
+ plugins/rdp/CMakeLists.txt          |   4 +
+ plugins/rdp/test/CMakeLists.txt     |  28 +++
+ plugins/rdp/test/synthetic-avd.rdpw |  13 ++
+ plugins/rdp/test/test_rdp_rdpw.c    | 276 ++++++++++++++++++++++++++++
+ 5 files changed, 327 insertions(+)
+ create mode 100644 plugins/rdp/test/CMakeLists.txt
+ create mode 100644 plugins/rdp/test/synthetic-avd.rdpw
+ create mode 100644 plugins/rdp/test/test_rdp_rdpw.c
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0e2ebfc0e..931ed1515 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -612,6 +612,12 @@ if(NOT FREEBSD)
+   set(CMAKE_INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:\$ORIGIN/..")
+ endif()
+ 
++# Unit tests are opt-in: -DBUILD_TESTING=ON adds them and enables ctest.
++option(BUILD_TESTING "Build the unit tests" OFF)
++if(BUILD_TESTING)
++  enable_testing()
++endif()
++
+ if(GTK3_FOUND)
+   # pkg_check_modules(gio REQUIRED gio-2.0) pkg_check_modules(gio-unix REQUIRED
+   # gio-unix-2.0)
+diff --git a/plugins/rdp/CMakeLists.txt b/plugins/rdp/CMakeLists.txt
+index 9ef74ee62..65833e649 100644
+--- a/plugins/rdp/CMakeLists.txt
++++ b/plugins/rdp/CMakeLists.txt
+@@ -157,6 +157,10 @@ if(CUPS_FOUND)
+         ${REMMINA_COMMON_LIBRARIES} freerdp-client ${CUPS_LIBRARIES})
+ endif()
+ 
++if(BUILD_TESTING)
++    add_subdirectory(test)
++endif()
++
+ install(TARGETS remmina-plugin-rdp DESTINATION ${REMMINA_PLUGINDIR})
+ 
+ install(FILES
+diff --git a/plugins/rdp/test/CMakeLists.txt b/plugins/rdp/test/CMakeLists.txt
+new file mode 100644
+index 000000000..ad368bc15
+--- /dev/null
++++ b/plugins/rdp/test/CMakeLists.txt
+@@ -0,0 +1,28 @@
++# remmina-plugin-rdp - The GTK+ Remote Desktop Client
++#
++# Copyright (C) 2026 Antenore Gatta, Giovanni Panozzo
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 51 Franklin Street, Fifth Floor,
++# Boston, MA  02110-1301, USA.
++
++# The protected connection-file helpers depend on GLib alone, so the test
++# links them directly and needs neither FreeRDP nor a display.
++add_executable(test-rdp-rdpw test_rdp_rdpw.c ../rdp_rdpw.c)
++target_include_directories(test-rdp-rdpw PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
++target_include_directories(test-rdp-rdpw SYSTEM PRIVATE ${REMMINA_COMMON_INCLUDE_DIRS})
++target_link_libraries(test-rdp-rdpw ${REMMINA_COMMON_LIBRARIES})
++
++add_test(NAME rdp-rdpw
++         COMMAND test-rdp-rdpw ${CMAKE_CURRENT_SOURCE_DIR}/synthetic-avd.rdpw)
+diff --git a/plugins/rdp/test/synthetic-avd.rdpw b/plugins/rdp/test/synthetic-avd.rdpw
+new file mode 100644
+index 000000000..22de84e9f
+--- /dev/null
++++ b/plugins/rdp/test/synthetic-avd.rdpw
+@@ -0,0 +1,13 @@
++screen mode id:i:2
++full address:s:host.rdp.test
++gatewayhostname:s:gateway.rdp.test
++gatewayusagemethod:i:1
++gatewaycredentialssource:i:5
++resourceprovider:s:arm
++armpath:s:/subscriptions/test/resourcegroups/test/workspaces/test
++aadtenantid:s:00000000-0000-0000-0000-000000000000
++enablerdsaadauth:i:1
++redirectsmartcards:i:1
++redirectclipboard:i:0
++username:s:user@rdp.test
++alternate shell:s:not-an-avd-setting
+diff --git a/plugins/rdp/test/test_rdp_rdpw.c b/plugins/rdp/test/test_rdp_rdpw.c
+new file mode 100644
+index 000000000..475382b94
+--- /dev/null
++++ b/plugins/rdp/test/test_rdp_rdpw.c
+@@ -0,0 +1,276 @@
++/*
++ * Remmina - The GTK+ Remote Desktop Client
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++/*
++ * Exercise the protected connection-file helpers against a synthetic file.
++ * The fixture is a made-up Azure Virtual Desktop profile: every host, tenant,
++ * and user in it is invented, and it carries no signature.
++ */
++
++#include "rdp_rdpw.h"
++
++#include <glib/gstdio.h>
++#include <string.h>
++#include <unistd.h>
++
++static gchar *fixture_path;
++
++static gchar *read_fixture(gsize *length)
++{
++	GError *error = NULL;
++	gchar *contents = remmina_rdpw_read_file(fixture_path, length, &error);
++
++	g_assert_no_error(error);
++	g_assert_nonnull(contents);
++	return contents;
++}
++
++static void test_read_file_accepts_the_fixture(void)
++{
++	gsize length = 0;
++	gchar *contents = read_fixture(&length);
++
++	g_assert_cmpuint(length, >, 0);
++	g_assert_cmpuint(strlen(contents), ==, length);
++	g_assert_nonnull(strstr(contents, "resourceprovider:s:arm"));
++	g_free(contents);
++}
++
++static void test_read_file_refuses_a_symbolic_link(void)
++{
++	gchar *directory = g_dir_make_tmp("remmina-rdpw-XXXXXX", NULL);
++	gchar *link = g_build_filename(directory, "link.rdpw", NULL);
++	GError *error = NULL;
++	gsize length = 1;
++
++	g_assert_nonnull(directory);
++	g_assert_cmpint(symlink(fixture_path, link), ==, 0);
++	g_assert_null(remmina_rdpw_read_file(link, &length, &error));
++	g_assert_nonnull(error);
++	g_assert_cmpuint(length, ==, 0);
++	g_clear_error(&error);
++	g_assert_cmpint(g_unlink(link), ==, 0);
++	g_assert_cmpint(g_rmdir(directory), ==, 0);
++	g_free(link);
++	g_free(directory);
++}
++
++static void test_read_file_refuses_a_directory(void)
++{
++	gchar *directory = g_dir_make_tmp("remmina-rdpw-XXXXXX", NULL);
++	GError *error = NULL;
++	gsize length = 1;
++
++	g_assert_nonnull(directory);
++	g_assert_null(remmina_rdpw_read_file(directory, &length, &error));
++	g_assert_nonnull(error);
++	g_clear_error(&error);
++	g_assert_cmpint(g_rmdir(directory), ==, 0);
++	g_free(directory);
++}
++
++static void test_read_file_refuses_an_oversized_file(void)
++{
++	gchar *directory = g_dir_make_tmp("remmina-rdpw-XXXXXX", NULL);
++	gchar *path = g_build_filename(directory, "big.rdpw", NULL);
++	GError *error = NULL;
++	gsize length = 1;
++
++	g_assert_nonnull(directory);
++	g_assert_true(g_file_set_contents(path, "full address:s:host.rdp.test\n", -1, NULL));
++	g_assert_cmpint(truncate(path, REMMINA_RDPW_MAX_SIZE + 1), ==, 0);
++	g_assert_null(remmina_rdpw_read_file(path, &length, &error));
++	g_assert_nonnull(error);
++	g_assert_cmpuint(length, ==, 0);
++	g_clear_error(&error);
++
++	/* The bound itself is accepted. */
++	g_assert_cmpint(truncate(path, REMMINA_RDPW_MAX_SIZE), ==, 0);
++	gchar *contents = remmina_rdpw_read_file(path, &length, &error);
++
++	g_assert_no_error(error);
++	g_assert_nonnull(contents);
++	g_assert_cmpuint(length, ==, REMMINA_RDPW_MAX_SIZE);
++	g_free(contents);
++	g_assert_cmpint(g_unlink(path), ==, 0);
++	g_assert_cmpint(g_rmdir(directory), ==, 0);
++	g_free(path);
++	g_free(directory);
++}
++
++static void test_utf16_and_utf8_decode_alike(void)
++{
++	gsize length = 0;
++	gchar *contents = read_fixture(&length);
++	gchar *from_utf8 = remmina_rdpw_to_utf8(contents, length);
++	gsize wide_length = 0;
++	gchar *wide = g_convert(contents, length, "UTF-16LE", "UTF-8", NULL, &wide_length, NULL);
++	gchar *with_bom = g_malloc(wide_length + 2);
++
++	g_assert_nonnull(from_utf8);
++	g_assert_nonnull(wide);
++	with_bom[0] = (gchar)0xFF;
++	with_bom[1] = (gchar)0xFE;
++	memcpy(with_bom + 2, wide, wide_length);
++	gchar *from_utf16 = remmina_rdpw_to_utf8(with_bom, wide_length + 2);
++
++	g_assert_cmpstr(from_utf16, ==, from_utf8);
++	g_free(from_utf16);
++	g_free(with_bom);
++	g_free(wide);
++	g_free(from_utf8);
++	g_free(contents);
++}
++
++static void test_invalid_text_is_refused(void)
++{
++	const gchar invalid[] = { (gchar)0xC3, (gchar)0x28, '\n' };
++
++	g_assert_null(remmina_rdpw_to_utf8(invalid, sizeof(invalid)));
++}
++
++static void test_embedded_nul_text_is_refused(void)
++{
++	/* UTF-16LE with a byte-order mark: 'a', U+0000, 'b'. */
++	const gchar wide[] = { (gchar)0xFF, (gchar)0xFE, 'a', 0, 0, 0, 'b', 0 };
++
++	g_assert_null(remmina_rdpw_to_utf8(wide, sizeof(wide)));
++}
++
++static void test_classify_reads_the_routing_keys(void)
++{
++	gsize length = 0;
++	gchar *contents = read_fixture(&length);
++	gchar *utf8 = remmina_rdpw_to_utf8(contents, length);
++
++	g_assert_cmpint(remmina_rdpw_classify(utf8), ==, REMMINA_RDPW_AVD);
++	g_assert_cmpint(remmina_rdpw_classify("full address:s:host.rdp.test\n"), ==,
++			REMMINA_RDPW_GENERIC);
++	g_assert_cmpint(remmina_rdpw_classify("resourceprovider:s:ARM\n"
++					      "gatewayhostname:s:gateway.rdp.test\n"), ==,
++			REMMINA_RDPW_AVD);
++	g_assert_cmpint(remmina_rdpw_classify("resourceprovider:s:arm\n"), ==,
++			REMMINA_RDPW_AVD_WITHOUT_GATEWAY);
++	g_assert_cmpint(remmina_rdpw_classify("resourceprovider:s:arm\n"
++					      "gatewayhostname:s:\n"), ==,
++			REMMINA_RDPW_AVD_WITHOUT_GATEWAY);
++	g_free(utf8);
++	g_free(contents);
++}
++
++static void test_allowlist_keeps_only_routing_settings(void)
++{
++	gsize length = 0;
++	gchar *contents = read_fixture(&length);
++	gchar *utf8 = remmina_rdpw_to_utf8(contents, length);
++	gsize filtered_length = 0;
++	gchar *filtered = remmina_rdpw_filter_native_settings(utf8, &filtered_length);
++
++	g_assert_nonnull(filtered);
++	g_assert_cmpuint(strlen(filtered), ==, filtered_length);
++	g_assert_nonnull(strstr(filtered, "full address:s:host.rdp.test\n"));
++	g_assert_nonnull(strstr(filtered, "gatewayhostname:s:gateway.rdp.test\n"));
++	g_assert_nonnull(strstr(filtered, "resourceprovider:s:arm\n"));
++	g_assert_nonnull(strstr(filtered, "aadtenantid:s:"));
++	g_assert_null(strstr(filtered, "username"));
++	g_assert_null(strstr(filtered, "alternate shell"));
++	g_assert_null(strstr(filtered, "redirectsmartcards"));
++	g_assert_null(strstr(filtered, "screen mode id"));
++	g_free(filtered);
++	g_free(utf8);
++	g_free(contents);
++}
++
++static void test_allowlist_refuses_embedded_arguments(void)
++{
++	gsize filtered_length = 1;
++
++	g_assert_null(remmina_rdpw_filter_native_settings(
++			      "full address:s:host.rdp.test\n/v:other.rdp.test\n", &filtered_length));
++	g_assert_null(remmina_rdpw_filter_native_settings("/sec:tls\n", &filtered_length));
++}
++
++/*
++ * FreeRDP's connection-file parser splits on CR as well as LF, so a carriage
++ * return inside a line must not hide anything from the filter or from the
++ * classification.
++ */
++static void test_a_carriage_return_hides_nothing(void)
++{
++	gsize filtered_length = 1;
++
++	g_assert_null(remmina_rdpw_filter_native_settings(
++			      "gatewayhostname:s:gateway.rdp.test\r/v:other.rdp.test\n",
++			      &filtered_length));
++
++	gchar *filtered = remmina_rdpw_filter_native_settings(
++		"gatewayhostname:s:gateway.rdp.test\ralternate shell:s:hidden\r\n"
++		"resourceprovider:s:arm\r\n", &filtered_length);
++
++	g_assert_nonnull(filtered);
++	g_assert_null(strstr(filtered, "alternate shell"));
++	g_assert_null(strstr(filtered, "\r"));
++	g_assert_nonnull(strstr(filtered, "gatewayhostname:s:gateway.rdp.test\n"));
++	g_assert_nonnull(strstr(filtered, "resourceprovider:s:arm\n"));
++	g_free(filtered);
++
++	g_assert_cmpint(remmina_rdpw_classify("full address:s:host.rdp.test\r"
++					      "resourceprovider:s:arm\r"
++					      "gatewayhostname:s:gateway.rdp.test\n"), ==,
++			REMMINA_RDPW_AVD);
++	g_assert_cmpint(remmina_rdpw_classify("full address:s:host.rdp.test\r"
++					      "resourceprovider:s:arm\n"), ==,
++			REMMINA_RDPW_AVD_WITHOUT_GATEWAY);
++}
++
++/*
++ * The importer reads the same buffer through the same splitter, so a value
++ * carrying a carriage return cannot become part of a profile field: the text
++ * behind the CR is a line of its own, exactly as the connection path and
++ * FreeRDP's parser see it.
++ */
++static void test_a_value_cannot_swallow_the_next_setting(void)
++{
++	gchar **lines = remmina_rdpw_split_lines(
++		"full address:s:host.rdp.test\rusername:s:user@rdp.test\r\n"
++		"resourceprovider:s:arm\n");
++	guint kept = 0;
++
++	g_assert_nonnull(lines);
++	for (gchar **line = lines; *line; line++) {
++		if (!**line)
++			continue;       /* CRLF yields an empty element; callers skip it */
++		g_assert_null(strchr(*line, '\r'));
++		g_assert_null(strchr(*line, '\n'));
++		kept++;
++	}
++	g_assert_cmpuint(kept, ==, 3);
++	g_assert_cmpstr(lines[0], ==, "full address:s:host.rdp.test");
++	g_assert_cmpstr(lines[1], ==, "username:s:user@rdp.test");
++	g_strfreev(lines);
++}
++
++int main(int argc, char *argv[])
++{
++	g_test_init(&argc, &argv, NULL);
++	if (argc < 2) {
++		g_printerr("usage: %s FIXTURE\n", argv[0]);
++		return 2;
++	}
++	fixture_path = argv[1];
++	g_test_add_func("/rdpw/read-file/fixture", test_read_file_accepts_the_fixture);
++	g_test_add_func("/rdpw/read-file/symlink", test_read_file_refuses_a_symbolic_link);
++	g_test_add_func("/rdpw/read-file/directory", test_read_file_refuses_a_directory);
++	g_test_add_func("/rdpw/read-file/oversized", test_read_file_refuses_an_oversized_file);
++	g_test_add_func("/rdpw/decode/utf16", test_utf16_and_utf8_decode_alike);
++	g_test_add_func("/rdpw/decode/invalid", test_invalid_text_is_refused);
++	g_test_add_func("/rdpw/decode/embedded-nul", test_embedded_nul_text_is_refused);
++	g_test_add_func("/rdpw/classify", test_classify_reads_the_routing_keys);
++	g_test_add_func("/rdpw/allowlist/keys", test_allowlist_keeps_only_routing_settings);
++	g_test_add_func("/rdpw/allowlist/arguments", test_allowlist_refuses_embedded_arguments);
++	g_test_add_func("/rdpw/allowlist/carriage-return", test_a_carriage_return_hides_nothing);
++	g_test_add_func("/rdpw/split/carriage-return", test_a_value_cannot_swallow_the_next_setting);
++	return g_test_run();
++}
+-- 
+2.55.0
+

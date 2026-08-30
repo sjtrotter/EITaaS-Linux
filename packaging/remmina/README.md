@@ -37,10 +37,19 @@ The handler accepts certificate and PIN challenges only from the exact HTTPS
 authority that initiated the AAD WebView, limited to supported Microsoft
 commercial and US Government login hosts. It rejects proxy, mismatched,
 standalone PIN, and insecure-origin challenges. PKCS #11 discovery uses the
-packaged `/usr/bin/p11tool`, a 15-second cancellation deadline, one concurrent
-discovery, and explicit output/object limits. Protected profiles are limited
+`p11tool` this build pins (`-DREMMINA_P11TOOL=/usr/bin/p11tool`, the path the
+package's `gnutls-utils`/`gnutls-bin` dependency installs; a build that pins
+nothing searches `PATH` instead), a 15-second cancellation deadline, one
+concurrent discovery, and explicit output/object limits. When that tool is
+missing the dialog names the package to install instead of showing an empty
+certificate list. Protected profiles are limited
 to 1 MiB, opened without following symlinks, retained as one immutable buffer, and parsed
 from a verified bounded buffer exactly once during pre-connect initialization.
+A profile that selects the ARM resource provider without naming a gateway host
+is not an Azure Virtual Desktop connection file and is refused at import; one
+that does not select ARM is imported as an ordinary RDP profile. Invalid or
+disallowed profile content ends the connection with an error, never by
+aborting the client.
 
 Authentication cloud selection is automatic. Protected profiles whose gateway
 ends in `.wvd.azure.us` use the Azure Government authority and AVD scope;
@@ -135,6 +144,7 @@ tool killed by a signal remain fatal. The full reason-code table is in the top-l
 | `challenge-received (scheme= unverified-host= port= proxy= retry= application= remote=)` | debug | WebKit asked for a client certificate or PIN; the host is the one WebKit reported, before validation |
 | `challenge-accepted (host=)` | debug | The challenge origin matched the verified sign-in authority |
 | `origin-rejected (reason)` | warning | Challenge refused: `proxy-challenge`, `no-authentication-host`, `no-security-origin`, `origin-not-https`, `origin-host-mismatch`, `host-not-authority`, `origin-port` |
+| `discovery-tool-missing: …` | warning | `p11tool` is not installed (package `gnutls-utils`/`gnutls-bin`); the dialog names the package |
 | `discovery-start (tool=)` | debug | `p11tool` enumeration started on a worker thread |
 | `discovery-token-skipped-trust (count=)` | debug | p11-kit trust tokens (`model=p11-kit-trust`) skipped without a subprocess |
 | `discovery-token-empty (count= last-exit=)` | debug | Tokens where `p11tool --list-certs` printed no URL and exited non-zero (no certificate on that token) |

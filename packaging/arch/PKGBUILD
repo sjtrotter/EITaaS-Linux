@@ -64,6 +64,7 @@ build() {
     -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
     -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib:$ORIGIN/..' \
     -DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
+    -DREMMINA_P11TOOL=/usr/bin/p11tool \
     -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
     -DWITH_CUPS=OFF -DWITH_AVAHI=OFF -DWITH_LIBVNCSERVER=OFF \
     -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF -DWITH_TIP=OFF \
@@ -77,7 +78,7 @@ check() {
   PYTHONPATH=src python -m unittest discover -s tests -v
   test -x remmina-build/src/remmina
   test -f remmina-build/plugins/rdp/remmina-plugin-rdp.so
-  grep -a -q 'Protected RDPW profile contains invalid or disallowed settings' \
+  grep -a -q 'The stored connection file holds invalid or disallowed settings.' \
     remmina-build/plugins/rdp/remmina-plugin-rdp.so
   grep -a -q 'Select smart-card authentication certificate' \
     remmina-build/plugins/rdp/remmina-plugin-rdp.so

@@ -1,7 +1,7 @@
-From 7310296d67bf5f333ed7361b9af021e1fc6ad1c3 Mon Sep 17 00:00:00 2001
+From 38822ac924e4c5b6f6b98e821fd8e13569a82259 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 4/6] RDP: bind and own OAuth callback results
+Subject: [PATCH 4/7] RDP: bind and own OAuth callback results
 
 The WebKit OAuth flow accepted any redirect observed by the web view as
 the authorization response, stored the borrowed URI string on the
@@ -23,9 +23,18 @@ waits, bounded, for that to happen.
 
 Requests now include a random state value and a PKCE S256 challenge, and
 the verifier is sent with the token request. The authorization URI is
-only loaded when it is an https URI on login.microsoftonline.com or
-login.microsoftonline.us. The "delete-event" handler returns a gboolean
-as GTK expects.
+only loaded when it is an https URI whose host is the authority of a
+cloud in the table, so the sign-in window and the token request accept
+the same set of authorities. The "delete-event" handler returns a
+gboolean as GTK expects.
+
+Closing from the worker waits a bounded ten seconds for the GTK thread to
+destroy the window and logs when that wait expires, because until the idle
+runs the sign-in window is on screen with a completed transaction behind it.
+
+The file is added to po/POTFILES.in: its dialog title has been marked for
+translation since it was introduced, but the file was never listed, so
+the string was not extracted.
 
 Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
 newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
@@ -34,14 +43,15 @@ were added in that release, and every other API used is older.
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.
 ---
- plugins/rdp/rdp_web_auth.c | 411 +++++++++++++++++++++++++++++++------
- 1 file changed, 349 insertions(+), 62 deletions(-)
+ plugins/rdp/rdp_web_auth.c | 419 +++++++++++++++++++++++++++++++------
+ po/POTFILES.in             |   1 +
+ 2 files changed, 358 insertions(+), 62 deletions(-)
 
 diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
-index 3d7dd10a5..f94639bda 100644
+index cf9866383..81c23f77a 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
-@@ -61,22 +61,239 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+@@ -62,22 +62,248 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
  #include "rdp_plugin.h"
  #include <webkit2/webkit2.h>
  #include <freerdp/utils/aad.h>
@@ -88,9 +98,7 @@ index 3d7dd10a5..f94639bda 100644
 +	g_atomic_int_inc(&transaction->ref_count);
 +	return transaction;
 +}
- 
--#define SET_TOKEN_URI(gp, token_uri) \
--	g_object_set_data(G_OBJECT(gp), "token-uri", token_uri)
++
 +static void oauth_transaction_unref(gpointer data)
 +{
 +	RemminaOAuthTransaction *transaction = data;
@@ -121,9 +129,7 @@ index 3d7dd10a5..f94639bda 100644
 +	transaction->state = g_strdup(state);
 +	return transaction;
 +}
- 
--#define GET_TOKEN_URI(gp) \
--	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
++
 +/* Records the single terminal result of a transaction; later results are ignored. */
 +static void oauth_transaction_complete(RemminaOAuthTransaction *transaction, const gchar *uri)
 +{
@@ -203,9 +209,20 @@ index 3d7dd10a5..f94639bda 100644
 +	while (!transaction->closed &&
 +	       g_cond_wait_until(&transaction->condition, &transaction->mutex, deadline)) {
 +	}
++	gboolean closed = transaction->closed;
 +	g_mutex_unlock(&transaction->mutex);
++	/*
++	 * The idle still runs and destroys the window; the wait is bounded so a
++	 * busy main loop cannot hold the worker. Say so, because until it runs
++	 * the sign-in window stays on screen with nothing behind it.
++	 */
++	if (!closed)
++		REMMINA_PLUGIN_WARNING("avd-oauth: sign-in window not closed within %d s",
++				       (int)(OAUTH_DIALOG_CLOSE_TIMEOUT / G_TIME_SPAN_SECOND));
 +}
-+
+ 
+-#define SET_TOKEN_URI(gp, token_uri) \
+-	g_object_set_data(G_OBJECT(gp), "token-uri", token_uri)
 +static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar **value)
 +{
 +	*value = NULL;
@@ -264,7 +281,9 @@ index 3d7dd10a5..f94639bda 100644
 +		g_uri_unref(expected);
 +	return result;
 +}
-+
+ 
+-#define GET_TOKEN_URI(gp) \
+-	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
 +static gboolean oauth_pkce_new(gchar **state, gchar **verifier, gchar **challenge)
 +{
 +	guchar random_state[32];
@@ -287,9 +306,9 @@ index 3d7dd10a5..f94639bda 100644
 +	return *challenge != NULL;
 +}
  
- static BOOL avd_oauth_settings_are_safe(const char *base, const char *tenantid,
- 					const char *client_id, const char *scope,
-@@ -151,12 +368,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+ /*
+  * The authority, tenant, client id, scope, and redirect format must form a
+@@ -148,12 +374,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
  	return g_string_free(url_params, FALSE);
  }
  
@@ -307,7 +326,7 @@ index 3d7dd10a5..f94639bda 100644
  {
  	WebKitNavigationPolicyDecision *nav_decision;
  
-@@ -169,9 +388,11 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
+@@ -166,9 +394,11 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
  		if (webkit_navigation_action_is_redirect(nav_action)) {
  			WebKitURIRequest *req = webkit_navigation_action_get_request(nav_action);
  			const gchar *uri = webkit_uri_request_get_uri(req);
@@ -322,7 +341,7 @@ index 3d7dd10a5..f94639bda 100644
  		}
  		return FALSE;
  	default:
-@@ -192,20 +413,53 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
+@@ -189,20 +419,52 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
  	g_free(title);
  }
  
@@ -353,8 +372,7 @@ index 3d7dd10a5..f94639bda 100644
 +	const gchar *authentication_host = authentication_uri ? g_uri_get_host(authentication_uri) : NULL;
 +	if (!authentication_host || g_uri_get_scheme(authentication_uri) == NULL ||
 +	    g_ascii_strcasecmp(g_uri_get_scheme(authentication_uri), "https") != 0 ||
-+	    (g_ascii_strcasecmp(authentication_host, "login.microsoftonline.com") != 0 &&
-+	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
++	    !remmina_avd_cloud_for_authority(authentication_host)) {
 +		if (authentication_uri)
 +			g_uri_unref(authentication_uri);
 +		oauth_transaction_complete(transaction, AUTH_CANCELLED);
@@ -381,7 +399,7 @@ index 3d7dd10a5..f94639bda 100644
  
  	gtk_widget_show_all(dialog);
  
-@@ -230,7 +484,12 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -227,7 +489,12 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	size_t redirect_uri_len = 0;
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
@@ -395,7 +413,7 @@ index 3d7dd10a5..f94639bda 100644
  
  	assert(scope);
  	assert(req_cnf);
-@@ -250,6 +509,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -247,6 +514,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	if (!redirect_uri) {
  		goto cleanup;
  	}
@@ -405,7 +423,7 @@ index 3d7dd10a5..f94639bda 100644
  
  	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
  	                                                        AAD_WELLKNOWN_authorization_endpoint);
-@@ -260,43 +522,45 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -257,43 +527,45 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	}
  
  	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
@@ -469,7 +487,7 @@ index 3d7dd10a5..f94639bda 100644
  	}
  
  cleanup:
-@@ -304,8 +568,15 @@ cleanup:
+@@ -301,8 +573,15 @@ cleanup:
  	free(redirect_uri);
  	free(token_request);
  	free(auth_hints);
@@ -487,7 +505,7 @@ index 3d7dd10a5..f94639bda 100644
  	return rc && (*token != NULL);
  }
  
-@@ -325,7 +596,12 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -322,7 +601,12 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	size_t redirect_uri_len = 0;
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
@@ -501,7 +519,7 @@ index 3d7dd10a5..f94639bda 100644
  	const char *scope = freerdp_settings_get_string(instance->context->settings,
  							FreeRDP_GatewayAvdScope);
  
-@@ -355,6 +631,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -352,6 +636,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	if (!redirect_uri) {
  		goto cleanup;
  	}
@@ -511,7 +529,7 @@ index 3d7dd10a5..f94639bda 100644
  
  	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
  	                                                        AAD_WELLKNOWN_authorization_endpoint);
-@@ -367,45 +646,46 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -364,45 +651,46 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	}
  
  	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
@@ -577,7 +595,7 @@ index 3d7dd10a5..f94639bda 100644
  	}
  
  cleanup:
-@@ -413,8 +693,15 @@ cleanup:
+@@ -410,8 +698,15 @@ cleanup:
  	free(redirect_uri);
  	free(token_request);
  	free(auth_hints);
@@ -595,6 +613,18 @@ index 3d7dd10a5..f94639bda 100644
  	return rc && (*token != NULL);
  }
  
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index 0197a202a..8b64bbc61 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -123,6 +123,7 @@ plugins/rdp/rdp_event.h
+ plugins/rdp/rdp_cliprdr.h
+ plugins/rdp/rdp_channels.h
+ plugins/rdp/rdp_file.h
++plugins/rdp/rdp_web_auth.c
+ plugins/rdp/rdp_plugin.h
+ plugins/rdp/rdp_channels.c
+ plugins/rdp/rdp_monitor.c
 -- 
 2.55.0
 

@@ -1,4 +1,4 @@
-From dbe63a95682a806721bde1c68cae9b6151e4e355 Mon Sep 17 00:00:00 2001
+From 5ad32929063016eb296063ea9e4080f99dcb5ec1 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 11:15:06 -0500
 Subject: [PATCH] Harden RDPW and OAuth transaction boundaries
@@ -7,20 +7,54 @@ License: GPL-2.0-or-later
 
 Copyright: 2026 Stephen Trotter
 ---
- plugins/rdp/rdp_file.c     |  83 +++++---
- plugins/rdp/rdp_plugin.c   |  98 +++++++---
- plugins/rdp/rdp_web_auth.c | 387 +++++++++++++++++++++++++++++++------
- 3 files changed, 460 insertions(+), 108 deletions(-)
+ plugins/rdp/rdp_file.c     | 129 +++++++++---
+ plugins/rdp/rdp_file.h     |  13 ++
+ plugins/rdp/rdp_plugin.c   | 127 +++++++++---
+ plugins/rdp/rdp_web_auth.c | 396 +++++++++++++++++++++++++++++++------
+ 4 files changed, 558 insertions(+), 107 deletions(-)
 
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
-index 63f5e0e..f19e19a 100644
+index 63f5e0e..3690364 100644
 --- a/plugins/rdp/rdp_file.c
 +++ b/plugins/rdp/rdp_file.c
-@@ -250,6 +250,50 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
+@@ -250,6 +250,94 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
  	return remminafile;
  }
  
-+static RemminaFile *remmina_rdp_file_import_buffer(const gchar *contents, gsize length)
++RdpwKind remmina_rdp_file_classify(const gchar *utf8)
++{
++	gboolean arm = FALSE;
++	gboolean gateway = FALSE;
++	/* FreeRDP's parser splits on CR as well as LF; so must this, or a
++	   carriage return could hide the ARM keys from the check. */
++	gchar **lines = g_strsplit_set(utf8, "\r\n", -1);
++
++	for (gchar **line = lines; line && *line; line++) {
++		g_strchomp(*line);
++		const gchar *first = strchr(*line, ':');
++		if (!first)
++			continue;
++		const gchar *second = strchr(first + 1, ':');
++		if (!second)
++			continue;
++		gchar *key = g_strndup(*line, first - *line);
++		const gchar *value = second + 1;
++
++		if (g_ascii_strcasecmp(key, "resourceprovider") == 0 &&
++		    g_ascii_strcasecmp(value, "arm") == 0)
++			arm = TRUE;
++		else if (g_ascii_strcasecmp(key, "gatewayhostname") == 0 && *value)
++			gateway = TRUE;
++		g_free(key);
++	}
++	g_strfreev(lines);
++	if (!arm)
++		return RDPW_GENERIC;
++	return gateway ? RDPW_AVD : RDPW_AVD_WITHOUT_GATEWAY;
++}
++
++static RemminaFile *remmina_rdp_file_import_buffer(const gchar *contents, gsize length,
++                                                   RdpwKind *kind)
 +{
 +	const gchar *source = contents;
 +	gsize source_length = length;
@@ -35,7 +69,7 @@ index 63f5e0e..f19e19a 100644
 +		source = contents + 2;
 +		source_length = length - 2;
 +		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, NULL, &error);
-+	} else {
++	} else if (g_utf8_validate(source, source_length, NULL)) {
 +		utf8 = g_strndup(source, source_length);
 +	}
 +	if (!utf8) {
@@ -43,8 +77,19 @@ index 63f5e0e..f19e19a 100644
 +		return NULL;
 +	}
 +
++	*kind = remmina_rdp_file_classify(utf8);
++	if (*kind == RDPW_AVD_WITHOUT_GATEWAY) {
++		REMMINA_PLUGIN_WARNING("This is not an Azure Virtual Desktop connection file: "
++		                       "it selects the ARM resource provider but names no gateway host");
++		g_free(utf8);
++		return NULL;
++	}
++
 +	RemminaFile *remminafile = remmina_plugin_service->file_new();
-+	gchar **lines = g_strsplit(utf8, "\n", -1);
++	/* The same lines the classification and the connection path see: FreeRDP's
++	   parser splits on CR as well as LF, so a value carrying a carriage return
++	   must not swallow the setting behind it. */
++	gchar **lines = g_strsplit_set(utf8, "\r\n", -1);
 +	for (gchar **line = lines; line && *line; line++) {
 +		g_strchomp(*line);
 +		gchar *first = strchr(*line, ':');
@@ -67,7 +112,7 @@ index 63f5e0e..f19e19a 100644
  RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from_file)
  {
  	TRACE_CALL(__func__);
-@@ -260,7 +304,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -260,7 +348,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  	gboolean protected_profile = extension && g_ascii_strcasecmp(extension, ".rdpw") == 0;
  	gchar *protected_contents = NULL;
  	gsize protected_length = 0;
@@ -76,17 +121,19 @@ index 63f5e0e..f19e19a 100644
  
  	if (protected_profile) {
  		if (!remmina_rdp_file_read_protected(from_file, &protected_contents,
-@@ -269,8 +313,15 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -269,8 +357,17 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  			g_free(protected_contents);
  			return NULL;
  		}
 -		protected_digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
 -		    (const guchar *)protected_contents, protected_length);
 +		protected_encoded = g_base64_encode((const guchar *)protected_contents, protected_length);
-+		remminafile = remmina_rdp_file_import_buffer(protected_contents, protected_length);
++		RdpwKind kind = RDPW_GENERIC;
++		remminafile = remmina_rdp_file_import_buffer(protected_contents, protected_length, &kind);
 +		if (remminafile) {
 +			remmina_plugin_service->file_set_string(remminafile, "rdpw_data", protected_encoded);
-+			remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
++			if (kind == RDPW_AVD)
++				remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
 +		}
 +		g_free(protected_contents);
 +		g_free(protected_encoded);
@@ -94,7 +141,7 @@ index 63f5e0e..f19e19a 100644
  	}
  
  	channel = g_io_channel_new_file(from_file, "r", &error);
-@@ -278,37 +329,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -278,37 +375,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  	if (channel == NULL) {
  		g_print("Failed to import %s: %s\n", from_file, error->message);
  		g_clear_error(&error);
@@ -132,8 +179,32 @@ index 63f5e0e..f19e19a 100644
  
  	return remminafile;
  }
+diff --git a/plugins/rdp/rdp_file.h b/plugins/rdp/rdp_file.h
+index b9829b9..fa663d7 100644
+--- a/plugins/rdp/rdp_file.h
++++ b/plugins/rdp/rdp_file.h
+@@ -42,6 +42,19 @@
+ 
+ G_BEGIN_DECLS
+ 
++/*
++ * Azure Virtual Desktop publishes the ARM resource provider together with the
++ * gateway host that serves the workspace. An ARM file without that host names
++ * no gateway to reach and can only fail at connection time, so it is refused
++ * while importing; a file that does not select ARM is an ordinary profile.
++ */
++typedef enum {
++	RDPW_GENERIC = 0,
++	RDPW_AVD,
++	RDPW_AVD_WITHOUT_GATEWAY
++} RdpwKind;
++
++RdpwKind remmina_rdp_file_classify(const gchar *utf8);
+ gboolean remmina_rdp_file_import_test(RemminaFilePlugin *plugin, const gchar *from_file);
+ gboolean remmina_rdp_file_read_protected(const gchar *path, gchar **contents,
+ 	                                     gsize *length, GError **error);
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 4f7224a..4434824 100644
+index 4f7224a..1e32b2d 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
 @@ -155,6 +155,10 @@ static void freerdp_abort_connect_context(rdpContext* context) {
@@ -142,12 +213,12 @@ index 4f7224a..4434824 100644
  
 +static gboolean rdpw_native_key_allowed(const gchar *key);
 +static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length,
-+	                                         gsize *filtered_length);
++	                                         gsize *filtered_length, RdpwKind *kind);
 +
  static BOOL gfx_h264_available = FALSE;
  
  /* Compatibility: these functions have been introduced with https://github.com/FreeRDP/FreeRDP/commit/8c5d96784d
-@@ -1749,32 +1753,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1749,32 +1753,35 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  	channels = rfi->clientContext.context.channels;
  
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
@@ -165,8 +236,20 @@ index 4f7224a..4434824 100644
 -		                         rdpw_path, &contents, &length, NULL)) {
 -			g_free(contents);
 -			REMMINA_PLUGIN_ERROR("Could not safely load the protected RDPW profile");
--			return FALSE;
--		}
++		guchar *contents = g_base64_decode(rdpw_data, &length);
++		gsize filtered_length = 0;
++		RdpwKind kind = RDPW_GENERIC;
++		gchar *filtered = rdpw_native_settings_allowlist(contents, length, &filtered_length, &kind);
++		g_free(contents);
++#ifndef WITH_RDP_AUTH_AAD
++		/* Importing an AVD profile works, but there is no WebKit token path. */
++		if (kind == RDPW_AVD) {
++			g_free(filtered);
++			remmina_plugin_service->protocol_plugin_set_error(
++				gp, "%s", _("This build of Remmina lacks Azure AD support, which this "
++					    "Azure Virtual Desktop connection requires."));
+ 			return FALSE;
+ 		}
 -		digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
 -		    (const guchar *)contents, length);
 -		if (g_strcmp0(digest, rdpw_digest) != 0 ||
@@ -175,14 +258,15 @@ index 4f7224a..4434824 100644
 -			g_free(digest);
 -			g_free(contents);
 -			REMMINA_PLUGIN_ERROR("Protected RDPW profile changed after import or is invalid");
-+		guchar *contents = g_base64_decode(rdpw_data, &length);
-+		gsize filtered_length = 0;
-+		gchar *filtered = rdpw_native_settings_allowlist(contents, length, &filtered_length);
-+		g_free(contents);
-+		if (!filtered || freerdp_client_settings_parse_connection_file_buffer(
-+		        rfi->clientContext.context.settings, (const BYTE *)filtered, filtered_length) != 0) {
++#endif
++		/* Nothing to hand over is not an error: the profile carries no AVD setting. */
++		if (!filtered || (filtered_length > 0 &&
++		                  freerdp_client_settings_parse_connection_file_buffer(
++		                          rfi->clientContext.context.settings,
++		                          (const BYTE *)filtered, filtered_length) != 0)) {
 +			g_free(filtered);
-+			REMMINA_PLUGIN_ERROR("Protected RDPW profile contains invalid or disallowed settings");
++			remmina_plugin_service->protocol_plugin_set_error(
++				gp, "%s", _("The stored connection file holds invalid or disallowed settings."));
  			return FALSE;
  		}
 -		g_free(digest);
@@ -191,7 +275,17 @@ index 4f7224a..4434824 100644
  		const gchar *gateway = freerdp_settings_get_string(
  			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
  		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
-@@ -3679,3 +3671,63 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
+@@ -1789,7 +1796,8 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+ 			                                 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
+ 			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
+ 			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
+-				REMMINA_PLUGIN_ERROR("Could not configure Azure Government authentication");
++				remmina_plugin_service->protocol_plugin_set_error(
++					gp, "%s", _("Could not configure Azure Virtual Desktop authentication."));
+ 				return FALSE;
+ 			}
+ 		}
+@@ -3679,3 +3687,78 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
  
  	return TRUE;
  }
@@ -213,27 +307,42 @@ index 4f7224a..4434824 100644
 +	return FALSE;
 +}
 +
-+static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length, gsize *filtered_length)
++static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length,
++	                                         gsize *filtered_length, RdpwKind *kind)
 +{
 +	const gchar *source = (const gchar *)contents;
 +	gsize source_length = length;
 +	gchar *utf8 = NULL;
++	gsize written = 0;
++
++	*kind = RDPW_GENERIC;
 +	if (length >= 2 && contents[0] == 0xFF && contents[1] == 0xFE) {
 +		source += 2;
 +		source_length -= 2;
-+		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16LE", NULL, NULL, NULL);
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16LE", NULL, &written, NULL);
 +	} else if (length >= 2 && contents[0] == 0xFE && contents[1] == 0xFF) {
 +		source += 2;
 +		source_length -= 2;
-+		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, NULL, NULL);
-+	} else {
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, &written, NULL);
++	} else if (g_utf8_validate(source, source_length, NULL)) {
 +		utf8 = g_strndup(source, source_length);
++		written = source_length;
 +	}
++	/* Everything below treats this as a C string: a NUL inside the decoded
++	   text would silently drop every setting behind it. */
 +	if (!utf8)
 +		return NULL;
++	if (strlen(utf8) != written) {
++		g_free(utf8);
++		return NULL;
++	}
++	*kind = remmina_rdp_file_classify(utf8);
 +
 +	GString *filtered = g_string_sized_new(length);
-+	gchar **lines = g_strsplit(utf8, "\n", -1);
++	/* Split the way FreeRDP's parser does, on CR as well as LF, so that a
++	   carriage return inside a line cannot smuggle a setting past the
++	   allowlist. */
++	gchar **lines = g_strsplit_set(utf8, "\r\n", -1);
 +	for (gchar **line = lines; line && *line; line++) {
 +		g_strchomp(*line);
 +		if ((*line)[0] == '/') {
@@ -243,7 +352,7 @@ index 4f7224a..4434824 100644
 +			return NULL;
 +		}
 +		gchar *separator = strchr(*line, ':');
-+		if (!separator)
++		if (!separator || !strchr(separator + 1, ':'))
 +			continue;
 +		gchar *key = g_strndup(*line, separator - *line);
 +		if (rdpw_native_key_allowed(key))
@@ -256,7 +365,7 @@ index 4f7224a..4434824 100644
 +	return g_string_free(filtered, FALSE);
 +}
 diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
-index d974411..422f3e4 100644
+index d974411..8c793b8 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
 @@ -61,6 +61,8 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
@@ -268,7 +377,7 @@ index d974411..422f3e4 100644
  #include <winpr/wtypes.h>
  #include <winpr/wlog.h>
  #include <sys/prctl.h>
-@@ -70,17 +72,230 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+@@ -70,17 +72,239 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
  
  #define AUTH_CANCELLED "__AUTH_CANCELLED__"
  
@@ -423,7 +532,16 @@ index d974411..422f3e4 100644
 +	while (!transaction->closed &&
 +	       g_cond_wait_until(&transaction->condition, &transaction->mutex, deadline)) {
 +	}
++	gboolean closed = transaction->closed;
 +	g_mutex_unlock(&transaction->mutex);
++	/*
++	 * The idle still runs and destroys the window; the wait is bounded so a
++	 * busy main loop cannot hold the worker. Say so, because until it runs
++	 * the sign-in window stays on screen with nothing behind it.
++	 */
++	if (!closed)
++		REMMINA_PLUGIN_WARNING("avd-oauth: sign-in window not closed within %d s",
++				       (int)(OAUTH_DIALOG_CLOSE_TIMEOUT / G_TIME_SPAN_SECOND));
 +}
 +
 +static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar **value)
@@ -507,7 +625,7 @@ index d974411..422f3e4 100644
  
  static BOOL avd_oauth_settings_are_safe(const char* base, const char* tenantid,
  	                                    const char* client_id, const char* scope,
-@@ -155,12 +370,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+@@ -155,12 +379,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
  	return g_string_free(url_params, FALSE);
  }
  
@@ -525,7 +643,7 @@ index d974411..422f3e4 100644
  {
  	WebKitNavigationPolicyDecision *nav_decision;
  
-@@ -173,9 +390,11 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
+@@ -173,9 +399,11 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
  		if (webkit_navigation_action_is_redirect(nav_action)) {
  			WebKitURIRequest *req = webkit_navigation_action_get_request(nav_action);
  			const gchar *uri = webkit_uri_request_get_uri(req);
@@ -540,7 +658,7 @@ index d974411..422f3e4 100644
  		}
  		return FALSE;
  	default:
-@@ -196,14 +415,25 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
+@@ -196,14 +424,25 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
  	g_free(title);
  }
  
@@ -569,7 +687,7 @@ index d974411..422f3e4 100644
  	gtk_window_set_default_size(GTK_WINDOW(dialog), 500, 500);
  
  	WebKitWebView *webView = WEBKIT_WEB_VIEW(webkit_web_view_new());
-@@ -216,7 +446,11 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+@@ -216,7 +455,11 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
  	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
  		if (authentication_uri)
  			g_uri_unref(authentication_uri);
@@ -581,7 +699,7 @@ index d974411..422f3e4 100644
  		return G_SOURCE_REMOVE;
  	}
  	g_object_set_data_full(G_OBJECT(webView), "rdp-authentication-host",
-@@ -225,8 +459,14 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+@@ -225,8 +468,14 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
  
  	webkit_web_view_load_uri(webView, auth_uri);
  
@@ -598,7 +716,7 @@ index d974411..422f3e4 100644
  	g_signal_connect(webView, "authenticate", G_CALLBACK(eitaas_webview_authenticate), dialog);
  
  	gtk_widget_show_all(dialog);
-@@ -253,6 +493,11 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -253,6 +502,11 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
  	char* auth_hints = NULL;
@@ -610,7 +728,7 @@ index d974411..422f3e4 100644
  
  	assert(scope);
  	assert(req_cnf);
-@@ -272,6 +517,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -272,6 +526,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	if (!redirect_uri) {
  		goto cleanup;
  	}
@@ -620,7 +738,7 @@ index d974411..422f3e4 100644
  
  	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
  	                                                        AAD_WELLKNOWN_authorization_endpoint);
-@@ -282,43 +530,46 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -282,43 +539,46 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	}
  
  	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
@@ -683,7 +801,7 @@ index d974411..422f3e4 100644
  	}
  
  cleanup:
-@@ -326,8 +577,15 @@ cleanup:
+@@ -326,8 +586,15 @@ cleanup:
  	free(redirect_uri);
  	free(token_request);
  	free(auth_hints);
@@ -701,7 +819,7 @@ index d974411..422f3e4 100644
  	return rc && (*token != NULL);
  }
  
-@@ -348,6 +606,11 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -348,6 +615,11 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
  	char* auth_hints = NULL;
@@ -713,7 +831,7 @@ index d974411..422f3e4 100644
  	const char* scope = freerdp_settings_get_string(instance->context->settings,
  	                                                FreeRDP_GatewayAvdScope);
  
-@@ -377,6 +640,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -377,6 +649,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	if (!redirect_uri) {
  		goto cleanup;
  	}
@@ -723,7 +841,7 @@ index d974411..422f3e4 100644
  
  	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
  	                                                        AAD_WELLKNOWN_authorization_endpoint);
-@@ -389,45 +655,47 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -389,45 +664,47 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	}
  
  	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
@@ -788,7 +906,7 @@ index d974411..422f3e4 100644
  	}
  
  cleanup:
-@@ -435,8 +703,15 @@ cleanup:
+@@ -435,8 +712,15 @@ cleanup:
  	free(redirect_uri);
  	free(token_request);
  	free(auth_hints);

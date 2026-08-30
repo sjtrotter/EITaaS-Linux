@@ -3,9 +3,28 @@ Subject: [PATCH] Add CAC authentication to the Remmina AAD WebView
 License: GPL-2.0-or-later
 Copyright: 2026 Stephen Trotter
 
+--- a/plugins/rdp/CMakeLists.txt
++++ b/plugins/rdp/CMakeLists.txt
+@@ -101,6 +101,15 @@ if(WITH_RDP_AUTH_AAD)
+ 
+     if(FREERDP_HAS_AUTH_AAD AND WEBKIT2GTK_FOUND AND LIBSOUP_FOUND)
+         message(STATUS "Enabling RDP AAD authentication.")
++        # Smart-card sign-in lists the card's certificates with GnuTLS'
++        # p11tool (package gnutls-bin or gnutls-utils). The packages pin the
++        # absolute path they depend on; an empty value searches PATH at run
++        # time.
++        set(REMMINA_P11TOOL "" CACHE STRING
++            "Absolute path of the p11tool binary, or empty to search PATH at run time")
++        if(REMMINA_P11TOOL)
++            add_definitions(-DREMMINA_P11TOOL="${REMMINA_P11TOOL}")
++        endif()
+         # we cannot undefine WITH_AAD defined in FreeRDP so we use our own macro
+         add_definitions(-DWITH_RDP_AUTH_AAD)
+         include_directories(
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
-@@ -61,4 +61,8 @@
+@@ -63,6 +63,10 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+ #include <freerdp/utils/aad.h>
  #include <winpr/wtypes.h>
  #include <winpr/wlog.h>
 +#include <sys/prctl.h>
@@ -14,7 +33,8 @@ Copyright: 2026 Stephen Trotter
 +#include "eitaas_cac_auth.c"
  
  #define AUTH_CANCELLED "__AUTH_CANCELLED__"
-@@ -163,6 +167,9 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWid
+ 
+@@ -163,6 +167,9 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
  }
  
  static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
@@ -24,7 +44,8 @@ Copyright: 2026 Stephen Trotter
  	char* auth_uri = GET_AUTH_URI(gp);
  
  	GtkWidget *dialog = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-@@ -172,11 +179,26 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+@@ -171,11 +178,26 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 
  	WebKitWebView *webView = WEBKIT_WEB_VIEW(webkit_web_view_new());
  	gtk_container_add(GTK_CONTAINER(dialog), GTK_WIDGET(webView));
 +	GUri *authentication_uri = g_uri_parse(auth_uri, G_URI_FLAGS_NONE, NULL);
@@ -50,4 +71,3 @@ Copyright: 2026 Stephen Trotter
  
  	gtk_widget_show_all(dialog);
  
- 	return G_SOURCE_REMOVE;

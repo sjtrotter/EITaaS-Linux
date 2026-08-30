@@ -6,8 +6,9 @@
 #include <gtk/gtk.h>
 #include <string.h>
 
-#ifndef PKCS11_TOOL
-#define PKCS11_TOOL "/usr/bin/p11tool"
+/* A build may pin the discovery tool; an empty value searches PATH. */
+#ifndef REMMINA_P11TOOL
+#define REMMINA_P11TOOL ""
 #endif
 #define PKCS11_TIMEOUT_SECONDS 15
 #define PKCS11_MAX_OUTPUT (256 * 1024)
@@ -42,8 +43,16 @@ typedef struct {
 	guint dropped;
 } EitaasDiscoveryStats;
 
+/*
+ * Shared between the GTK thread and the discovery worker: the worker only
+ * reads tool and writes stats, the GTK thread owns every other field and does
+ * not read stats until the task has completed. The struct outlives the worker
+ * because discovery_free() runs either from the completion callback or, for an
+ * abandoned dialog, from that callback after the cancellation lands.
+ */
 typedef struct {
 	WebKitAuthenticationRequest *request;
+	gchar *tool;
 	GtkWidget *dialog;
 	GPtrArray *certificates;
 	EitaasDiscoveryStats stats;
@@ -84,6 +93,20 @@ typedef struct {
 } EitaasAuthToplevel;
 
 static gint discovery_active = 0;
+
+/*
+ * The absolute path of GnuTLS' p11tool, which lists the certificates a card
+ * holds: the path this build pinned, or the first p11tool in PATH. Returns
+ * NULL when the tool is not installed; the caller then tells the user, since
+ * smart-card sign-in cannot continue without it.
+ */
+static gchar *pkcs11_tool_path(void)
+{
+	if (REMMINA_P11TOOL[0])
+		return g_file_test(REMMINA_P11TOOL, G_FILE_TEST_IS_EXECUTABLE) ?
+		       g_strdup(REMMINA_P11TOOL) : NULL;
+	return g_find_program_in_path("p11tool");
+}
 
 static void certificate_auth_state_free(gpointer data)
 {
@@ -286,14 +309,21 @@ static GTlsCertificate *load_certificate_async(EitaasAuthToplevel *toplevel,
 		 */
 		gboolean abandoned = !load->completed;
 		load->abandoned = abandoned;
-		const gchar *message = load->timed_out
-				       ? "Loading the smart-card certificate timed out" : load->error_message;
+		/*
+		 * Own the text as well: show_error() runs a nested loop in which the
+		 * completion callback can free an abandoned load, and with it the
+		 * error message this thread is about to show.
+		 */
+		gchar *message = load->timed_out
+				 ? g_strdup("Loading the smart-card certificate timed out")
+				 : g_strdup(load->error_message);
 		if (message && toplevel->window)
 			show_error(toplevel, load->timed_out ? "load-timeout" : "load-error", message);
 		else if (!message)
 			log_rejection("load-cancelled", toplevel->window ? "user" : "window-closed");
 		if (!abandoned)
 			certificate_load_free(load);
+		g_free(message);
 		return NULL;
 	}
 	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
@@ -322,6 +352,8 @@ static GPtrArray *command_urls(const gchar *const *argv, GCancellable *cancellab
 	                          gint *exit_status, GError **error)
 {
 	GPtrArray *urls = g_ptr_array_new_with_free_func(g_free);
+
+	g_return_val_if_fail(error && !*error, urls);
 	GSubprocess *process = g_subprocess_newv(argv,
 	    G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error);
 
@@ -419,16 +451,11 @@ static gchar *private_key_selector(const gchar *certificate_uri)
  * Runs on the discovery worker thread; only counts are collected here so the
  * GTK thread can log them once discovery completes.
  */
-static GPtrArray *enumerate_certificates(GCancellable *cancellable, EitaasDiscoveryStats *stats,
-	                         GError **error)
+static GPtrArray *enumerate_certificates(const gchar *tool, GCancellable *cancellable,
+	                         EitaasDiscoveryStats *stats, GError **error)
 {
 	GPtrArray *result = g_ptr_array_new_with_free_func(certificate_free);
-	if (!g_file_test(PKCS11_TOOL, G_FILE_TEST_IS_EXECUTABLE)) {
-		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-		                    "The configured PKCS11 discovery tool is unavailable");
-		return result;
-	}
-	const gchar *token_args[] = { PKCS11_TOOL, "--list-token-urls", NULL };
+	const gchar *token_args[] = { tool, "--list-token-urls", NULL };
 	gint status = -1;
 	GPtrArray *tokens = command_urls(token_args, cancellable, &status, error);
 
@@ -449,7 +476,7 @@ static GPtrArray *enumerate_certificates(GCancellable *cancellable, EitaasDiscov
 			stats->trust_skipped++;
 			continue;
 		}
-		const gchar *cert_args[] = { PKCS11_TOOL, "--list-certs", "--only-urls", token, NULL };
+		const gchar *cert_args[] = { tool, "--list-certs", "--only-urls", token, NULL };
 		GPtrArray *certs = command_urls(cert_args, cancellable, &status, error);
 
 		/*
@@ -519,6 +546,7 @@ static void discovery_free(EitaasCertificateDiscovery *discovery)
 	if (discovery->timeout_source)
 		g_source_remove(discovery->timeout_source);
 	g_clear_object(&discovery->cancellable);
+	g_free(discovery->tool);
 	g_free(discovery->error_message);
 	g_atomic_int_set(&discovery_active, 0);
 	g_free(discovery);
@@ -548,9 +576,10 @@ static void enumerate_certificates_thread(GTask *task, gpointer source_object,
 	                                      gpointer task_data, GCancellable *cancellable)
 {
 	(void)source_object;
-	EitaasDiscoveryStats *stats = task_data;
+	EitaasCertificateDiscovery *discovery = task_data;
 	GError *error = NULL;
-	GPtrArray *certificates = enumerate_certificates(cancellable, stats, &error);
+	GPtrArray *certificates = enumerate_certificates(discovery->tool, cancellable,
+	                                                 &discovery->stats, &error);
 	if (error) {
 		g_ptr_array_unref(certificates);
 		g_task_return_error(task, error);
@@ -593,12 +622,24 @@ static void enumerate_certificates_done(GObject *source_object, GAsyncResult *re
 static GPtrArray *discover_certificates(EitaasAuthToplevel *toplevel,
 	                                   WebKitAuthenticationRequest *request)
 {
-	if (!g_atomic_int_compare_and_exchange(&discovery_active, 0, 1)) {
-		log_rejection("discovery-busy", "another discovery is running");
+	gchar *tool = pkcs11_tool_path();
+
+	if (!tool) {
+		show_error(toplevel, "discovery-tool-missing",
+		           "The p11tool program was not found. Install the GnuTLS "
+		           "command-line tools (package gnutls-bin or gnutls-utils) to "
+		           "sign in with a smart card.");
 		webkit_authentication_request_cancel(request);
 		return NULL;
 	}
+	if (!g_atomic_int_compare_and_exchange(&discovery_active, 0, 1)) {
+		log_rejection("discovery-busy", "another discovery is running");
+		webkit_authentication_request_cancel(request);
+		g_free(tool);
+		return NULL;
+	}
 	EitaasCertificateDiscovery *discovery = g_new0(EitaasCertificateDiscovery, 1);
+	discovery->tool = tool;
 	discovery->request = g_object_ref(request);
 	discovery->cancellable = g_cancellable_new();
 	discovery->dialog = gtk_dialog_new_with_buttons(
@@ -616,12 +657,12 @@ static GPtrArray *discover_certificates(EitaasAuthToplevel *toplevel,
 	gtk_widget_show_all(discovery->dialog);
 
 	GTask *task = g_task_new(NULL, discovery->cancellable, enumerate_certificates_done, discovery);
-	g_task_set_task_data(task, &discovery->stats, NULL);
+	g_task_set_task_data(task, discovery, NULL);
 	g_task_run_in_thread(task, enumerate_certificates_thread);
 	g_object_unref(task);
 	discovery->timeout_source = g_timeout_add_seconds(PKCS11_TIMEOUT_SECONDS,
 	                                                 discovery_timeout, discovery);
-	REMMINA_PLUGIN_DEBUG(SMARTCARD_AUTH_LOG "discovery-start (tool=" PKCS11_TOOL ")");
+	REMMINA_PLUGIN_DEBUG(SMARTCARD_AUTH_LOG "discovery-start (tool=%s)", discovery->tool);
 
 	gint response = gtk_dialog_run(GTK_DIALOG(discovery->dialog));
 	gtk_widget_destroy(discovery->dialog);

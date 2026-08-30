@@ -318,3 +318,10 @@ jobs:
           build OFF
           # The PKCS #11 sources are gated on the AAD feature.
           ! grep -q rdp_web_auth_pkcs11 remmina-build-OFF/build.ninja
+      - name: Run the series' unit tests
+        run: |
+          cmake -S remmina -B remmina-build-test -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/freerdp-prefix" -DWITH_RDP_AUTH_AAD=ON \
+            -DBUILD_TESTING=ON $REMMINA_CMAKE_FLAGS
+          cmake --build remmina-build-test --target test-rdp-rdpw --parallel "$(nproc)"
+          ctest --test-dir remmina-build-test --output-on-failure

@@ -197,6 +197,7 @@ each, the newest five kept). The last line is `exit=<code>`.
 | `challenge-received (scheme= unverified-host= port= proxy= retry= application= remote=)` | debug | WebKit asked for a client certificate or PIN; the host is the one WebKit reported, before validation |
 | `challenge-accepted (host=)` | debug | The challenge origin matched the verified sign-in authority |
 | `origin-rejected (reason)` | warning | Challenge refused: `proxy-challenge`, `no-authentication-host`, `no-security-origin`, `origin-not-https`, `origin-host-mismatch`, `host-not-authority`, `origin-port` |
+| `discovery-tool-missing: …` | warning | `p11tool` is not installed (package `gnutls-utils`/`gnutls-bin`); the dialog names the package |
 | `discovery-start (tool=)` | debug | `p11tool` enumeration started on a worker thread |
 | `discovery-token-skipped-trust (count=)` | debug | p11-kit trust tokens (`model=p11-kit-trust`) skipped without a subprocess |
 | `discovery-token-empty (count= last-exit=)` | debug | Tokens where `p11tool --list-certs` printed no URL and exited non-zero (no certificate on that token) |
