@@ -320,10 +320,20 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn("libusb1-devel", SPEC)
         self.assertIn("libusb-1.0-0-dev", CONTROL)
         self.assertIn("'libusb'", PKGBUILD)
-        package_jobs = WORKFLOW.split("  remmina-upstream-series:", 1)[0]
-        for token in ("libusb1-devel", "libusb-1.0-0-dev"):
-            with self.subTest(job_dependency=token):
-                self.assertIn(token, package_jobs)
+        def job_section(name):
+            body = WORKFLOW.split(f"  {name}:", 1)[1]
+            # A job body ends where the next top-level job key begins.
+            for marker in ("\n  deb-package:", "\n  rpm-package:",
+                           "\n  arch-package:", "\n  remmina-upstream-series:"):
+                body = body.split(marker, 1)[0]
+            return body
+        for job, token in (
+            ("deb-package", "libusb-1.0-0-dev"),
+            ("rpm-package", "libusb1-devel"),
+            ("arch-package", " libusb"),
+        ):
+            with self.subTest(job=job, dependency=token.strip()):
+                self.assertIn(token, job_section(job))
 
     def test_remmina_configure_flags_match_across_recipes(self):
         """One Remmina feature set, so the three payloads cannot drift apart."""
