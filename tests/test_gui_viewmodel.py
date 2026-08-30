@@ -14,7 +14,7 @@ from eitaas_gui import viewmodel
 
 
 def bundle(launcher=True, client=True):
-    return RemminaBundleSummary(launcher, client, "/usr/libexec/x" if client else None, "1.4.43", "3.31.0", None)
+    return RemminaBundleSummary(launcher, client, "/usr/libexec/x" if client else None, "1.4.43", "3.30.0")
 
 
 def smartcard(pcscd=True, reader=True, middleware=True, available=True):
@@ -34,7 +34,6 @@ def report(**overrides):
         pcsc_socket=True,
         tools={"pcsc_scan": True, "pkcs11-tool": True, "systemctl": True, "openssl": True, "certutil": True},
         remmina=bundle(),
-        identity_broker=True,
         ready=True,
         smartcard=smartcard(),
     )
@@ -59,7 +58,7 @@ class ReadinessRowTests(unittest.TestCase):
     def test_all_ready(self):
         rows = viewmodel.readiness_rows(report())
         self.assertEqual([row.key for row in rows],
-                         ["client", "session", "pcscd", "reader", "middleware", "broker", "tools"])
+                         ["client", "session", "pcscd", "reader", "middleware", "tools"])
         self.assertTrue(all(row.state == viewmodel.OK for row in rows))
         self.assertTrue(all(row.hint is None and row.command is None for row in rows))
         self.assertEqual(viewmodel.readiness_summary(report(), rows), "All required checks passed.")
@@ -82,12 +81,6 @@ class ReadinessRowTests(unittest.TestCase):
         self.assertEqual(missing["reader"].state, viewmodel.UNKNOWN)
         self.assertIn("pcsc-tools", missing["reader"].hint)
         self.assertIn("opensc", missing["middleware"].hint)
-
-    def test_broker_absent_is_a_warning_not_a_failure(self):
-        rows = viewmodel.readiness_rows(report(identity_broker=False))
-        broker = {row.key: row for row in rows}["broker"]
-        self.assertEqual(broker.state, viewmodel.WARN)
-        self.assertEqual(viewmodel.readiness_summary(report(), rows), "All required checks passed.")
 
     def test_missing_tools_map_to_packages(self):
         tools = {"pcsc_scan": False, "certutil": False, "openssl": True}

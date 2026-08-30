@@ -1,4 +1,4 @@
-From 6d75d9fe9d11b17ac86d1ac8a1cd863be048a0fc Mon Sep 17 00:00:00 2001
+From 63a37839963eece31c0daaa7edd322f85d5e6f74 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 5/5] RDP: handle PKCS11 client certificates in WebKit
@@ -44,9 +44,9 @@ remain fatal.
 The sources are compiled only when WITH_RDP_AUTH_AAD is enabled, matching
 the WebKit dependency they need.
 
-Tested with FreeRDP 3.31.0. The APIs used are present in FreeRDP
-3.30.0; FreeRDP 3.31.0 or newer is only required for complete
-sovereign-cloud support when SSO-MIB is enabled.
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
 
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.

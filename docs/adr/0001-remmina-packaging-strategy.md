@@ -112,3 +112,14 @@ The direct-FreeRDP launcher that predated this decision (`eitaas connect
 containing it is tagged `archive/freerdp-webview`. `eitaas connect` now only
 validates the profile and runs `eitaas-remmina`. Display-performance follow-up
 for the bundled client is tracked in #36 (display correctness remains #29).
+
+### Note (2026-08-30, #77)
+
+The bundle now builds FreeRDP and Remmina with `WITH_SSO_MIB=OFF` on every
+target and pins the FreeRDP 3.30.x line (the release Fedora ships). The
+patches require the FreeRDP 3.16 settings API; alternatives to the private
+prefix (linking a patched Remmina against the distribution FreeRDP, or
+rebuilding each distribution's Remmina source package) were evaluated and
+deferred: the former works only where the distribution ships >= 3.16 (not
+Debian 13 or Ubuntu 24.04), the latter replaces the user's Remmina contrary to
+ADR-0002. The private bundle stays the delivery for all targets.

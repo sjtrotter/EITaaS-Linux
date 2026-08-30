@@ -68,45 +68,44 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn('prepare-remmina-deb-source.py', builder)
         self.assertIn('sha256sum "$archive"', builder)
 
-    def test_sso_mib_is_enabled_only_for_the_hardware_tested_rpm(self):
-        # Intentional per-distribution policy, documented in
-        # packaging/remmina/README.md ("SSO-MIB per distribution") and
-        # docs/supported-platforms.md: the RPM is the hardware-tested baseline
-        # and carries the identity-broker path, while the DEB and Arch
-        # candidates ship only the embedded WebKitGTK CAC WebView path.
+    def test_sso_mib_is_disabled_in_every_recipe(self):
+        # The identity-broker (SSO-MIB) route is not part of the product (#77):
+        # the validated path is the embedded WebKitGTK CAC WebView, so every
+        # recipe builds FreeRDP and Remmina with the broker compiled out and
+        # declares no sso-mib build or runtime dependency.
         rules = (PACKAGE_DIR / "debian" / "rules").read_text()
         pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
-
-        # Both the FreeRDP and the Remmina configure lines of the spec opt in.
-        self.assertEqual(SPEC.count("-DWITH_SSO_MIB=ON"), 2)
-        self.assertNotIn("-DWITH_SSO_MIB=OFF", SPEC)
-        self.assertIn("BuildRequires:  sso-mib-devel", SPEC)
-
-        for name, recipe in (("debian/rules", rules), ("arch/PKGBUILD", pkgbuild)):
-            with self.subTest(recipe=name):
-                self.assertEqual(recipe.count("-DWITH_SSO_MIB=OFF"), 2)
-                self.assertNotIn("-DWITH_SSO_MIB=ON", recipe)
-                self.assertNotIn("sso-mib", recipe.replace("-DWITH_SSO_MIB=OFF", ""))
-
-        # Every recipe still builds the browser/CAC authentication path.
         for name, recipe in (
             ("eitaas-remmina.spec", SPEC),
             ("debian/rules", rules),
             ("arch/PKGBUILD", pkgbuild),
         ):
             with self.subTest(recipe=name):
+                # Both the FreeRDP and the Remmina configure lines opt out.
+                self.assertEqual(recipe.count("-DWITH_SSO_MIB=OFF"), 2)
+                self.assertNotIn("-DWITH_SSO_MIB=ON", recipe)
+                self.assertNotIn("sso-mib", recipe.replace("-DWITH_SSO_MIB=OFF", ""))
+                # Every recipe still builds the browser/CAC authentication path.
                 self.assertIn("-DWITH_RDP_AUTH_AAD=ON", recipe)
+                self.assertIn("-DWITH_PCSC=ON", recipe)
 
-    def test_sso_mib_policy_is_documented_where_support_is_declared(self):
+    def test_freerdp_floor_and_tested_line_are_documented(self):
+        # The patches bind FreeRDP_GatewayAvdScope/FreeRDP_GatewayAvdAccessAadFormat
+        # (FreeRDP 3.16.0); the bundle pins and tests the 3.30 line.
+        pinned = MANIFEST["sources"]["freerdp"]["version"]
+        self.assertTrue(pinned.startswith("3.30."), pinned)
         for path in (
             PACKAGE_DIR / "README.md",
             PROJECT_ROOT / "docs" / "supported-platforms.md",
+            UPSTREAM_DIR / "README.md",
         ):
             with self.subTest(document=path.name):
                 text = path.read_text()
-                self.assertIn("-DWITH_SSO_MIB=ON", text)
-                self.assertIn("-DWITH_SSO_MIB=OFF", text)
-                self.assertIn("identity-broker", text)
+                self.assertIn("3.16", text)
+                self.assertIn("3.30", text)
+                self.assertNotIn("-DWITH_SSO_MIB=ON", text)
+                self.assertNotIn("3.31.0 is", text)
+                self.assertNotIn("3.31.0 or newer", text)
 
     def test_recorded_downstream_revisions_agree_with_the_shared_manifest(self):
         package_version = MANIFEST["package_version"]
@@ -428,7 +427,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
     def test_notice_names_pinned_upstreams_and_all_components(self):
         notice = (PACKAGE_DIR / "THIRD_PARTY_NOTICES.md").read_text()
         for value in (
-            "3.31.0",
+            MANIFEST["sources"]["freerdp"]["version"],
             "030946c83fe1b7218a21b6d32f9c975b243b7031",
             "Remmina",
             "FreeRDP",
@@ -478,7 +477,9 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
                 body = body.split("\n\n", 1)[1]
                 self.assertGreater(len(body.split()), 40, "commit body must explain the change")
                 self.assertIn("AI assistance", body)
-                self.assertIn("Tested with FreeRDP 3.31.0", body)
+                self.assertIn("Tested with FreeRDP 3.30.0", body)
+                self.assertIn("FreeRDP 3.16.0 or", body)
+                self.assertNotIn("SSO-MIB", body)
 
     def test_series_touches_only_the_rdp_plugin(self):
         for patch in self.patches:
@@ -515,7 +516,8 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
         self.assertIn(f"git checkout {self.REMMINA_BASE}\ngit am /path/to/EITaaS-Linux/upstream/remmina/*.patch", readme)
         for patch in self.patches:
             self.assertIn(patch.name, readme)
-        self.assertIn("tested with FreeRDP 3.31.0", readme)
+        self.assertIn("tested with FreeRDP 3.30.0", readme)
+        self.assertIn("FreeRDP 3.16.0", readme)
 
     def test_ci_applies_and_builds_the_series_on_the_pinned_base(self):
         self.assertIn("remmina-upstream-series:", WORKFLOW)

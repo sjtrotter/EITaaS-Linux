@@ -1,4 +1,4 @@
-From 3b4eb7823076a5b195b9c4814a342f8d1704db25 Mon Sep 17 00:00:00 2001
+From 456f880657bebe88910fbca938b3479a1c57ba7d Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 2/5] RDP: select Azure US Government AVD authentication
@@ -15,9 +15,9 @@ expects, and enable tenant-specific authorization. Only the public
 gateway suffix and public cloud constants are used; nothing is copied
 from the profile.
 
-Tested with FreeRDP 3.31.0. The APIs used are present in FreeRDP
-3.30.0; FreeRDP 3.31.0 or newer is only required for complete
-sovereign-cloud support when SSO-MIB is enabled.
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
 
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.

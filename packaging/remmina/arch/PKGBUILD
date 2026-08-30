@@ -2,7 +2,7 @@
 
 pkgname=eitaas-remmina
 pkgver=@PKGVER@
-pkgrel=2
+pkgrel=3
 pkgdesc='Isolated Remmina AVD and CAC prototype for EITaaS'
 arch=('x86_64')
 url='https://github.com/sjtrotter/EITaaS-Linux'
@@ -14,7 +14,7 @@ makedepends=('cmake' 'ninja')
 options=('!debug')
 source=("$pkgname-$pkgver-source.tar.gz")
 sha256sums=('@SHA256@')
-_freerdp='FreeRDP-3.31.0'
+_freerdp='FreeRDP-3.30.0'
 _remmina='Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031'
 _prefix='/usr/lib/eitaas-remmina'
 

@@ -157,10 +157,10 @@ class LaunchTests(unittest.TestCase):
         from eitaas.api import DoctorReport, RemminaBundleSummary
 
         bundle = RemminaBundleSummary(
-            True, True, "/usr/libexec/eitaas-remmina/bin/remmina", "1.4.43", "3.31.0", True
+            True, True, "/usr/libexec/eitaas-remmina/bin/remmina", "1.4.43", "3.30.0"
         )
         doctor.return_value = Result(
-            DoctorReport("Linux", "x11", True, False, True, {}, bundle, False, True,
+            DoctorReport("Linux", "x11", True, False, True, {}, bundle, True,
                          latest_session_log="/home/u/.local/state/eitaas-remmina/logs/session-1.log")
         )
         output = StringIO()

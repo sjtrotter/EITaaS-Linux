@@ -1,10 +1,10 @@
-%global freerdp_version 3.31.0
+%global freerdp_version 3.30.0
 %global remmina_commit 030946c83fe1b7218a21b6d32f9c975b243b7031
 %global debug_package %{nil}
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.12%{?dist}
+Release:        0.13%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -39,7 +39,6 @@ BuildRequires:  libsoup3-devel
 BuildRequires:  libssh-devel
 BuildRequires:  openssl-devel
 BuildRequires:  pcsc-lite-devel
-BuildRequires:  sso-mib-devel
 BuildRequires:  webkit2gtk4.1-devel
 
 Requires:       gnutls-utils
@@ -67,7 +66,7 @@ prefix=%{_libexecdir}/eitaas-remmina
 private_root="$PWD/private-root"
 cmake -S . -B freerdp-build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_INSTALL_LIBDIR=lib64 \
-  -DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=ON -DWITH_CLIENT=ON \
+  -DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
   -DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF \
   -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF -DWITH_DOCUMENTATION=OFF -DWITH_FUSE=OFF \
   -DWITH_CUPS=OFF -DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
@@ -81,7 +80,7 @@ cmake -S Remmina-%{remmina_commit} -B remmina-build -G Ninja \
   -DCMAKE_PREFIX_PATH="$private_root$prefix" \
   -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
   -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib64:$ORIGIN/../..' \
-  -DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=ON \
+  -DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
   -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
   -DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF \
   -DWITH_TIP=OFF -DWITH_MANPAGES=OFF -DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF \
@@ -137,6 +136,9 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.13
+- Drop SSO-MIB from the bundle and re-pin FreeRDP to 3.30.0
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.12
 - Treat a token without certificates as empty instead of failing discovery
 - Skip p11-kit trust tokens during certificate discovery

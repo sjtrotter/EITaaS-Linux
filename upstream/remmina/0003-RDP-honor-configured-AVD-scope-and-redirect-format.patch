@@ -1,4 +1,4 @@
-From 8010014efb330a699cb7f67f7d668d9bbaab4da9 Mon Sep 17 00:00:00 2001
+From fb4319f8d0dc2cdbf90a6d9595e3d7f17b0c927c Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 3/5] RDP: honor configured AVD scope and redirect format
@@ -17,9 +17,9 @@ format string passed to winpr_asprintf(), so restricting it to known
 values also keeps untrusted settings out of a format argument. A missing
 authorization endpoint now fails instead of being formatted as NULL.
 
-Tested with FreeRDP 3.31.0. The APIs used are present in FreeRDP
-3.30.0; FreeRDP 3.31.0 or newer is only required for complete
-sovereign-cloud support when SSO-MIB is enabled.
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
 
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.
