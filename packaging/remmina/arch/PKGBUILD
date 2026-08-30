@@ -2,7 +2,7 @@
 
 pkgname=eitaas-remmina
 pkgver=@PKGVER@
-pkgrel=3
+pkgrel=4
 pkgdesc='Isolated Remmina AVD and CAC prototype for EITaaS'
 arch=('x86_64')
 url='https://github.com/sjtrotter/EITaaS-Linux'

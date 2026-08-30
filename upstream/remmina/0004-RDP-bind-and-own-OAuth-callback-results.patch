@@ -1,7 +1,7 @@
 From 7310296d67bf5f333ed7361b9af021e1fc6ad1c3 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 4/5] RDP: bind and own OAuth callback results
+Subject: [PATCH 4/6] RDP: bind and own OAuth callback results
 
 The WebKit OAuth flow accepted any redirect observed by the web view as
 the authorization response, stored the borrowed URI string on the

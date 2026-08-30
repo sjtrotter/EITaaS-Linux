@@ -1,7 +1,7 @@
 From fb4319f8d0dc2cdbf90a6d9595e3d7f17b0c927c Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 3/5] RDP: honor configured AVD scope and redirect format
+Subject: [PATCH 3/6] RDP: honor configured AVD scope and redirect format
 
 The WebKit AVD token path ignored FreeRDP_GatewayAvdScope and
 FreeRDP_GatewayAvdAccessAadFormat and hard-coded the commercial

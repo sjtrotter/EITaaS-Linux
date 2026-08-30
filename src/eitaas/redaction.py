@@ -9,14 +9,37 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 _SENSITIVE = (
     r"access[_-]?token|refresh[_-]?token|id[_-]?token|token|code|session|"
     r"loadbalanceinfo|password|passwd|authorization|login[_-]?hint|username|"
-    r"upn|email|user|serial|object|state|sid"
+    r"upn|email|user|serial|object|state|sid|secret"
 )
 SENSITIVE_KEYS = re.compile(rf"(?i)({_SENSITIVE})")
 JWT = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?\b")
 # Remmina prints "proxy_password: x"; the key may carry a word prefix.
-KEY_VALUE = re.compile(rf"(?i)\b((?:[\w-]*[_-])?(?:{_SENSITIVE}))\s*[:=]\s*([^\s;&]+)")
+# An already redacted value is left alone so redact() is idempotent.
+KEY_VALUE = re.compile(rf"(?i)\b((?:[\w-]*[_-])?(?:{_SENSITIVE}))\s*[:=]\s*(?!<redacted>)([^\s;&]+)")
+# JSON bodies quote both sides, so KEY_VALUE never sees the ":" next to the
+# key. FreeRDP's OAuth token-endpoint response is exactly this shape
+# ({"token_type":"Bearer","access_token":"..."}), and its refresh token is
+# opaque, not a JWT. "cookie" is only sensitive in this quoted form; the bare
+# "Set-Cookie:" header is handled by COOKIE_HEADER below.
+QUOTED_KEY_VALUE = re.compile(
+    rf'(?i)"((?:[\w-]*[_-])?(?:{_SENSITIVE}|cookie))"(\s*:\s*)"(?:<redacted>|[^"]*)"'
+)
+# Set-Cookie/Cookie header values; the cookie name is kept, its value is not.
+COOKIE_HEADER = re.compile(
+    r"(?i)((?:set-)?cookie\s*:\s*)([^=\s;,]{1,64}=)?(?:<redacted>|[^\r\n]*)"
+)
+# FreeRDP's AVD web-socket transport logs the Azure load-balancing cookie at
+# INFO level: "Got ARRAffinity cookie <value>" (libfreerdp/core/gateway/wst.c,
+# see issue #88); it also travels as a plain "ARRAffinity=<value>" pair.
+AFFINITY_COOKIE = re.compile(
+    r"(?i)\b(ARRAffinity(?:SameSite)?)(\s+cookie\s+|\s*=\s*)([^\s;,]+)"
+)
 # A PKCS #11 URI carries the token serial, label, and object label.
 PKCS11_URI = re.compile(r"pkcs11:[^\s'\"]+")
+# HTTP Authorization values ("Bearer <token>"), in any casing; FreeRDP logs
+# the header only at TRACE level, which the launcher never enables, but
+# redact them anyway.
+BEARER = re.compile(r"(?i)\bBearer\s+(?!<redacted>)[A-Za-z0-9._~+/-]+=*")
 
 
 def redact_url(value: str) -> str:
@@ -36,7 +59,11 @@ def redact_url(value: str) -> str:
 def redact(value: str) -> str:
     """Remove common secrets from arbitrary command output."""
     value = JWT.sub("<redacted-token>", value)
+    value = BEARER.sub("Bearer <redacted>", value)
     value = PKCS11_URI.sub("<redacted-pkcs11-uri>", value)
+    value = QUOTED_KEY_VALUE.sub(lambda match: f'"{match.group(1)}"{match.group(2)}"<redacted>"', value)
+    value = COOKIE_HEADER.sub(lambda match: f"{match.group(1)}{match.group(2) or ''}<redacted>", value)
+    value = AFFINITY_COOKIE.sub(lambda match: f"{match.group(1)}{match.group(2)}<redacted>", value)
     value = KEY_VALUE.sub(lambda match: f"{match.group(1)}=<redacted>", value)
     return re.sub(r"https?://[^\s]+", lambda match: redact_url(match.group(0)), value)
 

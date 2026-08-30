@@ -154,6 +154,18 @@ tool killed by a signal remain fatal. The full reason-code table is in the top-l
 | `pin-cancelled (user|window-closed|transaction-cleared)` | warning | PIN dialog dismissed |
 | `oneshot-quit (application=)` | debug | The one-shot client is quitting after a cancelled discovery |
 
+The RDP plugin also logs the Azure Virtual Desktop ARM gateway phase with an
+`avd-arm:` prefix: `avd-arm: response-timeout-ms=60000` (debug) records that
+the wait for the ARM gateway's connection response was raised from FreeRDP's
+15 s default to 60 s because the profile set no timeout of its own (the ARM
+connection request is not idempotent and is never re-sent). The launcher sets
+no `WLOG_LEVEL` or `WLOG_FILTER`: FreeRDP reports the failure this fix is about
+at its default level (`timeout [<n>ms] exceeded` at ERROR from
+`com.freerdp.core.gateway.http`, plus `arm.c`'s own ERROR lines), while raising
+the level to DEBUG would make `com.freerdp.utils.http` log the entire OAuth
+token request body and token-endpoint response — the authorization code and the
+access, refresh, and id tokens.
+
 ## Authentication path and build flags
 
 All three recipes build FreeRDP and Remmina with `-DWITH_SSO_MIB=OFF`,

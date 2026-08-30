@@ -1,6 +1,6 @@
 Name:           eitaas-linux
 Version:        0.1.0
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        Community Linux helper for EITaaS Azure Virtual Desktop
 License:        MIT
 URL:            https://github.com/sjtrotter/EITaaS-Linux
@@ -95,6 +95,10 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.eitaas.Helper.met
 %{_mandir}/man1/eitaas-gui.1*
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-7
+- Redact HTTP bearer values (any casing), quoted JSON token fields, and
+  Set-Cookie/ARRAffinity cookie values from session logs
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.1.0-6
 - Show the diagnostic log whenever a smart-card stage warned, even on exit 0
 

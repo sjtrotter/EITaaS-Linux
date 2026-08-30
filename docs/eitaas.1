@@ -121,10 +121,20 @@ selection-cancelled, load-start, load-finished, load-timeout, load-error,
 load-cancelled, load-result-discarded, pin-requested, pin-submitted,
 pin-rejected, pin-cancelled, and oneshot-quit; the README lists the
 parameters of each. Every dialog the client shows is logged at warning level
-with the same code. The launcher enables the
+with the same code. The Azure Virtual Desktop ARM gateway phase is logged
+with an
+.B avd-arm:
+prefix:
+.B avd-arm: response-timeout-ms=60000
+records that the wait for the ARM gateway's connection response was raised
+from FreeRDP's 15 second default to 60 seconds because the profile set no
+timeout of its own. The launcher enables the
 .B remmina
 debug domain (G_MESSAGES_DEBUG) so these lines reach the session log and a
-terminal; Remmina additionally appends its debug output to
+terminal. It deliberately sets no WLOG_LEVEL or WLOG_FILTER: FreeRDP already
+logs a gateway response timeout at its default level, and at DEBUG it would
+log the OAuth token request body and token-endpoint response. Remmina
+additionally appends its debug output to
 .IR $TMPDIR/remmina_log_file.log .
 The "remmina instances already running" header counts every process named
 .B remmina
