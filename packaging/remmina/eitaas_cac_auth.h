@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (c) 2026 Stephen Trotter
+
 #pragma once
 
 #include <webkit2/webkit2.h>
