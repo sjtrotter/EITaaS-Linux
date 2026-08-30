@@ -1,47 +1,67 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 6f46c7ed78716074195d789b07507d01c9061779 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 05:58:38 -0500
-Subject: [PATCH 3/3] RDP: honor configured AVD scope and redirect format
+Date: Sun, 30 Aug 2026 11:49:19 -0500
+Subject: [PATCH 3/5] RDP: honor configured AVD scope and redirect format
 
+The WebKit AVD token path ignored FreeRDP_GatewayAvdScope and
+FreeRDP_GatewayAvdAccessAadFormat and hard-coded the commercial
+www.wvd.microsoft.com scope and the dynamic native-client redirect. Any
+sovereign-cloud configuration was silently replaced by commercial values.
+
+Use the configured scope and redirect format, but only after checking
+that the authority, client id, tenant, scope, and redirect format form a
+supported combination: the AVD public client id, a tenant made of
+alphanumerics, '-' and '.', and, per authority, the matching public
+resource scope and a known redirect format. The redirect format is the
+format string passed to winpr_asprintf(), so restricting it to known
+values also keeps untrusted settings out of a format argument. A missing
+authorization endpoint now fails instead of being formatted as NULL.
+
+Tested with FreeRDP 3.31.0. The APIs used are present in FreeRDP
+3.30.0; FreeRDP 3.31.0 or newer is only required for complete
+sovereign-cloud support when SSO-MIB is enabled.
+
+This change was prepared with AI assistance (Claude, Anthropic) and was
+reviewed and tested by the author.
 ---
  plugins/rdp/rdp_web_auth.c | 42 ++++++++++++++++++++++++++++++++++----
  1 file changed, 38 insertions(+), 4 deletions(-)
 
 diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
-index 53cd19af3..e1e50a388 100644
+index 53cd19af3..3d7dd10a5 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
 @@ -78,6 +78,36 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
  #define GET_TOKEN_URI(gp) \
  	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
  
-+static BOOL avd_oauth_settings_are_safe(const char* base, const char* tenantid,
-+	                                    const char* client_id, const char* scope,
-+	                                    const char* redirect_format)
++static BOOL avd_oauth_settings_are_safe(const char *base, const char *tenantid,
++					const char *client_id, const char *scope,
++					const char *redirect_format)
 +{
 +	static const char commercial_scope[] =
-+	    "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default%20openid%20profile%20offline_access";
++		"https%3A%2F%2Fwww.wvd.microsoft.com%2F.default%20openid%20profile%20offline_access";
 +	static const char government_scope[] =
-+	    "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access";
++		"https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access";
 +	static const char dynamic_redirect[] =
-+	    "https%%3A%%2F%%2F%s%%2F%s%%2Foauth2%%2Fnativeclient";
++		"https%%3A%%2F%%2F%s%%2F%s%%2Foauth2%%2Fnativeclient";
 +	static const char avd_client_id[] = "a85cf173-4192-42f8-81fa-777a763e6e2c";
++
 +	if (!base || !tenantid || !client_id || !scope || !redirect_format)
 +		return FALSE;
 +	if (strcmp(client_id, avd_client_id) != 0 || strlen(tenantid) > 128)
 +		return FALSE;
-+	for (const char *current = tenantid; *current; current++) {
++	for (const char *current = tenantid; *current; current++)
 +		if (!g_ascii_isalnum(*current) && *current != '-' && *current != '.')
 +			return FALSE;
-+	}
 +	if (strcmp(base, "login.microsoftonline.com") == 0)
 +		return strcmp(scope, commercial_scope) == 0 &&
 +		       strcmp(redirect_format, dynamic_redirect) == 0;
 +	if (strcmp(base, "login.microsoftonline.us") == 0)
 +		return strcmp(scope, government_scope) == 0 &&
 +		       (strcmp(redirect_format, dynamic_redirect) == 0 ||
-+		        strcmp(redirect_format,
-+		               "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") == 0);
++			strcmp(redirect_format,
++			       "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") == 0);
 +	return FALSE;
 +}
 +
@@ -53,8 +73,8 @@ index 53cd19af3..e1e50a388 100644
  	size_t auth_uri_len = 0;
  	char* auth_hints = NULL;
 -	const char* scope = "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default";
-+	const char* scope = freerdp_settings_get_string(instance->context->settings,
-+	                                                FreeRDP_GatewayAvdScope);
++	const char *scope = freerdp_settings_get_string(instance->context->settings,
++							FreeRDP_GatewayAvdScope);
  
  	assert(token);
  
@@ -63,8 +83,8 @@ index 53cd19af3..e1e50a388 100644
  		    freerdp_settings_get_string(instance->context->settings, FreeRDP_GatewayAvdAadtenantid);
  	}
 -	if (!base || !tenantid || !client_id) {
-+	const char* redirect_format = freerdp_settings_get_string(
-+	    instance->context->settings, FreeRDP_GatewayAvdAccessAadFormat);
++	const char *redirect_format = freerdp_settings_get_string(
++		instance->context->settings, FreeRDP_GatewayAvdAccessAadFormat);
 +	if (!avd_oauth_settings_are_safe(base, tenantid, client_id, scope, redirect_format)) {
  		goto cleanup;
  	}
@@ -83,3 +103,6 @@ index 53cd19af3..e1e50a388 100644
  
  	auth_hints = get_auth_hints(gp);
  	if (!auth_hints) {
+-- 
+2.55.0
+

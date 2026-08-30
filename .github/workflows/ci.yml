@@ -222,6 +222,73 @@ jobs:
             dist/eitaas-remmina*.buildinfo
             dist/eitaas-remmina*.changes
 
+  remmina-upstream-series:
+    # Applies upstream/remmina/*.patch with `git am` onto the recorded Remmina
+    # master base and builds remmina-plugin-rdp against FreeRDP 3.31.0 with
+    # WebKit AAD support enabled and disabled. This is a compile check, not a
+    # package build, so it uses every core; the `--parallel 1` in the spec and
+    # debian/rules is a packaging-reproducibility rule that does not apply here.
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    env:
+      REMMINA_BASE: c620366ed85def5c3de2549eec7fcbef577281d8
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: >-
+          apt-get update && apt-get install -y
+          build-essential ca-certificates cmake curl git gettext gnutls-bin
+          libcurl4-openssl-dev libgtk-3-dev libicu-dev libjson-c-dev
+          libjson-glib-dev libkrb5-dev libpcsclite-dev libsecret-1-dev
+          libsodium-dev libsoup-3.0-dev libssh-dev libssl-dev
+          libusb-1.0-0-dev libwebkit2gtk-4.1-dev ninja-build python3 zlib1g-dev
+      - uses: actions/checkout@v4
+      - name: Build the pinned FreeRDP
+        run: |
+          read_manifest() {
+            python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"]["freerdp"][sys.argv[2]])' \
+              packaging/remmina/sources.json "$1"
+          }
+          version=$(read_manifest version)
+          curl -fsSL -o freerdp.tar.gz "$(read_manifest url)"
+          echo "$(read_manifest sha256)  freerdp.tar.gz" | sha256sum -c -
+          tar -xzf freerdp.tar.gz
+          cmake -S "FreeRDP-$version" -B freerdp-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/freerdp-prefix" \
+            -DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
+            -DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF \
+            -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF -DWITH_DOCUMENTATION=OFF -DWITH_FUSE=OFF \
+            -DWITH_CUPS=OFF -DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
+            -DWITH_ALSA=OFF -DWITH_PULSE=OFF -DWITH_JPEG=OFF -DWITH_GSM=OFF \
+            -DWITH_LAME=OFF -DWITH_OPENH264=OFF
+          cmake --build freerdp-build --parallel "$(nproc)"
+          cmake --install freerdp-build
+      - name: Apply the series onto the recorded Remmina base
+        run: |
+          git init -q remmina
+          git -C remmina fetch --depth 1 https://gitlab.com/Remmina/Remmina.git "$REMMINA_BASE"
+          git -C remmina checkout -q FETCH_HEAD
+          git -C remmina -c user.name=ci -c user.email=ci@example.invalid am "$PWD"/upstream/remmina/*.patch
+          git -C remmina log --oneline "FETCH_HEAD..HEAD"
+      - name: Build remmina-plugin-rdp with WebKit AAD enabled and disabled
+        run: |
+          for aad in ON OFF; do
+            cmake -S remmina -B "remmina-build-$aad" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/freerdp-prefix" \
+              -DCMAKE_C_FLAGS=-Wall \
+              -DWITH_FREERDP3=ON -DWITH_RDP=ON -DWITH_RDP_AUTH_AAD=$aad -DWITH_SSO_MIB=OFF \
+              -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
+              -DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF \
+              -DWITH_TIP=OFF -DWITH_MANPAGES=OFF -DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF \
+              -DWITH_GVNC=OFF -DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF \
+              -DWITH_XDMCP=OFF -DWITH_NX=OFF
+            cmake --build "remmina-build-$aad" --target remmina-plugin-rdp --parallel "$(nproc)"
+            test -f "remmina-build-$aad/plugins/rdp/remmina-plugin-rdp.so"
+          done
+          # The PKCS #11 sources are gated on the AAD feature.
+          ! grep -q rdp_web_auth_pkcs11 remmina-build-OFF/build.ninja
+
   remmina-arch-package:
     runs-on: ubuntu-latest
     container: archlinux:base
