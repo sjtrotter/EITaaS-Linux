@@ -213,7 +213,7 @@ jobs:
           printf 'Server = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "$snapshot" > /etc/pacman.d/mirrorlist
       - name: Install build dependencies
         run: >-
-          pacman -Syu --noconfirm --needed base-devel cmake curl gettext git
+          pacman -Syyu --noconfirm --needed base-devel cmake curl gettext git
           gnutls gtk3 icu json-c json-glib krb5 libsecret libsodium libsoup3
           libssh namcap ninja opensc openssl patch pcsclite python
           webkit2gtk-4.1
