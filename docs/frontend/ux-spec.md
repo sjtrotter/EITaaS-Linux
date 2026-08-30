@@ -25,7 +25,7 @@ dimensions; each toolkit maps them to its native theme.
 The primary navigation contains three destinations:
 
 1. **Desktops** — protected profiles and connection actions.
-2. **System Check** — FreeRDP, session, smart-card, and trust readiness.
+2. **System Check** — bundled client, session, smart-card, and trust readiness.
 3. **Settings** — connection defaults, privacy, appearance, and About.
 
 On narrow windows these become a single content view with back navigation. On
@@ -43,7 +43,6 @@ A card may show:
 - Profile display name (basename or user-defined alias only).
 - Last-used time, stored locally only after opt-in.
 - Readiness: Ready, Needs attention, or Checking.
-- Backend selection when overridden from Automatic.
 
 A card must never show a username, tenant, host-pool identifier, routing token,
 full local path, authentication URL, or raw profile string value.
@@ -82,8 +81,8 @@ removal action.
 
 Show four high-level groups in a stable order:
 
-1. Remote desktop client.
-2. Desktop session and display backend.
+1. Bundled remote desktop client (`eitaas-remmina` launcher and private client).
+2. Desktop session.
 3. Smart-card service, reader, and middleware.
 4. Certificate information.
 
@@ -94,31 +93,28 @@ generic Ignore or Connect anyway action for certificate failures.
 
 ## Connection options
 
-The default connection sheet exposes only:
-
-- **Smart-card passthrough** — on and required for the principal use case.
-- **Clipboard sharing** — off by default, with a local/remote data warning.
-- **Display backend** — Automatic by default; X11, SDL, and Wayland are under
-  Advanced.
-
-No option may disable server-certificate verification. Experimental backends
-must be labeled and must not silently replace Automatic after failure.
+The connection sheet has no options. Smart-card passthrough, clipboard
+handling, and every other RDP setting come from the exported profile as
+imported by the bundled client; the frontend passes only the profile path. It
+may state that clipboard sharing follows the profile. No option may disable
+server-certificate verification.
 
 ## Connection lifecycle
 
-Connection states are Validating, Selecting client, Starting, Authenticating,
-Connected, Disconnecting, Cancelled, and Failed. Only states that the core can
-verify should be shown; elapsed time does not prove Connected.
+Connection states are Validating, Starting, Cancelling, Cancelled, and Failed;
+they map to the `launch` progress phases. The core cannot verify
+authentication or session establishment, so no Authenticating or Connected
+state is shown; elapsed time does not prove Connected.
 
 The progress view displays a concise phase and Cancel. Closing the application
-while FreeRDP is active prompts **Disconnect and quit** or **Keep working**. The
-frontend sets the core cancellation event and waits for cleanup.
+while the bundled client is active prompts **Disconnect and quit** or **Keep
+working**. The frontend sets the core cancellation event and waits for cleanup.
 
-Authentication remains owned by a FreeRDP identity-broker or embedded-WebView
-path. The frontend must not scrape browser developer tools, embed a token in
-process arguments, collect callback URLs, or mirror child output into a GUI
-log. When neither secure path exists, connection is disabled and diagnostics
-identify the missing capability.
+Authentication remains owned by the bundled client's identity-broker or
+embedded-WebView path. The frontend must not scrape browser developer tools,
+embed a token in process arguments, collect callback URLs, or mirror child
+output into a GUI log. When the bundled client is not installed, connection is
+disabled and diagnostics identify the missing package.
 
 ## Failures and recovery
 

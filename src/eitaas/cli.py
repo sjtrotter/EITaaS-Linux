@@ -35,10 +35,10 @@ def parser() -> argparse.ArgumentParser:
     smartcard_commands = smartcard_cmd.add_subparsers(dest="smartcard_command", required=True)
     status_cmd = smartcard_commands.add_parser("status")
     status_cmd.add_argument("--json", action="store_true")
-    connect_cmd = commands.add_parser("connect", help="connect using a protected RDPW profile")
+    connect_cmd = commands.add_parser(
+        "connect", help="validate a protected RDPW profile and start eitaas-remmina"
+    )
     connect_cmd.add_argument("profile")
-    connect_cmd.add_argument("--backend", choices=("auto", "x11", "sdl", "wayland"), default="auto")
-    connect_cmd.add_argument("--clipboard", action="store_true", help="enable bidirectional clipboard redirection")
     cert_cmd = commands.add_parser("certificates", help="fetch or inspect official certificate bundles")
     cert_commands = cert_cmd.add_subparsers(dest="certificate_command", required=True)
     cert_fetch = cert_commands.add_parser("fetch", help="download a digest-pinned official bundle")
@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
             _print(result.value, args.json)
             return 0 if result.value and result.value.ready else 1
     elif args.command == "connect":
-        result = app.connect(ConnectionRequest(args.profile, args.backend, args.clipboard))
+        result = app.launch(ConnectionRequest(args.profile))
         if result.ok:
             return result.value.exit_code if result.value else 2
     elif args.command == "certificates":

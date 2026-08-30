@@ -1,7 +1,8 @@
 # EITaaS-Linux
 
 Community tooling for connecting to an Azure Virtual Desktop (AVD) workspace
-from Linux with Common Access Card (CAC) redirection through FreeRDP.
+from Linux with Common Access Card (CAC) redirection through a bundled
+one-shot Remmina/FreeRDP client.
 
 The project began as documentation for the Sonic Boom pilot. It is independent
 community work and is not endorsed by Microsoft, the Department of Defense,
@@ -17,8 +18,8 @@ Service. See `NOTICE` for the complete statement.
 
 The AVD web client works on Linux but does not redirect smart cards. Smart-card
 redirection is needed for CAC-authenticated sites and signing applications
-inside a remote session. EITaaS-Linux checks the local system and safely invokes
-a compatible FreeRDP 3 client using a profile manually exported from the AVD
+inside a remote session. EITaaS-Linux checks the local system and starts the
+bundled `eitaas-remmina` client with a profile manually exported from the AVD
 web client.
 
 ## Security defaults
@@ -30,7 +31,12 @@ web client.
 - Real `.rdp` and `.rdpw` profiles, OAuth callbacks, keys, certificates, packet
   captures, and local agent state are excluded from Git.
 - Connection profiles should be owned by the current user and mode `0600`.
-- Clipboard redirection is off unless the user explicitly requests it.
+- Clipboard redirection follows the connection profile; the launcher does not
+  override it. The bundled client honors the profile's `redirectclipboard`
+  field through Remmina's RDPW importer, and a profile that omits the field
+  gets the RDP default (enabled). This is by design: the exported profile is
+  the policy source. The field is not among the keys forwarded to FreeRDP's
+  native profile parser (allowlist in `packaging/remmina/0006-*.patch`).
 
 On a shared computer, another process running as the same Linux account may be
 able to access an inserted smart card. Polkit cannot isolate mutually
@@ -65,6 +71,10 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    eitaas-remmina Desktop.rdpw
    ```
 
+   `eitaas connect Desktop.rdpw` is a thin wrapper: it validates the profile
+   (ownership, mode `0600`, size, extension) and then runs
+   `eitaas-remmina Desktop.rdpw` with no other arguments.
+
 The EITaaS suite combines the `eitaas` setup/diagnostic tool with a pinned,
 privately installed Remmina and FreeRDP pair. It does not replace the system
 Remmina installation, and it does not provide an enhanced connection-manager
@@ -76,26 +86,31 @@ Do not publish, attach, or commit the exported profile. Treat it as
 user/resource-specific connection material even when it does not contain a
 password.
 
-## FreeRDP and desktop support
+## Bundled client and desktop support
 
-AVD authentication requires a FreeRDP 3 build with AAD support; CAC redirection
-also requires PC/SC support. Ubuntu 22.04's standard repository supplies
-FreeRDP 2 and is therefore not currently a supported target.
+Connections use only the bundled `eitaas-remmina` package: Remmina and
+FreeRDP 3 built from the pins in `packaging/remmina/sources.json` with AAD and
+PC/SC support, installed under a private prefix. Distribution FreeRDP or
+Remmina packages are neither required nor used, so distribution FreeRDP
+versions (for example FreeRDP 2 on Ubuntu 22.04) no longer determine support;
+see `docs/supported-platforms.md` for the packaging and hardware status.
 
-Authentication must use either a live Microsoft Identity Broker through
-FreeRDP's SSO-MIB support or an SDL FreeRDP client built with WebView support.
-EITaaS-Linux refuses FreeRDP's terminal URL/callback fallback. Do not capture
+Authentication uses the Microsoft Identity Broker (only where the bundle was
+built with SSO-MIB, currently the Fedora RPM) or the embedded CAC WebView.
+Endpoint allowlisting, the RDPW native-settings allowlist, and refusal of
+FreeRDP's terminal URL/callback fallback are enforced inside the bundled client
+by the Remmina patches (see #51 and #58), not by the Python tool. Do not capture
 OAuth callbacks with browser developer tools or paste them into a terminal.
 
 The connection profile supplies the signed resource, tenant, and endpoint
-settings. EITaaS-Linux classifies only allowlisted endpoint suffixes, rejects
-mixed or unknown clouds, and supplies the matching AVD token audience. It does
-not modify the signed profile.
+settings; `eitaas inspect-profile` classifies only allowlisted endpoint
+suffixes and rejects mixed or unknown clouds. Nothing modifies the signed
+profile.
 
-The session type alone does not determine the correct client. Automatic
-selection considers authentication capability before backend preference. The
-`doctor` command reports the session, broker status, and each client's
-authentication mode; `connect` supports an explicit backend override.
+The `doctor` command reports whether `eitaas-remmina` is on `PATH`, whether
+the private client binary is installed, the pinned Remmina/FreeRDP versions
+from the installed `sources.json`, whether the bundle links SSO-MIB, and the
+identity-broker, PC/SC, and smart-card tool status.
 
 ## Smart-card permissions
 

@@ -9,9 +9,10 @@ Homepage: https://github.com/sjtrotter/EITaaS-Linux
 
 Package: eitaas-linux
 Architecture: all
-Depends: ${misc:Depends}, ${python3:Depends}, freerdp3-x11, opensc, pcscd, pcsc-tools, libccid, libpcsclite1, bash-completion
+Depends: ${misc:Depends}, ${python3:Depends}, opensc, pcscd, pcsc-tools, libccid, libpcsclite1, bash-completion
+Recommends: eitaas-remmina
 Suggests: zsh
 Description: community Linux helper for EITaaS Azure Virtual Desktop
  Provides read-only diagnostics, protected RDPW profile handling, smart-card
- checks, and safe FreeRDP client selection. A FreeRDP 3 build with AAD and
- PC/SC support is required for connections.
+ checks, and a validated wrapper around the bundled one-shot eitaas-remmina
+ client, which is required for connections.

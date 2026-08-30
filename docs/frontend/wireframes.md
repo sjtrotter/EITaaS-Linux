@@ -29,7 +29,7 @@ GTK and Qt should use native widgets and spacing.
 │ System Check │                                           │
 │ Settings     │ ┌───────────────────────────────────────┐ │
 │              │ │  ▣  Enterprise Desktop               │ │
-│              │ │     Ready · Automatic backend        │ │
+│              │ │     Ready                            │ │
 │              │ │                         [ Connect ]   │ │
 │              │ └───────────────────────────────────────┘ │
 │              │                                           │
@@ -44,7 +44,7 @@ GTK and Qt should use native widgets and spacing.
 │ Enterprise Desktop                         Needs attention│
 │                                                          │
 │ ✓ Profile protected                                     │
-│ ! Compatible FreeRDP client not found                   │
+│ ! eitaas-remmina client not installed                   │
 │ ✓ Smart-card service available                          │
 │ ! Reader not detected                                   │
 │                                                          │
@@ -55,17 +55,14 @@ GTK and Qt should use native widgets and spacing.
 There is no **Connect anyway** action for a missing required capability or
 certificate-validation failure.
 
-## Connection options
+## Connection confirmation
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
 │ Connect to Enterprise Desktop                            │
 │                                                          │
-│ Smart-card passthrough                         On        │
-│ Clipboard sharing                              Off       │
-│                                                          │
-│ Advanced                                                 │
-│ Display backend                                Automatic │
+│ Smart-card passthrough and clipboard sharing follow the  │
+│ exported profile.                                        │
 │                                                          │
 │ [ Cancel ]                                  [ Connect ]   │
 └──────────────────────────────────────────────────────────┘
@@ -77,7 +74,7 @@ certificate-validation failure.
 ┌──────────────────────────────────────────────────────────┐
 │ Connecting to Enterprise Desktop                         │
 │                                                          │
-│ ◌ Selecting a compatible remote desktop client…          │
+│ ◌ Starting the remote desktop client…                    │
 │                                                          │
 │ Authentication is handled by the remote desktop client.  │
 │                                                          │
@@ -91,7 +88,7 @@ certificate-validation failure.
 ┌──────────────────────────────────────────────────────────┐
 │ Authentication required                                  │
 │                                                          │
-│ Complete sign-in using the FreeRDP authentication flow.  │
+│ Complete sign-in in the remote desktop client window.    │
 │ EITaaS-Linux does not read or store your authentication   │
 │ response.                                                 │
 │                                                          │
@@ -107,8 +104,8 @@ No callback URL, code, username, tenant, or browser contents appear here.
 ┌──────────────────────────────────────────────────────────┐
 │ Could not start the connection                           │
 │                                                          │
-│ No compatible FreeRDP 3 client with AAD and smart-card   │
-│ support was found.                                       │
+│ The eitaas-remmina client is not installed.              │
+│                                                          │
 │                                                          │
 │ [ Run system check ]  [ Copy safe details ]  [ Close ]   │
 └──────────────────────────────────────────────────────────┘
@@ -116,7 +113,7 @@ No callback URL, code, username, tenant, or browser contents appear here.
 
 ## Connected and disconnecting
 
-The FreeRDP window represents the connected desktop. The launcher card may
+The bundled client's window represents the connected desktop. The launcher card may
 show **Connection process running**, not **Connected**, unless the core gains a
 verified session signal.
 

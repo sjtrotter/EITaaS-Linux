@@ -11,6 +11,8 @@ smart-card redirection. Two deliverables:
 
 - `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|smartcard|certificates`).
   `api.py` is the presentation-neutral facade; frontends never import platform modules directly.
+  `connect` only validates the profile and runs `eitaas-remmina PROFILE` (`Application.launch`);
+  Python holds no RDP/OAuth policy — that lives in the Remmina patches.
 - `packaging/remmina/` — the product client: an isolated one-shot Remmina 1.4.43 + FreeRDP 3.31.0
   bundle with downstream patches and `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth).
   `upstream/remmina/` holds the unbranded upstream-candidate exports of the same changes.
@@ -24,7 +26,8 @@ no connection-manager mode, no Flatpak/AppImage.
 - Certificate verification stays on. Never add a cert-bypass switch or suggest one.
 - Never capture, log, or persist a CAC PIN, OAuth callback, token, or real `.rdpw` content.
   Test fixtures are synthetic (`tests/fixtures/synthetic.rdpw`) — no tenant/workspace/gateway values.
-- Refuse FreeRDP's terminal URL/callback OAuth fallback; only identity-broker or embedded WebView.
+- Refuse FreeRDP's terminal URL/callback OAuth fallback; only identity-broker or embedded WebView
+  (enforced in the Remmina patches, #51/#58; Python never builds FreeRDP arguments).
 - Python profiles: regular file, owned by the user, mode `0600`, ≤ 1 MiB, checked via `lstat`
   (`profile.validate_profile`; the subsequent read-by-path is a known small TOCTOU gap — do not widen it).
 - C profiles (Remmina patches): `O_NOFOLLOW` + `fstat`, ≤ 1 MiB, one immutable buffer parsed once pre-connect.

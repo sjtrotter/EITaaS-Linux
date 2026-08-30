@@ -11,16 +11,16 @@ BuildRequires:  python3-setuptools
 BuildRequires:  pyproject-rpm-macros
 BuildRequires:  python3-wheel
 Requires:       python3
-Requires:       freerdp
 Requires:       opensc
 Requires:       pcsc-lite
 Requires:       pcsc-lite-ccid
 Requires:       pcsc-tools
+Recommends:     eitaas-remmina
 
 %description
 Read-only diagnostics, protected RDPW profile handling, smart-card checks, and
-safe FreeRDP client selection. A FreeRDP 3 build with AAD and PC/SC support is
-required for connections.
+a validated wrapper around the isolated one-shot EITaaS client package, which
+is required for connections.
 
 %prep
 %autosetup -n eitaas-linux-%{version}
