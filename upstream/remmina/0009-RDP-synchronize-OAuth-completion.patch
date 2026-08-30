@@ -1,0 +1,291 @@
+From b7c20fa7b9983dc398a4203e8989aebd0c1ec295 Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 09:11:09 -0500
+Subject: [PATCH] RDP: synchronize OAuth completion
+
+---
+ plugins/rdp/rdp_web_auth.c | 149 +++++++++++++++++++++++--------------
+ 1 file changed, 93 insertions(+), 56 deletions(-)
+
+diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
+index 9cac0e729..e34b50212 100644
+--- a/plugins/rdp/rdp_web_auth.c
++++ b/plugins/rdp/rdp_web_auth.c
+@@ -75,23 +75,67 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+ #define GET_AUTH_URI(gp) \
+ 	(gchar*) g_object_get_data(G_OBJECT(gp), "auth-uri")
+ 
+-#define SET_TOKEN_URI(gp, token_uri) \
+-	g_object_set_data_full(G_OBJECT(gp), "token-uri", \
+-	                       (token_uri) ? g_strdup(token_uri) : NULL, g_free)
+-
+-#define GET_TOKEN_URI(gp) \
+-	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
+-
+-#define SET_EXPECTED_REDIRECT(gp, uri) \
+-	g_object_set_data_full(G_OBJECT(gp), "oauth-expected-redirect", \
+-	                       (uri) ? g_strdup(uri) : NULL, g_free)
+-#define GET_EXPECTED_REDIRECT(gp) \
+-	((const gchar *)g_object_get_data(G_OBJECT(gp), "oauth-expected-redirect"))
+-#define SET_OAUTH_STATE(gp, state) \
+-	g_object_set_data_full(G_OBJECT(gp), "oauth-state", \
+-	                       (state) ? g_strdup(state) : NULL, g_free)
+-#define GET_OAUTH_STATE(gp) \
+-	((const gchar *)g_object_get_data(G_OBJECT(gp), "oauth-state"))
++typedef struct {
++	GMutex mutex;
++	GCond condition;
++	gchar *token_uri;
++	gchar *expected_redirect;
++	gchar *state;
++	gboolean completed;
++} RemminaOAuthTransaction;
++
++static void oauth_transaction_free(gpointer data)
++{
++	RemminaOAuthTransaction *transaction = data;
++	if (!transaction)
++		return;
++	g_mutex_clear(&transaction->mutex);
++	g_cond_clear(&transaction->condition);
++	g_free(transaction->token_uri);
++	g_free(transaction->expected_redirect);
++	g_free(transaction->state);
++	g_free(transaction);
++}
++
++static RemminaOAuthTransaction *oauth_transaction_new(const gchar *redirect, const gchar *state)
++{
++	RemminaOAuthTransaction *transaction = g_new0(RemminaOAuthTransaction, 1);
++	g_mutex_init(&transaction->mutex);
++	g_cond_init(&transaction->condition);
++	transaction->expected_redirect = g_strdup(redirect);
++	transaction->state = g_strdup(state);
++	return transaction;
++}
++
++static void oauth_transaction_complete(RemminaProtocolWidget *gp, const gchar *uri)
++{
++	RemminaOAuthTransaction *transaction = g_object_get_data(G_OBJECT(gp), "oauth-transaction");
++	if (!transaction)
++		return;
++	g_mutex_lock(&transaction->mutex);
++	if (!transaction->completed) {
++		transaction->token_uri = g_strdup(uri);
++		transaction->completed = TRUE;
++		g_cond_signal(&transaction->condition);
++	}
++	g_mutex_unlock(&transaction->mutex);
++}
++
++static gchar *oauth_transaction_wait(RemminaOAuthTransaction *transaction)
++{
++	gint64 deadline = g_get_monotonic_time() + (5 * G_TIME_SPAN_MINUTE);
++	g_mutex_lock(&transaction->mutex);
++	while (!transaction->completed && g_cond_wait_until(
++	           &transaction->condition, &transaction->mutex, deadline)) {
++	}
++	if (!transaction->completed) {
++		transaction->token_uri = g_strdup(AUTH_CANCELLED);
++		transaction->completed = TRUE;
++	}
++	gchar *result = transaction->completed ? g_strdup(transaction->token_uri) : NULL;
++	g_mutex_unlock(&transaction->mutex);
++	return result;
++}
+ 
+ static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar **value)
+ {
+@@ -120,10 +164,10 @@ static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar *
+ 	return *value != NULL;
+ }
+ 
+-static gboolean oauth_callback_matches(RemminaProtocolWidget *gp, const gchar *uri)
++static gboolean oauth_callback_matches(RemminaOAuthTransaction *transaction, const gchar *uri)
+ {
+-	const gchar *expected_uri = GET_EXPECTED_REDIRECT(gp);
+-	const gchar *expected_state = GET_OAUTH_STATE(gp);
++	const gchar *expected_uri = transaction->expected_redirect;
++	const gchar *expected_state = transaction->state;
+ 	GUri *actual = uri ? g_uri_parse(uri, G_URI_FLAGS_NONE, NULL) : NULL;
+ 	GUri *expected = expected_uri ? g_uri_parse(expected_uri, G_URI_FLAGS_NONE, NULL) : NULL;
+ 	gchar *state = NULL;
+@@ -138,9 +182,9 @@ static gboolean oauth_callback_matches(RemminaProtocolWidget *gp, const gchar *u
+ 		g_uri_get_userinfo(actual) == NULL && g_uri_get_fragment(actual) == NULL;
+ 	gboolean state_ok = destination && oauth_query_value(g_uri_get_query(actual), "state", &state) &&
+ 		g_strcmp0(state, expected_state) == 0;
+-	gboolean result = state_ok &&
+-		(oauth_query_value(g_uri_get_query(actual), "code", &code) ||
+-		 oauth_query_value(g_uri_get_query(actual), "error", &oauth_error));
++	gboolean has_code = state_ok && oauth_query_value(g_uri_get_query(actual), "code", &code);
++	gboolean has_error = state_ok && oauth_query_value(g_uri_get_query(actual), "error", &oauth_error);
++	gboolean result = state_ok && (has_code != has_error);
+ 	g_free(state);
+ 	g_free(code);
+ 	g_free(oauth_error);
+@@ -216,7 +260,7 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+ }
+ 
+ static void delete_event_cb(GtkWidget *dialog, GdkEvent* event, RemminaProtocolWidget *gp) {
+-	SET_TOKEN_URI(gp, AUTH_CANCELLED);
++	oauth_transaction_complete(gp, AUTH_CANCELLED);
+ }
+ 
+ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *decision,
+@@ -233,8 +277,10 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
+ 		if (webkit_navigation_action_is_redirect(nav_action)) {
+ 			WebKitURIRequest *req = webkit_navigation_action_get_request(nav_action);
+ 			const gchar *uri = webkit_uri_request_get_uri(req);
+-			if (oauth_callback_matches(gp, uri)) {
+-				SET_TOKEN_URI(gp, uri);
++			RemminaOAuthTransaction *transaction = g_object_get_data(
++				G_OBJECT(gp), "oauth-transaction");
++			if (transaction && oauth_callback_matches(transaction, uri)) {
++				oauth_transaction_complete(gp, uri);
+ 				GtkWidget *dialog = gtk_widget_get_toplevel(GTK_WIDGET(web_view));
+ 				gtk_widget_destroy(GTK_WIDGET(dialog));
+ 			}
+@@ -275,7 +321,7 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
+ 		if (authentication_uri)
+ 			g_uri_unref(authentication_uri);
+-		SET_TOKEN_URI(gp, AUTH_CANCELLED);
++		oauth_transaction_complete(gp, AUTH_CANCELLED);
+ 		gtk_widget_destroy(dialog);
+ 		return G_SOURCE_REMOVE;
+ 	}
+@@ -317,6 +363,7 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 	char* pkce_verifier = NULL;
+ 	char* pkce_challenge = NULL;
+ 	gchar* expected_redirect = NULL;
++	RemminaOAuthTransaction *transaction = NULL;
+ 
+ 	assert(scope);
+ 	assert(req_cnf);
+@@ -356,25 +403,22 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 	}
+ 
+ 	SET_AUTH_URI(gp, auth_uri);
+-	SET_EXPECTED_REDIRECT(gp, expected_redirect);
+-	SET_OAUTH_STATE(gp, oauth_state);
++	transaction = oauth_transaction_new(expected_redirect, oauth_state);
++	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", transaction,
++	                       oauth_transaction_free);
+ 	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
+ 
+-	char* token_uri;
+-	while(true) {
+-		usleep(500 * 1000);
+-		token_uri = GET_TOKEN_URI(gp);
+-		if (token_uri == NULL) {
+-			continue;
+-		}
+-
++	char* token_uri = oauth_transaction_wait(transaction);
++	if (token_uri) {
+ 		if (g_str_equal(token_uri, AUTH_CANCELLED)) {
+ 			rc = FALSE;
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		char* code = extract_authorization_code(token_uri);
+ 		if (!code) {
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+@@ -383,11 +427,12 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 							"s&req_cnf=%s&code_verifier=%s",
+ 							code, client_id, scope, redirect_uri, req_cnf, pkce_verifier) <= 0)
+ 		{
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		rc = client_common_get_access_token(instance, token_request, token);
+-		break;
++		g_free(token_uri);
+ 	}
+ 
+ cleanup:
+@@ -400,9 +445,6 @@ cleanup:
+ 	free(pkce_challenge);
+ 	g_free(expected_redirect);
+ 	SET_AUTH_URI(gp, NULL);
+-	SET_TOKEN_URI(gp, NULL);
+-	SET_EXPECTED_REDIRECT(gp, NULL);
+-	SET_OAUTH_STATE(gp, NULL);
+ 	return rc && (*token != NULL);
+ }
+ 
+@@ -427,6 +469,7 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 	char* pkce_verifier = NULL;
+ 	char* pkce_challenge = NULL;
+ 	gchar* expected_redirect = NULL;
++	RemminaOAuthTransaction *transaction = NULL;
+ 	const char* scope = "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default";
+ 
+ 	assert(token);
+@@ -474,27 +517,23 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 	}
+ 
+ 	SET_AUTH_URI(gp, auth_uri);
+-	SET_EXPECTED_REDIRECT(gp, expected_redirect);
+-	SET_OAUTH_STATE(gp, oauth_state);
++	transaction = oauth_transaction_new(expected_redirect, oauth_state);
++	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", transaction,
++	                       oauth_transaction_free);
+ 	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
+ 
+-	char* token_uri;
+-	while(true) {
+-		usleep(500 * 1000);
+-		token_uri = GET_TOKEN_URI(gp);
+-		if (token_uri == NULL)
+-		{
+-			continue;
+-		}
+-
++	char* token_uri = oauth_transaction_wait(transaction);
++	if (token_uri) {
+ 		if (g_str_equal(token_uri, AUTH_CANCELLED))
+ 		{
+ 			rc = FALSE;
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		char* code = extract_authorization_code(token_uri);
+ 		if (!code) {
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+@@ -503,11 +542,12 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 					"grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%s&code_verifier=%s", code,
+ 					client_id, scope, redirect_uri, pkce_verifier) <= 0)
+ 		{
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		rc = client_common_get_access_token(instance, token_request, token);
+-		break;
++		g_free(token_uri);
+ 	}
+ 
+ cleanup:
+@@ -520,9 +560,6 @@ cleanup:
+ 	free(pkce_challenge);
+ 	g_free(expected_redirect);
+ 	SET_AUTH_URI(gp, NULL);
+-	SET_TOKEN_URI(gp, NULL);
+-	SET_EXPECTED_REDIRECT(gp, NULL);
+-	SET_OAUTH_STATE(gp, NULL);
+ 	return rc && (*token != NULL);
+ }
+ 
+-- 
+2.55.0
+

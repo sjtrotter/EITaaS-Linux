@@ -1,0 +1,644 @@
+From dd397b9d064baf8e14d338d9693137a09816f6fe Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 09:08:28 -0500
+Subject: [PATCH] Harden RDPW and OAuth transaction boundaries
+
+License: GPL-2.0-or-later
+
+Copyright: 2026 Stephen Trotter
+---
+ plugins/rdp/rdp_file.c     |  83 ++++++++-----
+ plugins/rdp/rdp_plugin.c   |  98 +++++++++++----
+ plugins/rdp/rdp_web_auth.c | 237 +++++++++++++++++++++++++++++++------
+ 3 files changed, 329 insertions(+), 89 deletions(-)
+
+diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
+index 63f5e0e..f19e19a 100644
+--- a/plugins/rdp/rdp_file.c
++++ b/plugins/rdp/rdp_file.c
+@@ -250,6 +250,50 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
+ 	return remminafile;
+ }
+ 
++static RemminaFile *remmina_rdp_file_import_buffer(const gchar *contents, gsize length)
++{
++	const gchar *source = contents;
++	gsize source_length = length;
++	gchar *utf8 = NULL;
++	GError *error = NULL;
++
++	if (length >= 2 && (guchar)contents[0] == 0xFF && (guchar)contents[1] == 0xFE) {
++		source = contents + 2;
++		source_length = length - 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16LE", NULL, NULL, &error);
++	} else if (length >= 2 && (guchar)contents[0] == 0xFE && (guchar)contents[1] == 0xFF) {
++		source = contents + 2;
++		source_length = length - 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, NULL, &error);
++	} else {
++		utf8 = g_strndup(source, source_length);
++	}
++	if (!utf8) {
++		g_clear_error(&error);
++		return NULL;
++	}
++
++	RemminaFile *remminafile = remmina_plugin_service->file_new();
++	gchar **lines = g_strsplit(utf8, "\n", -1);
++	for (gchar **line = lines; line && *line; line++) {
++		g_strchomp(*line);
++		gchar *first = strchr(*line, ':');
++		if (!first)
++			continue;
++		*first++ = '\0';
++		gchar *second = strchr(first, ':');
++		if (second)
++			remmina_rdp_file_import_field(remminafile, *line, second + 1);
++	}
++	g_strfreev(lines);
++	g_free(utf8);
++
++	remmina_plugin_service->file_set_string(remminafile, "name",
++		remmina_plugin_service->file_get_string(remminafile, "server"));
++	remmina_plugin_service->file_set_string(remminafile, "protocol", "RDP");
++	return remminafile;
++}
++
+ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from_file)
+ {
+ 	TRACE_CALL(__func__);
+@@ -260,7 +304,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 	gboolean protected_profile = extension && g_ascii_strcasecmp(extension, ".rdpw") == 0;
+ 	gchar *protected_contents = NULL;
+ 	gsize protected_length = 0;
+-	gchar *protected_digest = NULL;
++	gchar *protected_encoded = NULL;
+ 
+ 	if (protected_profile) {
+ 		if (!remmina_rdp_file_read_protected(from_file, &protected_contents,
+@@ -269,8 +313,15 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 			g_free(protected_contents);
+ 			return NULL;
+ 		}
+-		protected_digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
+-		    (const guchar *)protected_contents, protected_length);
++		protected_encoded = g_base64_encode((const guchar *)protected_contents, protected_length);
++		remminafile = remmina_rdp_file_import_buffer(protected_contents, protected_length);
++		if (remminafile) {
++			remmina_plugin_service->file_set_string(remminafile, "rdpw_data", protected_encoded);
++			remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
++		}
++		g_free(protected_contents);
++		g_free(protected_encoded);
++		return remminafile;
+ 	}
+ 
+ 	channel = g_io_channel_new_file(from_file, "r", &error);
+@@ -278,37 +329,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 	if (channel == NULL) {
+ 		g_print("Failed to import %s: %s\n", from_file, error->message);
+ 		g_clear_error(&error);
+-		g_free(protected_contents);
+-		g_free(protected_digest);
+ 		return NULL;
+ 	}
+ 
+ 	remminafile = remmina_rdp_file_import_channel(channel);
+ 	g_io_channel_shutdown(channel, TRUE, &error);
+-	if (remminafile && protected_profile) {
+-		gchar *verified_contents = NULL;
+-		gsize verified_length = 0;
+-		gchar *verified_digest = NULL;
+-		if (!remmina_rdp_file_read_protected(from_file, &verified_contents,
+-		                                     &verified_length, &error)) {
+-			g_clear_error(&error);
+-			remminafile = NULL;
+-		} else {
+-			verified_digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
+-			    (const guchar *)verified_contents, verified_length);
+-			if (g_strcmp0(protected_digest, verified_digest) != 0)
+-				remminafile = NULL;
+-		}
+-		g_free(verified_contents);
+-		g_free(verified_digest);
+-	}
+-	if (remminafile && protected_profile) {
+-		remmina_plugin_service->file_set_string(remminafile, "eitaas_rdpw_path", from_file);
+-		remmina_plugin_service->file_set_string(remminafile, "eitaas_rdpw_sha256", protected_digest);
+-		remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
+-	}
+-	g_free(protected_contents);
+-	g_free(protected_digest);
+ 
+ 	return remminafile;
+ }
+diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
+index 4f7224a..4434824 100644
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -155,6 +155,10 @@ static void freerdp_abort_connect_context(rdpContext* context) {
+ 
+ RemminaPluginService *remmina_plugin_service = NULL;
+ 
++static gboolean rdpw_native_key_allowed(const gchar *key);
++static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length,
++	                                         gsize *filtered_length);
++
+ static BOOL gfx_h264_available = FALSE;
+ 
+ /* Compatibility: these functions have been introduced with https://github.com/FreeRDP/FreeRDP/commit/8c5d96784d
+@@ -1749,32 +1753,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+ 	channels = rfi->clientContext.context.channels;
+ 
+ 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
+-	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile,
+-	                                                               "eitaas_rdpw_path");
+-	if (rdpw_path) {
+-		const gchar *rdpw_digest = remmina_plugin_service->file_get_string(
+-		    remminafile, "eitaas_rdpw_sha256");
+-		gchar *contents = NULL;
++	const gchar *rdpw_data = remmina_plugin_service->file_get_string(remminafile, "rdpw_data");
++	if (rdpw_data) {
+ 		gsize length = 0;
+-		gchar *digest = NULL;
+-		if (!rdpw_digest || !remmina_rdp_file_read_protected(
+-		                         rdpw_path, &contents, &length, NULL)) {
+-			g_free(contents);
+-			REMMINA_PLUGIN_ERROR("Could not safely load the protected RDPW profile");
+-			return FALSE;
+-		}
+-		digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
+-		    (const guchar *)contents, length);
+-		if (g_strcmp0(digest, rdpw_digest) != 0 ||
+-		    freerdp_client_settings_parse_connection_file_buffer(
+-		        rfi->clientContext.context.settings, (const BYTE *)contents, length) != 0) {
+-			g_free(digest);
+-			g_free(contents);
+-			REMMINA_PLUGIN_ERROR("Protected RDPW profile changed after import or is invalid");
++		guchar *contents = g_base64_decode(rdpw_data, &length);
++		gsize filtered_length = 0;
++		gchar *filtered = rdpw_native_settings_allowlist(contents, length, &filtered_length);
++		g_free(contents);
++		if (!filtered || freerdp_client_settings_parse_connection_file_buffer(
++		        rfi->clientContext.context.settings, (const BYTE *)filtered, filtered_length) != 0) {
++			g_free(filtered);
++			REMMINA_PLUGIN_ERROR("Protected RDPW profile contains invalid or disallowed settings");
+ 			return FALSE;
+ 		}
+-		g_free(digest);
+-		g_free(contents);
++		g_free(filtered);
+ 		const gchar *gateway = freerdp_settings_get_string(
+ 			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
+ 		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
+@@ -3679,3 +3671,63 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
+ 
+ 	return TRUE;
+ }
++static gboolean rdpw_native_key_allowed(const gchar *key)
++{
++	static const gchar *const allowed[] = {
++		"full address", "alternate full address", "server port", "loadbalanceinfo",
++		"gatewayhostname", "gatewayusagemethod", "gatewayprofileusagemethod",
++		"gatewaycredentialssource", "promptcredentialonce", "resourceprovider",
++		"wvd endpoint pool", "geo", "armpath", "aadtenantid", "diagnosticserviceurl",
++		"hubdiscoverygeourl", "activityhint", "enablerdsaadauth", "authentication level",
++		"remoteapplicationmode", "remoteapplicationprogram", "remoteapplicationname",
++		"remoteapplicationguid", NULL
++	};
++	for (gsize i = 0; allowed[i]; i++) {
++		if (g_ascii_strcasecmp(key, allowed[i]) == 0)
++			return TRUE;
++	}
++	return FALSE;
++}
++
++static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length, gsize *filtered_length)
++{
++	const gchar *source = (const gchar *)contents;
++	gsize source_length = length;
++	gchar *utf8 = NULL;
++	if (length >= 2 && contents[0] == 0xFF && contents[1] == 0xFE) {
++		source += 2;
++		source_length -= 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16LE", NULL, NULL, NULL);
++	} else if (length >= 2 && contents[0] == 0xFE && contents[1] == 0xFF) {
++		source += 2;
++		source_length -= 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, NULL, NULL);
++	} else {
++		utf8 = g_strndup(source, source_length);
++	}
++	if (!utf8)
++		return NULL;
++
++	GString *filtered = g_string_sized_new(length);
++	gchar **lines = g_strsplit(utf8, "\n", -1);
++	for (gchar **line = lines; line && *line; line++) {
++		g_strchomp(*line);
++		if ((*line)[0] == '/') {
++			g_string_free(filtered, TRUE);
++			g_strfreev(lines);
++			g_free(utf8);
++			return NULL;
++		}
++		gchar *separator = strchr(*line, ':');
++		if (!separator)
++			continue;
++		gchar *key = g_strndup(*line, separator - *line);
++		if (rdpw_native_key_allowed(key))
++			g_string_append_printf(filtered, "%s\n", *line);
++		g_free(key);
++	}
++	g_strfreev(lines);
++	g_free(utf8);
++	*filtered_length = filtered->len;
++	return g_string_free(filtered, FALSE);
++}
+diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
+index d974411..ad10734 100644
+--- a/plugins/rdp/rdp_web_auth.c
++++ b/plugins/rdp/rdp_web_auth.c
+@@ -61,6 +61,8 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+ #include "rdp_plugin.h"
+ #include <webkit2/webkit2.h>
+ #include <freerdp/utils/aad.h>
++#include <freerdp/crypto/crypto.h>
++#include <winpr/custom-crypto.h>
+ #include <winpr/wtypes.h>
+ #include <winpr/wlog.h>
+ #include <sys/prctl.h>
+@@ -76,11 +78,146 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+ #define GET_AUTH_URI(gp) \
+ 	(gchar*) g_object_get_data(G_OBJECT(gp), "auth-uri")
+ 
+-#define SET_TOKEN_URI(gp, token_uri) \
+-	g_object_set_data(G_OBJECT(gp), "token-uri", token_uri)
++typedef struct {
++	GMutex mutex;
++	GCond condition;
++	gchar *token_uri;
++	gchar *expected_redirect;
++	gchar *state;
++	gboolean completed;
++} RemminaOAuthTransaction;
+ 
+-#define GET_TOKEN_URI(gp) \
+-	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
++static void oauth_transaction_free(gpointer data)
++{
++	RemminaOAuthTransaction *transaction = data;
++	if (!transaction)
++		return;
++	g_mutex_clear(&transaction->mutex);
++	g_cond_clear(&transaction->condition);
++	g_free(transaction->token_uri);
++	g_free(transaction->expected_redirect);
++	g_free(transaction->state);
++	g_free(transaction);
++}
++
++static RemminaOAuthTransaction *oauth_transaction_new(const gchar *redirect, const gchar *state)
++{
++	RemminaOAuthTransaction *transaction = g_new0(RemminaOAuthTransaction, 1);
++	g_mutex_init(&transaction->mutex);
++	g_cond_init(&transaction->condition);
++	transaction->expected_redirect = g_strdup(redirect);
++	transaction->state = g_strdup(state);
++	return transaction;
++}
++
++static void oauth_transaction_complete(RemminaProtocolWidget *gp, const gchar *uri)
++{
++	RemminaOAuthTransaction *transaction = g_object_get_data(G_OBJECT(gp), "oauth-transaction");
++	if (!transaction)
++		return;
++	g_mutex_lock(&transaction->mutex);
++	if (!transaction->completed) {
++		transaction->token_uri = g_strdup(uri);
++		transaction->completed = TRUE;
++		g_cond_signal(&transaction->condition);
++	}
++	g_mutex_unlock(&transaction->mutex);
++}
++
++static gchar *oauth_transaction_wait(RemminaOAuthTransaction *transaction)
++{
++	gint64 deadline = g_get_monotonic_time() + (5 * G_TIME_SPAN_MINUTE);
++	g_mutex_lock(&transaction->mutex);
++	while (!transaction->completed && g_cond_wait_until(
++	           &transaction->condition, &transaction->mutex, deadline)) {
++	}
++	if (!transaction->completed) {
++		transaction->token_uri = g_strdup(AUTH_CANCELLED);
++		transaction->completed = TRUE;
++	}
++	gchar *result = transaction->completed ? g_strdup(transaction->token_uri) : NULL;
++	g_mutex_unlock(&transaction->mutex);
++	return result;
++}
++
++static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar **value)
++{
++	*value = NULL;
++	if (!query)
++		return FALSE;
++	gchar **parts = g_strsplit(query, "&", -1);
++	for (gchar **part = parts; part && *part; part++) {
++		gchar *separator = strchr(*part, '=');
++		if (!separator)
++			continue;
++		gchar *key = g_uri_unescape_segment(*part, separator, NULL);
++		if (g_strcmp0(key, name) == 0) {
++			g_free(key);
++			if (*value) {
++				g_clear_pointer(value, g_free);
++				g_strfreev(parts);
++				return FALSE;
++			}
++			*value = g_uri_unescape_string(separator + 1, NULL);
++			continue;
++		}
++		g_free(key);
++	}
++	g_strfreev(parts);
++	return *value != NULL;
++}
++
++static gboolean oauth_callback_matches(RemminaOAuthTransaction *transaction, const gchar *uri)
++{
++	const gchar *expected_uri = transaction->expected_redirect;
++	const gchar *expected_state = transaction->state;
++	GUri *actual = uri ? g_uri_parse(uri, G_URI_FLAGS_NONE, NULL) : NULL;
++	GUri *expected = expected_uri ? g_uri_parse(expected_uri, G_URI_FLAGS_NONE, NULL) : NULL;
++	gchar *state = NULL;
++	gchar *code = NULL;
++	gchar *oauth_error = NULL;
++	gboolean destination = actual && expected && g_uri_get_scheme(actual) &&
++		g_uri_get_scheme(expected) && g_uri_get_host(actual) && g_uri_get_host(expected) &&
++		g_ascii_strcasecmp(g_uri_get_scheme(actual), g_uri_get_scheme(expected)) == 0 &&
++		g_ascii_strcasecmp(g_uri_get_host(actual), g_uri_get_host(expected)) == 0 &&
++		g_uri_get_port(actual) == g_uri_get_port(expected) &&
++		g_strcmp0(g_uri_get_path(actual), g_uri_get_path(expected)) == 0 &&
++		g_uri_get_userinfo(actual) == NULL && g_uri_get_fragment(actual) == NULL;
++	gboolean state_ok = destination && oauth_query_value(g_uri_get_query(actual), "state", &state) &&
++		g_strcmp0(state, expected_state) == 0;
++	gboolean has_code = state_ok && oauth_query_value(g_uri_get_query(actual), "code", &code);
++	gboolean has_error = state_ok && oauth_query_value(g_uri_get_query(actual), "error", &oauth_error);
++	gboolean result = state_ok && (has_code != has_error);
++	g_free(state);
++	g_free(code);
++	g_free(oauth_error);
++	if (actual)
++		g_uri_unref(actual);
++	if (expected)
++		g_uri_unref(expected);
++	return result;
++}
++
++static gboolean oauth_pkce_new(gchar **state, gchar **verifier, gchar **challenge)
++{
++	guchar random_state[32];
++	guchar random_verifier[32];
++	if (winpr_RAND(random_state, sizeof(random_state)) < 0 ||
++	    winpr_RAND(random_verifier, sizeof(random_verifier)) < 0)
++		return FALSE;
++	*state = crypto_base64url_encode(random_state, sizeof(random_state));
++	*verifier = crypto_base64url_encode(random_verifier, sizeof(random_verifier));
++	if (!*state || !*verifier)
++		return FALSE;
++	guint8 digest[32];
++	gsize digest_length = sizeof(digest);
++	GChecksum *checksum = g_checksum_new(G_CHECKSUM_SHA256);
++	g_checksum_update(checksum, (const guchar *)*verifier, strlen(*verifier));
++	g_checksum_get_digest(checksum, digest, &digest_length);
++	g_checksum_free(checksum);
++	*challenge = crypto_base64url_encode(digest, digest_length);
++	return *challenge != NULL;
++}
+ 
+ static BOOL avd_oauth_settings_are_safe(const char* base, const char* tenantid,
+ 	                                    const char* client_id, const char* scope,
+@@ -156,7 +293,7 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+ }
+ 
+ static void delete_event_cb(GtkWidget *dialog, GdkEvent* event, RemminaProtocolWidget *gp) {
+-	SET_TOKEN_URI(gp, AUTH_CANCELLED);
++	oauth_transaction_complete(gp, AUTH_CANCELLED);
+ }
+ 
+ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *decision,
+@@ -173,9 +310,13 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
+ 		if (webkit_navigation_action_is_redirect(nav_action)) {
+ 			WebKitURIRequest *req = webkit_navigation_action_get_request(nav_action);
+ 			const gchar *uri = webkit_uri_request_get_uri(req);
+-			SET_TOKEN_URI(gp, uri);
+-			GtkWidget *dialog = gtk_widget_get_toplevel(GTK_WIDGET(web_view));
+-			gtk_widget_destroy(GTK_WIDGET(dialog));
++			RemminaOAuthTransaction *transaction = g_object_get_data(
++				G_OBJECT(gp), "oauth-transaction");
++			if (transaction && oauth_callback_matches(transaction, uri)) {
++				oauth_transaction_complete(gp, uri);
++				GtkWidget *dialog = gtk_widget_get_toplevel(GTK_WIDGET(web_view));
++				gtk_widget_destroy(GTK_WIDGET(dialog));
++			}
+ 		}
+ 		return FALSE;
+ 	default:
+@@ -216,6 +357,7 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
+ 		if (authentication_uri)
+ 			g_uri_unref(authentication_uri);
++		oauth_transaction_complete(gp, AUTH_CANCELLED);
+ 		gtk_widget_destroy(dialog);
+ 		return G_SOURCE_REMOVE;
+ 	}
+@@ -253,6 +395,11 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 	char* auth_uri = NULL;
+ 	size_t auth_uri_len = 0;
+ 	char* auth_hints = NULL;
++	char* oauth_state = NULL;
++	char* pkce_verifier = NULL;
++	char* pkce_challenge = NULL;
++	gchar* expected_redirect = NULL;
++	RemminaOAuthTransaction *transaction = NULL;
+ 
+ 	assert(scope);
+ 	assert(req_cnf);
+@@ -272,6 +419,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 	if (!redirect_uri) {
+ 		goto cleanup;
+ 	}
++	expected_redirect = g_uri_unescape_string(redirect_uri, NULL);
++	if (!expected_redirect || !oauth_pkce_new(&oauth_state, &pkce_verifier, &pkce_challenge))
++		goto cleanup;
+ 
+ 	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
+ 	                                                        AAD_WELLKNOWN_authorization_endpoint);
+@@ -282,43 +432,43 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 	}
+ 
+ 	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
+-	       "code&scope=%s&redirect_uri=%s%s",
+-	       ep, client_id, scope, redirect_uri, auth_hints);
++		       "code&scope=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256%s",
++		       ep, client_id, scope, redirect_uri, oauth_state, pkce_challenge, auth_hints);
+ 	if (!auth_uri) {
+ 		goto cleanup;
+ 	}
+ 
+ 	SET_AUTH_URI(gp, auth_uri);
++	transaction = oauth_transaction_new(expected_redirect, oauth_state);
++	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", transaction,
++	                       oauth_transaction_free);
+ 	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
+ 
+-	char* token_uri;
+-	while(true) {
+-		usleep(500 * 1000);
+-		token_uri = GET_TOKEN_URI(gp);
+-		if (token_uri == NULL) {
+-			continue;
+-		}
+-
++	char* token_uri = oauth_transaction_wait(transaction);
++	if (token_uri) {
+ 		if (g_str_equal(token_uri, AUTH_CANCELLED)) {
+ 			rc = FALSE;
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		char* code = extract_authorization_code(token_uri);
+ 		if (!code) {
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		if (winpr_asprintf(&token_request, &token_request_len,
+ 						"grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%"
+-						"s&req_cnf=%s",
+-						code, client_id, scope, redirect_uri, req_cnf) <= 0)
++							"s&req_cnf=%s&code_verifier=%s",
++							code, client_id, scope, redirect_uri, req_cnf, pkce_verifier) <= 0)
+ 		{
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		rc = client_common_get_access_token(instance, token_request, token);
+-		break;
++		g_free(token_uri);
+ 	}
+ 
+ cleanup:
+@@ -326,8 +476,11 @@ cleanup:
+ 	free(redirect_uri);
+ 	free(token_request);
+ 	free(auth_hints);
++	free(oauth_state);
++	free(pkce_verifier);
++	free(pkce_challenge);
++	g_free(expected_redirect);
+ 	SET_AUTH_URI(gp, NULL);
+-	SET_TOKEN_URI(gp, NULL);
+ 	return rc && (*token != NULL);
+ }
+ 
+@@ -348,6 +501,11 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 	char* auth_uri = NULL;
+ 	size_t auth_uri_len = 0;
+ 	char* auth_hints = NULL;
++	char* oauth_state = NULL;
++	char* pkce_verifier = NULL;
++	char* pkce_challenge = NULL;
++	gchar* expected_redirect = NULL;
++	RemminaOAuthTransaction *transaction = NULL;
+ 	const char* scope = freerdp_settings_get_string(instance->context->settings,
+ 	                                                FreeRDP_GatewayAvdScope);
+ 
+@@ -377,6 +535,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 	if (!redirect_uri) {
+ 		goto cleanup;
+ 	}
++	expected_redirect = g_uri_unescape_string(redirect_uri, NULL);
++	if (!expected_redirect || !oauth_pkce_new(&oauth_state, &pkce_verifier, &pkce_challenge))
++		goto cleanup;
+ 
+ 	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
+ 	                                                        AAD_WELLKNOWN_authorization_endpoint);
+@@ -389,45 +550,44 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 	}
+ 
+ 	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
+-	       "code&scope=%s&redirect_uri=%s%s",
+-	       ep, client_id, scope, redirect_uri, auth_hints);
++		       "code&scope=%s&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256%s",
++		       ep, client_id, scope, redirect_uri, oauth_state, pkce_challenge, auth_hints);
+ 	if (!auth_uri) {
+ 		goto cleanup;
+ 	}
+ 
+ 	SET_AUTH_URI(gp, auth_uri);
++	transaction = oauth_transaction_new(expected_redirect, oauth_state);
++	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", transaction,
++	                       oauth_transaction_free);
+ 	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
+ 
+-	char* token_uri;
+-	while(true) {
+-		usleep(500 * 1000);
+-		token_uri = GET_TOKEN_URI(gp);
+-		if (token_uri == NULL)
+-		{
+-			continue;
+-		}
+-
++	char* token_uri = oauth_transaction_wait(transaction);
++	if (token_uri) {
+ 		if (g_str_equal(token_uri, AUTH_CANCELLED))
+ 		{
+ 			rc = FALSE;
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		char* code = extract_authorization_code(token_uri);
+ 		if (!code) {
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		if (winpr_asprintf(
+ 				&token_request, &token_request_len,
+-				"grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%s", code,
+-				client_id, scope, redirect_uri) <= 0)
++					"grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%s&code_verifier=%s", code,
++					client_id, scope, redirect_uri, pkce_verifier) <= 0)
+ 		{
++			g_free(token_uri);
+ 			goto cleanup;
+ 		}
+ 
+ 		rc = client_common_get_access_token(instance, token_request, token);
+-		break;
++		g_free(token_uri);
+ 	}
+ 
+ cleanup:
+@@ -435,8 +595,11 @@ cleanup:
+ 	free(redirect_uri);
+ 	free(token_request);
+ 	free(auth_hints);
++	free(oauth_state);
++	free(pkce_verifier);
++	free(pkce_challenge);
++	g_free(expected_redirect);
+ 	SET_AUTH_URI(gp, NULL);
+-	SET_TOKEN_URI(gp, NULL);
+ 	return rc && (*token != NULL);
+ }
+ 
+-- 
+2.55.0
+

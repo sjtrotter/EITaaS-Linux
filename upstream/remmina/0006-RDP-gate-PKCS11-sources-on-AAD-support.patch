@@ -1,0 +1,35 @@
+From 46aa744f34b4f70bf63e53f0ec62e8698a02bbcc Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 08:59:14 -0500
+Subject: [PATCH 6/8] RDP: gate PKCS11 sources on AAD support
+
+---
+ plugins/rdp/CMakeLists.txt | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/plugins/rdp/CMakeLists.txt b/plugins/rdp/CMakeLists.txt
+index bed2cc4df..6f29df048 100644
+--- a/plugins/rdp/CMakeLists.txt
++++ b/plugins/rdp/CMakeLists.txt
+@@ -57,8 +57,6 @@ set(REMMINA_PLUGIN_RDP_SRCS
+     rdp_channels.h
+     rdp_web_auth.c
+     rdp_web_auth.h
+-    rdp_web_auth_pkcs11.c
+-    rdp_web_auth_pkcs11.h
+     )
+ 
+ add_definitions(-DFREERDP_REQUIRED_MAJOR=${FREERDP_REQUIRED_MAJOR})
+@@ -111,6 +109,9 @@ if(WITH_RDP_AUTH_AAD)
+         target_link_libraries(remmina-plugin-rdp
+             ${LIBSOUP_LIBRARIES}
+             ${WEBKIT2GTK_LIBRARIES})
++        target_sources(remmina-plugin-rdp PRIVATE
++            rdp_web_auth_pkcs11.c
++            rdp_web_auth_pkcs11.h)
+     else()
+         message(WARNING "Disabling RDP AAD authentication.")
+     endif()
+-- 
+2.55.0
+

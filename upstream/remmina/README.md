@@ -8,7 +8,14 @@ Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`:
    `.wvd.azure.us` gateway namespace;
 3. consume and validate FreeRDP's configured AVD scope and redirect format;
 4. handle WebKitGTK client-certificate and certificate-PIN challenges using
-   asynchronous PKCS #11 discovery.
+   asynchronous PKCS #11 discovery;
+5. retain one immutable RDPW buffer and pass only an explicit AVD
+   routing/authentication allowlist to FreeRDP's native parser;
+6. compile PKCS #11 support only when the AAD/WebKit feature is enabled;
+7. validate, own, and transaction-bind OAuth callbacks with state and PKCE;
+8. load the selected PKCS #11 certificate away from the GTK thread and bind
+   PIN prompts to a bounded certificate transaction; and
+9. replace OAuth polling with synchronized, finite completion.
 
 The patches deliberately omit EITaaS branding, one-shot lifecycle behavior,
 core-dump policy, private runtime paths, and the downstream certificate-label
@@ -17,13 +24,16 @@ file, tenant/workspace/resource identifiers, gateway or host values copied
 from a profile, login hints, certificate metadata, tokens, or PINs to an
 upstream report or test fixture.
 
-Security hardening is tracked in EITaaS-Linux issues #49–#52. The prepared
+Security hardening is tracked in EITaaS-Linux issues #49–#59. The prepared
 branches bind protected-profile content before parsing, restrict OAuth
 settings to supported cloud/client combinations, bind CAC challenges to the
 verified HTTPS authentication origin, correlate PIN requests, and bound and
 cancel PKCS #11 discovery. These controls must remain equivalent in the
 GitLab contribution branches. No upstream merge request should be opened
 until the corresponding issue has a developer-attested verification comment.
+The current reviewed branch heads are `cb56a41f3` for
+`contrib/rdpw-govcloud`, `2fde8a23e` for `contrib/avd-settings-auth`, and
+`b7c20fa7b` for `contrib/webkit-pkcs11-auth`.
 
 ## FreeRDP compatibility
 

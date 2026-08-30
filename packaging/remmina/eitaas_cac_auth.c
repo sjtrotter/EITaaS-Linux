@@ -32,7 +32,158 @@ typedef struct {
 	gboolean timed_out;
 } EitaasCertificateDiscovery;
 
+typedef struct {
+	gchar *certificate_uri;
+	gchar *private_key_uri;
+} EitaasCertificateLoadInput;
+
+typedef struct {
+	GtkWidget *dialog;
+	GTlsCertificate *certificate;
+	gchar *error_message;
+	guint timeout_source;
+	gboolean abandoned;
+	gboolean completed;
+} EitaasCertificateLoad;
+
+typedef struct {
+	gchar *host;
+	gchar *certificate_uri;
+	gint64 expires_at;
+	gboolean pin_submitted;
+} EitaasCertificateAuthState;
+
 static gint discovery_active = 0;
+
+static void certificate_auth_state_free(gpointer data)
+{
+	EitaasCertificateAuthState *state = data;
+	if (!state)
+		return;
+	g_free(state->host);
+	g_free(state->certificate_uri);
+	g_free(state);
+}
+
+static void certificate_auth_state_clear(WebKitWebView *web_view)
+{
+	g_object_set_data(G_OBJECT(web_view), "rdp-certificate-transaction", NULL);
+}
+
+static void certificate_load_input_free(gpointer data)
+{
+	EitaasCertificateLoadInput *input = data;
+	if (!input)
+		return;
+	g_free(input->certificate_uri);
+	g_free(input->private_key_uri);
+	g_free(input);
+}
+
+static void certificate_load_free(EitaasCertificateLoad *load)
+{
+	if (!load)
+		return;
+	if (load->timeout_source)
+		g_source_remove(load->timeout_source);
+	g_clear_object(&load->certificate);
+	g_free(load->error_message);
+	g_free(load);
+}
+
+static gboolean certificate_load_timeout(gpointer user_data)
+{
+	EitaasCertificateLoad *load = user_data;
+	load->timeout_source = 0;
+	if (load->dialog)
+		gtk_dialog_response(GTK_DIALOG(load->dialog), GTK_RESPONSE_REJECT);
+	return G_SOURCE_REMOVE;
+}
+
+static void certificate_load_thread(GTask *task, gpointer source, gpointer task_data,
+	                                GCancellable *cancellable)
+{
+	(void)source;
+	(void)cancellable;
+	EitaasCertificateLoadInput *input = task_data;
+	GError *error = NULL;
+	GTlsCertificate *certificate = g_tls_certificate_new_from_pkcs11_uris(
+		input->certificate_uri, input->private_key_uri, &error);
+	if (certificate)
+		g_task_return_pointer(task, certificate, g_object_unref);
+	else if (error)
+		g_task_return_error(task, error);
+	else
+		g_task_return_new_error(task, G_IO_ERROR, G_IO_ERROR_FAILED,
+		                        "The selected smart-card certificate could not be loaded");
+}
+
+static void certificate_load_done(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+	(void)source;
+	EitaasCertificateLoad *load = user_data;
+	GError *error = NULL;
+	load->certificate = g_task_propagate_pointer(G_TASK(result), &error);
+	load->completed = TRUE;
+	if (error)
+		load->error_message = g_strdup(error->message);
+	if (load->abandoned) {
+		g_clear_error(&error);
+		certificate_load_free(load);
+		return;
+	}
+	gtk_dialog_response(GTK_DIALOG(load->dialog),
+	                    error ? GTK_RESPONSE_REJECT : GTK_RESPONSE_ACCEPT);
+	g_clear_error(&error);
+}
+
+static GTlsCertificate *load_certificate_async(GtkWindow *parent,
+	                                           const EitaasPkcs11Certificate *choice)
+{
+	EitaasCertificateLoad *load = g_new0(EitaasCertificateLoad, 1);
+	load->dialog = gtk_dialog_new_with_buttons(
+		"Loading smart-card certificate", parent, GTK_DIALOG_MODAL,
+		"Cancel", GTK_RESPONSE_CANCEL, NULL);
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	GtkWidget *spinner = gtk_spinner_new();
+	gtk_spinner_start(GTK_SPINNER(spinner));
+	gtk_box_pack_start(GTK_BOX(box), spinner, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(box), gtk_label_new("Loading selected certificate…"),
+	                   FALSE, FALSE, 0);
+	gtk_container_set_border_width(GTK_CONTAINER(box), 12);
+	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(load->dialog))), box);
+	gtk_widget_show_all(load->dialog);
+
+	EitaasCertificateLoadInput *input = g_new0(EitaasCertificateLoadInput, 1);
+	input->certificate_uri = g_strdup(choice->certificate_uri);
+	input->private_key_uri = g_strdup(choice->private_key_uri);
+	GTask *task = g_task_new(NULL, NULL, certificate_load_done, load);
+	g_task_set_task_data(task, input, certificate_load_input_free);
+	g_task_run_in_thread(task, certificate_load_thread);
+	g_object_unref(task);
+	load->timeout_source = g_timeout_add_seconds(PKCS11_TIMEOUT_SECONDS,
+	                                             certificate_load_timeout, load);
+
+	gint response = gtk_dialog_run(GTK_DIALOG(load->dialog));
+	gtk_widget_destroy(load->dialog);
+	load->dialog = NULL;
+	if (response != GTK_RESPONSE_ACCEPT || !load->certificate) {
+		if (load->completed && load->error_message) {
+			GtkWidget *error_dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL,
+				GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", load->error_message);
+			gtk_dialog_run(GTK_DIALOG(error_dialog));
+			gtk_widget_destroy(error_dialog);
+		}
+		if (load->completed)
+			certificate_load_free(load);
+		else
+			load->abandoned = TRUE;
+		return NULL;
+	}
+	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
+	certificate_load_free(load);
+	return certificate;
+}
 
 static void certificate_free(gpointer data)
 {
@@ -343,6 +494,7 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
 	GtkWindow *parent = GTK_WINDOW(parent_data);
 	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED) {
+		certificate_auth_state_clear(web_view);
 		const gchar *request_host = trusted_request_host(web_view, request);
 		if (!request_host) {
 			webkit_authentication_request_cancel(request);
@@ -379,21 +531,22 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 		gint selected = gtk_combo_box_get_active(GTK_COMBO_BOX(combo));
 		if (response == GTK_RESPONSE_ACCEPT && selected >= 0 && (guint)selected < certs->len) {
 			EitaasPkcs11Certificate *choice = g_ptr_array_index(certs, selected);
-			GError *error = NULL;
-			GTlsCertificate *cert = g_tls_certificate_new_from_pkcs11_uris(
-				choice->certificate_uri, choice->private_key_uri, &error);
+			GTlsCertificate *cert = load_certificate_async(parent, choice);
 			if (cert) {
+				EitaasCertificateAuthState *state = g_new0(EitaasCertificateAuthState, 1);
+				state->host = g_strdup(request_host);
+				state->certificate_uri = g_strdup(choice->certificate_uri);
+				state->expires_at = g_get_monotonic_time() + (2 * G_TIME_SPAN_MINUTE);
+				g_object_set_data_full(G_OBJECT(web_view), "rdp-certificate-transaction",
+				                       state, certificate_auth_state_free);
 				WebKitCredential *credential = webkit_credential_new_for_certificate(
 					cert, WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
-				g_object_set_data_full(G_OBJECT(web_view), "rdp-certificate-host",
-				                       g_strdup(request_host), g_free);
 				webkit_authentication_request_authenticate(request, credential);
 				webkit_credential_free(credential);
 				g_object_unref(cert);
 			} else {
 				webkit_authentication_request_cancel(request);
 			}
-			g_clear_error(&error);
 		} else {
 			webkit_authentication_request_cancel(request);
 		}
@@ -403,10 +556,14 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 	}
 	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED) {
 		const gchar *request_host = trusted_request_host(web_view, request);
-		const gchar *certificate_host = g_object_get_data(G_OBJECT(web_view),
-		                                                   "rdp-certificate-host");
-		if (!request_host || !certificate_host ||
-		    g_ascii_strcasecmp(request_host, certificate_host) != 0) {
+		EitaasCertificateAuthState *state = g_object_get_data(
+			G_OBJECT(web_view), "rdp-certificate-transaction");
+		gboolean retrying = webkit_authentication_request_is_retry(request);
+		if (!request_host || !state || !state->certificate_uri ||
+		    g_get_monotonic_time() >= state->expires_at ||
+		    g_ascii_strcasecmp(request_host, state->host) != 0 ||
+		    (state->pin_submitted && !retrying)) {
+			certificate_auth_state_clear(web_view);
 			webkit_authentication_request_cancel(request);
 			return TRUE;
 		}
@@ -426,11 +583,12 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 				gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
 			webkit_authentication_request_authenticate(request, credential);
 			webkit_credential_free(credential);
+			state->pin_submitted = TRUE;
 		} else {
 			webkit_authentication_request_cancel(request);
+			certificate_auth_state_clear(web_view);
 		}
 		gtk_entry_set_text(GTK_ENTRY(entry), "");
-		g_object_set_data(G_OBJECT(web_view), "rdp-certificate-host", NULL);
 		gtk_widget_destroy(dialog);
 		return TRUE;
 	}

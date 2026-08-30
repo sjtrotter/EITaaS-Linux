@@ -1,0 +1,257 @@
+From cb56a41f3be839285317c9595bc251818c329ca1 Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 08:56:46 -0500
+Subject: [PATCH] RDP: constrain protected profile settings
+
+---
+ plugins/rdp/rdp_file.c   | 86 +++++++++++++++++++++--------------
+ plugins/rdp/rdp_plugin.c | 96 +++++++++++++++++++++++++++++++---------
+ 2 files changed, 129 insertions(+), 53 deletions(-)
+
+diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
+index 174f1bd18..f19e19a9c 100644
+--- a/plugins/rdp/rdp_file.c
++++ b/plugins/rdp/rdp_file.c
+@@ -250,6 +250,50 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
+ 	return remminafile;
+ }
+ 
++static RemminaFile *remmina_rdp_file_import_buffer(const gchar *contents, gsize length)
++{
++	const gchar *source = contents;
++	gsize source_length = length;
++	gchar *utf8 = NULL;
++	GError *error = NULL;
++
++	if (length >= 2 && (guchar)contents[0] == 0xFF && (guchar)contents[1] == 0xFE) {
++		source = contents + 2;
++		source_length = length - 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16LE", NULL, NULL, &error);
++	} else if (length >= 2 && (guchar)contents[0] == 0xFE && (guchar)contents[1] == 0xFF) {
++		source = contents + 2;
++		source_length = length - 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, NULL, &error);
++	} else {
++		utf8 = g_strndup(source, source_length);
++	}
++	if (!utf8) {
++		g_clear_error(&error);
++		return NULL;
++	}
++
++	RemminaFile *remminafile = remmina_plugin_service->file_new();
++	gchar **lines = g_strsplit(utf8, "\n", -1);
++	for (gchar **line = lines; line && *line; line++) {
++		g_strchomp(*line);
++		gchar *first = strchr(*line, ':');
++		if (!first)
++			continue;
++		*first++ = '\0';
++		gchar *second = strchr(first, ':');
++		if (second)
++			remmina_rdp_file_import_field(remminafile, *line, second + 1);
++	}
++	g_strfreev(lines);
++	g_free(utf8);
++
++	remmina_plugin_service->file_set_string(remminafile, "name",
++		remmina_plugin_service->file_get_string(remminafile, "server"));
++	remmina_plugin_service->file_set_string(remminafile, "protocol", "RDP");
++	return remminafile;
++}
++
+ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from_file)
+ {
+ 	TRACE_CALL(__func__);
+@@ -260,7 +304,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 	gboolean protected_profile = extension && g_ascii_strcasecmp(extension, ".rdpw") == 0;
+ 	gchar *protected_contents = NULL;
+ 	gsize protected_length = 0;
+-	gchar *protected_digest = NULL;
++	gchar *protected_encoded = NULL;
+ 
+ 	if (protected_profile) {
+ 		if (!remmina_rdp_file_read_protected(from_file, &protected_contents,
+@@ -269,8 +313,15 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 			g_free(protected_contents);
+ 			return NULL;
+ 		}
+-		protected_digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
+-		    (const guchar *)protected_contents, protected_length);
++		protected_encoded = g_base64_encode((const guchar *)protected_contents, protected_length);
++		remminafile = remmina_rdp_file_import_buffer(protected_contents, protected_length);
++		if (remminafile) {
++			remmina_plugin_service->file_set_string(remminafile, "rdpw_data", protected_encoded);
++			remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
++		}
++		g_free(protected_contents);
++		g_free(protected_encoded);
++		return remminafile;
+ 	}
+ 
+ 	channel = g_io_channel_new_file(from_file, "r", &error);
+@@ -278,40 +329,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 	if (channel == NULL) {
+ 		g_print("Failed to import %s: %s\n", from_file, error->message);
+ 		g_clear_error(&error);
+-		g_free(protected_contents);
+-		g_free(protected_digest);
+ 		return NULL;
+ 	}
+ 
+ 	remminafile = remmina_rdp_file_import_channel(channel);
+ 	g_io_channel_shutdown(channel, TRUE, &error);
+-	if (remminafile && protected_profile) {
+-		gchar *verified_contents = NULL;
+-		gsize verified_length = 0;
+-		gchar *verified_digest = NULL;
+-		if (!remmina_rdp_file_read_protected(from_file, &verified_contents,
+-		                                     &verified_length, &error)) {
+-			g_clear_error(&error);
+-			remminafile = NULL;
+-		} else {
+-			verified_digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
+-			    (const guchar *)verified_contents, verified_length);
+-			if (g_strcmp0(protected_digest, verified_digest) != 0)
+-				remminafile = NULL;
+-		}
+-		g_free(verified_contents);
+-		g_free(verified_digest);
+-	}
+-	if (remminafile && protected_profile) {
+-		/* Protected AVD profiles contain settings and signatures that the generic
+-		 * Remmina importer does not model. Bind the later native parse to the
+-		 * exact content digest accepted during import. */
+-		remmina_plugin_service->file_set_string(remminafile, "rdpw_path", from_file);
+-		remmina_plugin_service->file_set_string(remminafile, "rdpw_sha256", protected_digest);
+-		remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
+-	}
+-	g_free(protected_contents);
+-	g_free(protected_digest);
+ 
+ 	return remminafile;
+ }
+diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
+index 70e9a928f..0bcd4298a 100644
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -155,6 +155,10 @@ static void freerdp_abort_connect_context(rdpContext* context) {
+ 
+ RemminaPluginService *remmina_plugin_service = NULL;
+ 
++static gboolean rdpw_native_key_allowed(const gchar *key);
++static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length,
++	                                         gsize *filtered_length);
++
+ static BOOL gfx_h264_available = FALSE;
+ 
+ /* Compatibility: these functions have been introduced with https://github.com/FreeRDP/FreeRDP/commit/8c5d96784d
+@@ -1748,30 +1752,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+ 	channels = rfi->clientContext.context.channels;
+ 
+ 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
+-	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile, "rdpw_path");
+-	const gchar *rdpw_digest = remmina_plugin_service->file_get_string(remminafile, "rdpw_sha256");
+-	if (rdpw_path) {
+-		gchar *contents = NULL;
++	const gchar *rdpw_data = remmina_plugin_service->file_get_string(remminafile, "rdpw_data");
++	if (rdpw_data) {
+ 		gsize length = 0;
+-		gchar *digest = NULL;
+-		if (!rdpw_digest || !remmina_rdp_file_read_protected(
+-		                         rdpw_path, &contents, &length, NULL)) {
+-			g_free(contents);
+-			REMMINA_PLUGIN_ERROR("Could not safely load the protected RDPW profile");
+-			return FALSE;
+-		}
+-		digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
+-		    (const guchar *)contents, length);
+-		if (g_strcmp0(digest, rdpw_digest) != 0 ||
+-		    freerdp_client_settings_parse_connection_file_buffer(
+-		        rfi->clientContext.context.settings, (const BYTE *)contents, length) != 0) {
+-			g_free(digest);
+-			g_free(contents);
+-			REMMINA_PLUGIN_ERROR("Protected RDPW profile changed after import or is invalid");
++		guchar *contents = g_base64_decode(rdpw_data, &length);
++		gsize filtered_length = 0;
++		gchar *filtered = rdpw_native_settings_allowlist(contents, length, &filtered_length);
++		g_free(contents);
++		if (!filtered || freerdp_client_settings_parse_connection_file_buffer(
++		        rfi->clientContext.context.settings, (const BYTE *)filtered, filtered_length) != 0) {
++			g_free(filtered);
++			REMMINA_PLUGIN_ERROR("Protected RDPW profile contains invalid or disallowed settings");
+ 			return FALSE;
+ 		}
+-		g_free(digest);
+-		g_free(contents);
++		g_free(filtered);
+ 
+ 		const gchar *gateway = freerdp_settings_get_string(
+ 		    rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
+@@ -3677,3 +3671,63 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
+ 
+ 	return TRUE;
+ }
++static gboolean rdpw_native_key_allowed(const gchar *key)
++{
++	static const gchar *const allowed[] = {
++		"full address", "alternate full address", "server port", "loadbalanceinfo",
++		"gatewayhostname", "gatewayusagemethod", "gatewayprofileusagemethod",
++		"gatewaycredentialssource", "promptcredentialonce", "resourceprovider",
++		"wvd endpoint pool", "geo", "armpath", "aadtenantid", "diagnosticserviceurl",
++		"hubdiscoverygeourl", "activityhint", "enablerdsaadauth", "authentication level",
++		"remoteapplicationmode", "remoteapplicationprogram", "remoteapplicationname",
++		"remoteapplicationguid", NULL
++	};
++	for (gsize i = 0; allowed[i]; i++) {
++		if (g_ascii_strcasecmp(key, allowed[i]) == 0)
++			return TRUE;
++	}
++	return FALSE;
++}
++
++static gchar *rdpw_native_settings_allowlist(const guchar *contents, gsize length, gsize *filtered_length)
++{
++	const gchar *source = (const gchar *)contents;
++	gsize source_length = length;
++	gchar *utf8 = NULL;
++	if (length >= 2 && contents[0] == 0xFF && contents[1] == 0xFE) {
++		source += 2;
++		source_length -= 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16LE", NULL, NULL, NULL);
++	} else if (length >= 2 && contents[0] == 0xFE && contents[1] == 0xFF) {
++		source += 2;
++		source_length -= 2;
++		utf8 = g_convert(source, source_length, "UTF-8", "UTF-16BE", NULL, NULL, NULL);
++	} else {
++		utf8 = g_strndup(source, source_length);
++	}
++	if (!utf8)
++		return NULL;
++
++	GString *filtered = g_string_sized_new(length);
++	gchar **lines = g_strsplit(utf8, "\n", -1);
++	for (gchar **line = lines; line && *line; line++) {
++		g_strchomp(*line);
++		if ((*line)[0] == '/') {
++			g_string_free(filtered, TRUE);
++			g_strfreev(lines);
++			g_free(utf8);
++			return NULL;
++		}
++		gchar *separator = strchr(*line, ':');
++		if (!separator)
++			continue;
++		gchar *key = g_strndup(*line, separator - *line);
++		if (rdpw_native_key_allowed(key))
++			g_string_append_printf(filtered, "%s\n", *line);
++		g_free(key);
++	}
++	g_strfreev(lines);
++	g_free(utf8);
++	*filtered_length = filtered->len;
++	return g_string_free(filtered, FALSE);
++}
+-- 
+2.55.0
+

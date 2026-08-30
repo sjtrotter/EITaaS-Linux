@@ -88,7 +88,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_downstream_patches_declare_their_license(self):
         patches = sorted(PACKAGE_DIR.glob("*.patch"))
-        self.assertEqual(len(patches), 5)
+        self.assertEqual(len(patches), 6)
         for patch in patches:
             with self.subTest(patch=patch.name):
                 self.assertIn("License: GPL-2.0-or-later", patch.read_text().split("---", 1)[0])
@@ -101,7 +101,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             "webkit_authentication_request_get_security_origin",
             'g_ascii_strcasecmp(protocol, "https")',
             '"rdp-authentication-host"',
-            '"rdp-certificate-host"',
+            '"rdp-certificate-transaction"',
             "WEBKIT_CREDENTIAL_PERSISTENCE_NONE",
         ):
             self.assertIn(required, source)
@@ -137,20 +137,53 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         ):
             self.assertIn(required, patch)
 
-    def test_protected_profile_is_digest_bound_and_parsed_from_a_bounded_buffer(self):
-        patch = (PACKAGE_DIR / "0005-bind-protected-rdpw-content.patch").read_text()
+    def test_protected_profile_is_single_buffer_and_native_settings_are_allowlisted(self):
+        bounded = (PACKAGE_DIR / "0005-bind-protected-rdpw-content.patch").read_text()
+        patch = (PACKAGE_DIR / "0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch").read_text()
         for required in (
             "RDPW_MAX_SIZE",
             "O_NOFOLLOW",
             "fstat",
             "read(descriptor",
             "S_ISREG",
-            "G_CHECKSUM_SHA256",
-            "eitaas_rdpw_sha256",
+        ):
+            self.assertIn(required, bounded)
+        for required in (
+            "rdpw_data",
+            "rdpw_native_settings_allowlist",
+            "rdpw_native_key_allowed",
             "freerdp_client_settings_parse_connection_file_buffer",
         ):
             self.assertIn(required, patch)
+        self.assertNotIn("g_io_channel_new_file(from_file", patch.split("return remminafile;", 1)[0])
+        self.assertNotRegex(patch, r"(?m)^\+.*eitaas_rdpw_sha256")
         self.assertNotIn("rf_process_event_queue", patch)
+
+    def test_oauth_callback_is_owned_transaction_bound_and_uses_pkce(self):
+        patch = (PACKAGE_DIR / "0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch").read_text()
+        for required in (
+            "g_object_set_data_full",
+            "oauth_callback_matches",
+            "oauth-transaction",
+            "g_cond_wait_until",
+            "G_TIME_SPAN_MINUTE",
+            "code_challenge_method=S256",
+            "code_verifier",
+            "winpr_RAND",
+        ):
+            self.assertIn(required, patch)
+
+    def test_certificate_loading_and_pin_state_are_asynchronous_and_bounded(self):
+        source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        for required in (
+            "load_certificate_async",
+            "certificate_load_thread",
+            "g_task_run_in_thread",
+            "rdp-certificate-transaction",
+            "webkit_authentication_request_is_retry",
+            "G_TIME_SPAN_MINUTE",
+        ):
+            self.assertIn(required, source)
 
     def test_spec_declares_every_local_source_and_patch(self):
         declared = set(re.findall(r"^(?:Source|Patch)\d+:\s+(\S+)", SPEC, re.MULTILINE))

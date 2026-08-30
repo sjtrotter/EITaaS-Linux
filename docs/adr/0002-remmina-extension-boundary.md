@@ -7,7 +7,7 @@
 
 ## Context
 
-The working client applies four patches to Remmina 1.4.43. We would prefer a
+The working client applies six downstream patches to Remmina 1.4.43. We would prefer a
 small EITaaS extension over maintaining a downstream Remmina build, but that is
 only useful if the extension can reuse Remmina's existing RDP implementation.
 

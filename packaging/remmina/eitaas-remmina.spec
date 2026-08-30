@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.8%{?dist}
+Release:        0.9%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -21,6 +21,7 @@ Patch1:         0002-add-cac-webview-authentication.patch
 Patch2:         0003-keep-private-runtime-paths.patch
 Patch3:         0004-use-profile-avd-scope.patch
 Patch4:         0005-bind-protected-rdpw-content.patch
+Patch5:         0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch
 
 BuildRequires:  cmake
 BuildRequires:  gcc
@@ -58,6 +59,8 @@ patch --fuzz=0 -p1 -d "$remmina" < %{PATCH0}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH1}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH2}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH3}
+patch --fuzz=0 -p1 -d "$remmina" < %{PATCH4}
+patch --fuzz=0 -p1 -d "$remmina" < %{PATCH5}
 
 %build
 prefix=%{_libexecdir}/eitaas-remmina
@@ -134,6 +137,9 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.9
+- Harden RDPW parsing, OAuth transactions, and asynchronous CAC loading
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.8
 - Ship the shared pinned-source manifest used by native packaging formats
 
