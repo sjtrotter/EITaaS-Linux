@@ -28,8 +28,11 @@ is required for connections.
 Summary:        Graphical readiness/profile/connect helper for EITaaS AVD
 Requires:       %{name} = %{version}-%{release}
 Requires:       python3-gobject
-Requires:       gtk4
-Requires:       libadwaita
+# The GUI loads GTK 4 and Libadwaita through GObject introspection, which no
+# automatic dependency generator covers; the typelib provides come from the
+# gtk4 and libadwaita packages.
+Requires:       typelib(Gtk) = 4.0
+Requires:       typelib(Adw) = 1
 Recommends:     eitaas-remmina
 
 %description gui

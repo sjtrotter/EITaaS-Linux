@@ -6,3 +6,10 @@ Files: *
 Copyright: 2026 Finn Westenfelder and EITaaS-Linux contributors
 License: MIT
  See /usr/share/common-licenses/MIT on Debian systems or the upstream LICENSE.
+
+Files: data/org.eitaas.Helper.metainfo.xml
+Copyright: 2026 EITaaS-Linux contributors
+License: CC0-1.0
+ The AppStream metadata is released under the CC0 1.0 Universal Public Domain
+ Dedication so distributions and software centres may reuse it freely.
+ See https://creativecommons.org/publicdomain/zero/1.0/legalcode.
