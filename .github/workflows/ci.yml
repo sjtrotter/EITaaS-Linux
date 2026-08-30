@@ -191,6 +191,7 @@ jobs:
           test -f "$target/source/patches/0004-use-profile-avd-scope.patch"
           test -f "$target/source/sources.json"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: remmina-deb-${{ matrix.name }}
           path: |

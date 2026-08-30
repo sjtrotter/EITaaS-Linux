@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -eux
 
 if [ "$#" -ne 1 ]; then
   echo "usage: test-remmina-deb-lifecycle.sh PACKAGE.deb" >&2
@@ -22,6 +22,7 @@ apt-get install -y "$package" >/dev/null
 test "$(dpkg-query -W -f='${Version}' eitaas-remmina)" = "$expected_version"
 test -x /usr/bin/eitaas-remmina
 test -f /usr/lib/eitaas-remmina/lib/remmina/plugins/remmina-plugin-rdp.so
+find /usr/share/doc/eitaas-remmina -maxdepth 2 -type f -print
 test -f /usr/share/doc/eitaas-remmina/sources.json \
   || test -f /usr/share/doc/eitaas-remmina/sources.json.gz
 ldd /usr/lib/eitaas-remmina/bin/remmina | tee "$work/ldd.txt"
