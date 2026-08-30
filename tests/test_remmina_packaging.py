@@ -330,6 +330,28 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         ):
             self.assertIn(required, source)
 
+    def test_toplevel_is_held_across_nested_certificate_dialogs(self):
+        downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        upstream_dir = PROJECT_ROOT / "upstream" / "remmina"
+        discovery = (
+            upstream_dir / "0004-RDP-handle-PKCS11-client-certificates-in-WebKit.patch"
+        ).read_text()
+        loading = (
+            upstream_dir / "0008-RDP-make-certificate-loading-asynchronous.patch"
+        ).read_text()
+        for source in (downstream, discovery):
+            self.assertIn("auth_toplevel_hold(&toplevel, parent_data)", source)
+            self.assertIn('g_signal_connect(toplevel->held, "destroy"', source)
+            self.assertNotIn("GtkWindow *parent = GTK_WINDOW(parent_data)", source)
+        for source in (downstream, loading):
+            self.assertIn("Loading the smart-card certificate timed out", source)
+            self.assertIn("load->abandoned = TRUE", source)
+        handler = downstream[downstream.index("gboolean eitaas_webview_authenticate("):]
+        self.assertEqual(
+            handler.count("auth_toplevel_release(&toplevel)"),
+            handler.count("return TRUE;"),
+        )
+
     def test_spec_declares_every_local_source_and_patch(self):
         declared = set(re.findall(r"^(?:Source|Patch)\d+:\s+(\S+)", SPEC, re.MULTILINE))
         expected = {
