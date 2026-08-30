@@ -34,7 +34,7 @@ commercial and US Government login hosts. It rejects proxy, mismatched,
 standalone PIN, and insecure-origin challenges. PKCS #11 discovery uses the
 packaged `/usr/bin/p11tool`, a 15-second cancellation deadline, one concurrent
 discovery, and explicit output/object limits. Protected profiles are limited
-to 1 MiB, opened without following symlinks, digest-bound at import, and parsed
+to 1 MiB, opened without following symlinks, retained as one immutable buffer, and parsed
 from a verified bounded buffer exactly once during pre-connect initialization.
 
 Authentication cloud selection is automatic. Protected profiles whose gateway

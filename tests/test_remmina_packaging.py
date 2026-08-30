@@ -452,3 +452,35 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RemminaSpecCheckTests(unittest.TestCase):
+    def test_rpm_check_literals_exist_in_final_downstream_sources(self):
+        """Every string %check greps out of the built plugin must be introduced by the
+        final patch series or the downstream sources, or the RPM cannot build."""
+        check_section = SPEC.split("%check", 1)[1]
+        literals = re.findall(r"grep -a -q '([^']+)'", check_section)
+        self.assertTrue(literals, "expected %check grep literals")
+        added_lines = []
+        for filename in MANIFEST["patches"]:
+            for line in (PACKAGE_DIR / filename).read_text(errors="replace").splitlines():
+                if line.startswith("+") and not line.startswith("+++"):
+                    added_lines.append(line[1:])
+        for filename in MANIFEST["downstream_sources"]:
+            added_lines.extend((PACKAGE_DIR / filename).read_text(errors="replace").splitlines())
+        removed_lines = [
+            line[1:]
+            for filename in MANIFEST["patches"]
+            for line in (PACKAGE_DIR / filename).read_text(errors="replace").splitlines()
+            if line.startswith("-") and not line.startswith("---")
+        ]
+        for literal in literals:
+            with self.subTest(literal=literal):
+                introduced = [line for line in added_lines if literal in line]
+                self.assertTrue(introduced, f"{literal!r} is not introduced by any patch or source")
+                # A later patch must not remove the last introduction of the literal.
+                self.assertGreaterEqual(
+                    len(introduced),
+                    len([line for line in removed_lines if literal in line]) + 1,
+                    f"{literal!r} is removed by a later patch",
+                )
