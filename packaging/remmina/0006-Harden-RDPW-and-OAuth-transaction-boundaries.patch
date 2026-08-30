@@ -1,4 +1,4 @@
-From 54c50757a7f39bb0e25ef231fc8c5b009caa3669 Mon Sep 17 00:00:00 2001
+From dbe63a95682a806721bde1c68cae9b6151e4e355 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 11:15:06 -0500
 Subject: [PATCH] Harden RDPW and OAuth transaction boundaries
@@ -7,10 +7,10 @@ License: GPL-2.0-or-later
 
 Copyright: 2026 Stephen Trotter
 ---
- plugins/rdp/rdp_file.c     |  83 ++++++---
+ plugins/rdp/rdp_file.c     |  83 +++++---
  plugins/rdp/rdp_plugin.c   |  98 +++++++---
- plugins/rdp/rdp_web_auth.c | 370 +++++++++++++++++++++++++++++++------
- 3 files changed, 443 insertions(+), 108 deletions(-)
+ plugins/rdp/rdp_web_auth.c | 387 +++++++++++++++++++++++++++++++------
+ 3 files changed, 460 insertions(+), 108 deletions(-)
 
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
 index 63f5e0e..f19e19a 100644
@@ -256,7 +256,7 @@ index 4f7224a..4434824 100644
 +	return g_string_free(filtered, FALSE);
 +}
 diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
-index d974411..1f7bb34 100644
+index d974411..422f3e4 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
 @@ -61,6 +61,8 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
@@ -268,7 +268,7 @@ index d974411..1f7bb34 100644
  #include <winpr/wtypes.h>
  #include <winpr/wlog.h>
  #include <sys/prctl.h>
-@@ -70,17 +72,223 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
+@@ -70,17 +72,230 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
  
  #define AUTH_CANCELLED "__AUTH_CANCELLED__"
  
@@ -284,8 +284,9 @@ index d974411..1f7bb34 100644
 + * remmina_rdp_get_*_access_token() owns the transaction from creation until
 + * cleanup. The dialog holds a reference from creation until its "destroy"
 + * signal and each idle holds one while it is pending, so the callbacks bound
-+ * to a dialog always act on the transaction that created it. "dialog" is only
-+ * touched on the GTK thread; every other field is guarded by "mutex".
++ * to a dialog always act on the transaction that created it. The transaction
++ * keeps the protocol widget alive. "dialog" is only touched on the GTK
++ * thread; every other field is guarded by "mutex".
 + */
 +typedef struct {
 +	gint ref_count;
@@ -293,6 +294,7 @@ index d974411..1f7bb34 100644
 +	GCond condition;
 +	RemminaProtocolWidget *gp;
 +	GtkWidget *dialog;
++	gboolean dialog_pending;
 +	gchar *auth_uri;
 +	gchar *token_uri;
 +	gchar *expected_redirect;
@@ -306,10 +308,13 @@ index d974411..1f7bb34 100644
 +	g_atomic_int_inc(&transaction->ref_count);
 +	return transaction;
 +}
-+
+ 
+-#define SET_TOKEN_URI(gp, token_uri) \
+-	g_object_set_data(G_OBJECT(gp), "token-uri", token_uri)
 +static void oauth_transaction_unref(gpointer data)
 +{
 +	RemminaOAuthTransaction *transaction = data;
++
 +	if (!transaction || !g_atomic_int_dec_and_test(&transaction->ref_count))
 +		return;
 +	g_mutex_clear(&transaction->mutex);
@@ -318,6 +323,7 @@ index d974411..1f7bb34 100644
 +	g_free(transaction->token_uri);
 +	g_free(transaction->expected_redirect);
 +	g_free(transaction->state);
++	g_object_unref(transaction->gp);
 +	g_free(transaction);
 +}
 +
@@ -325,16 +331,19 @@ index d974411..1f7bb34 100644
 +						      const gchar *redirect, const gchar *state)
 +{
 +	RemminaOAuthTransaction *transaction = g_new0(RemminaOAuthTransaction, 1);
++
 +	transaction->ref_count = 1;
 +	g_mutex_init(&transaction->mutex);
 +	g_cond_init(&transaction->condition);
-+	transaction->gp = gp;
++	transaction->gp = g_object_ref(gp);
 +	transaction->auth_uri = g_strdup(auth_uri);
 +	transaction->expected_redirect = g_strdup(redirect);
 +	transaction->state = g_strdup(state);
 +	return transaction;
 +}
-+
+ 
+-#define GET_TOKEN_URI(gp) \
+-	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
 +/* Records the single terminal result of a transaction; later results are ignored. */
 +static void oauth_transaction_complete(RemminaOAuthTransaction *transaction, const gchar *uri)
 +{
@@ -347,19 +356,10 @@ index d974411..1f7bb34 100644
 +	g_mutex_unlock(&transaction->mutex);
 +}
 +
-+static gboolean oauth_transaction_is_completed(RemminaOAuthTransaction *transaction)
-+{
-+	g_mutex_lock(&transaction->mutex);
-+	gboolean completed = transaction->completed;
-+	g_mutex_unlock(&transaction->mutex);
-+	return completed;
-+}
- 
--#define SET_TOKEN_URI(gp, token_uri) \
--	g_object_set_data(G_OBJECT(gp), "token-uri", token_uri)
 +static gchar *oauth_transaction_wait(RemminaOAuthTransaction *transaction)
 +{
 +	gint64 deadline = g_get_monotonic_time() + OAUTH_TRANSACTION_TIMEOUT;
++
 +	g_mutex_lock(&transaction->mutex);
 +	while (!transaction->completed &&
 +	       g_cond_wait_until(&transaction->condition, &transaction->mutex, deadline)) {
@@ -385,6 +385,7 @@ index d974411..1f7bb34 100644
 +static gboolean oauth_transaction_close_idle(gpointer data)
 +{
 +	RemminaOAuthTransaction *transaction = data;
++
 +	g_mutex_lock(&transaction->mutex);
 +	GtkWidget *dialog = transaction->dialog;
 +	transaction->dialog = NULL;
@@ -397,19 +398,25 @@ index d974411..1f7bb34 100644
 +	g_mutex_unlock(&transaction->mutex);
 +	return G_SOURCE_REMOVE;
 +}
- 
--#define GET_TOKEN_URI(gp) \
--	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
++
 +/*
 + * Ends the transaction from the worker thread: any dialog that is still open
 + * (for example after a timeout) is destroyed on the GTK thread and the worker
 + * waits, bounded, until that has happened. A dialog that has not been shown
-+ * yet is never shown because the transaction is already completed.
++ * yet is never shown because the transaction is already completed, and no
++ * round-trip to the GTK thread is made when no dialog is live.
 + */
 +static void oauth_transaction_close(RemminaOAuthTransaction *transaction)
 +{
 +	gint64 deadline = g_get_monotonic_time() + OAUTH_DIALOG_CLOSE_TIMEOUT;
++
 +	oauth_transaction_complete(transaction, AUTH_CANCELLED);
++	g_mutex_lock(&transaction->mutex);
++	if (!transaction->dialog && !transaction->dialog_pending) {
++		g_mutex_unlock(&transaction->mutex);
++		return;
++	}
++	g_mutex_unlock(&transaction->mutex);
 +	gdk_threads_add_idle_full(G_PRIORITY_DEFAULT_IDLE, oauth_transaction_close_idle,
 +				  oauth_transaction_ref(transaction), oauth_transaction_unref);
 +	g_mutex_lock(&transaction->mutex);
@@ -500,7 +507,7 @@ index d974411..1f7bb34 100644
  
  static BOOL avd_oauth_settings_are_safe(const char* base, const char* tenantid,
  	                                    const char* client_id, const char* scope,
-@@ -155,12 +363,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+@@ -155,12 +370,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
  	return g_string_free(url_params, FALSE);
  }
  
@@ -518,7 +525,7 @@ index d974411..1f7bb34 100644
  {
  	WebKitNavigationPolicyDecision *nav_decision;
  
-@@ -173,9 +383,11 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
+@@ -173,9 +390,11 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
  		if (webkit_navigation_action_is_redirect(nav_action)) {
  			WebKitURIRequest *req = webkit_navigation_action_get_request(nav_action);
  			const gchar *uri = webkit_uri_request_get_uri(req);
@@ -533,7 +540,7 @@ index d974411..1f7bb34 100644
  		}
  		return FALSE;
  	default:
-@@ -196,14 +408,19 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
+@@ -196,14 +415,25 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
  	g_free(title);
  }
  
@@ -547,8 +554,14 @@ index d974411..1f7bb34 100644
 -	char* auth_uri = GET_AUTH_URI(gp);
 +	const gchar *auth_uri = transaction->auth_uri;
 +
-+	if (oauth_transaction_is_completed(transaction))
++	/* Claim the dialog slot atomically with the completion check. */
++	g_mutex_lock(&transaction->mutex);
++	if (transaction->completed) {
++		g_mutex_unlock(&transaction->mutex);
 +		return G_SOURCE_REMOVE;
++	}
++	transaction->dialog_pending = TRUE;
++	g_mutex_unlock(&transaction->mutex);
  
  	GtkWidget *dialog = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 -	remmina_rdp_webview_set_title(GTK_WINDOW(dialog), gp);
@@ -556,15 +569,19 @@ index d974411..1f7bb34 100644
  	gtk_window_set_default_size(GTK_WINDOW(dialog), 500, 500);
  
  	WebKitWebView *webView = WEBKIT_WEB_VIEW(webkit_web_view_new());
-@@ -216,6 +433,7 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+@@ -216,7 +446,11 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
  	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
  		if (authentication_uri)
  			g_uri_unref(authentication_uri);
 +		oauth_transaction_complete(transaction, AUTH_CANCELLED);
  		gtk_widget_destroy(dialog);
++		g_mutex_lock(&transaction->mutex);
++		transaction->dialog_pending = FALSE;
++		g_mutex_unlock(&transaction->mutex);
  		return G_SOURCE_REMOVE;
  	}
-@@ -225,8 +443,13 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 	g_object_set_data_full(G_OBJECT(webView), "rdp-authentication-host",
+@@ -225,8 +459,14 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
  
  	webkit_web_view_load_uri(webView, auth_uri);
  
@@ -572,6 +589,7 @@ index d974411..1f7bb34 100644
 -	g_signal_connect(webView, "decide-policy", G_CALLBACK(decide_policy_cb), gp);
 +	g_mutex_lock(&transaction->mutex);
 +	transaction->dialog = dialog;
++	transaction->dialog_pending = FALSE;
 +	g_mutex_unlock(&transaction->mutex);
 +	g_signal_connect(dialog, "destroy", G_CALLBACK(oauth_dialog_destroy_cb),
 +			 oauth_transaction_ref(transaction));
@@ -580,7 +598,7 @@ index d974411..1f7bb34 100644
  	g_signal_connect(webView, "authenticate", G_CALLBACK(eitaas_webview_authenticate), dialog);
  
  	gtk_widget_show_all(dialog);
-@@ -253,6 +476,11 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -253,6 +493,11 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
  	char* auth_hints = NULL;
@@ -592,7 +610,7 @@ index d974411..1f7bb34 100644
  
  	assert(scope);
  	assert(req_cnf);
-@@ -272,6 +500,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -272,6 +517,9 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	if (!redirect_uri) {
  		goto cleanup;
  	}
@@ -602,7 +620,7 @@ index d974411..1f7bb34 100644
  
  	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
  	                                                        AAD_WELLKNOWN_authorization_endpoint);
-@@ -282,43 +513,46 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -282,43 +530,46 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	}
  
  	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
@@ -665,7 +683,7 @@ index d974411..1f7bb34 100644
  	}
  
  cleanup:
-@@ -326,8 +560,15 @@ cleanup:
+@@ -326,8 +577,15 @@ cleanup:
  	free(redirect_uri);
  	free(token_request);
  	free(auth_hints);
@@ -683,7 +701,7 @@ index d974411..1f7bb34 100644
  	return rc && (*token != NULL);
  }
  
-@@ -348,6 +589,11 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -348,6 +606,11 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
  	char* auth_hints = NULL;
@@ -695,7 +713,7 @@ index d974411..1f7bb34 100644
  	const char* scope = freerdp_settings_get_string(instance->context->settings,
  	                                                FreeRDP_GatewayAvdScope);
  
-@@ -377,6 +623,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -377,6 +640,9 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	if (!redirect_uri) {
  		goto cleanup;
  	}
@@ -705,7 +723,7 @@ index d974411..1f7bb34 100644
  
  	const char* ep = freerdp_utils_aad_get_wellknown_string(instance->context,
  	                                                        AAD_WELLKNOWN_authorization_endpoint);
-@@ -389,45 +638,47 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -389,45 +655,47 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	}
  
  	winpr_asprintf(&auth_uri, &auth_uri_len, "%s?client_id=%s&response_type="
@@ -770,7 +788,7 @@ index d974411..1f7bb34 100644
  	}
  
  cleanup:
-@@ -435,8 +686,15 @@ cleanup:
+@@ -435,8 +703,15 @@ cleanup:
  	free(redirect_uri);
  	free(token_request);
  	free(auth_hints);
