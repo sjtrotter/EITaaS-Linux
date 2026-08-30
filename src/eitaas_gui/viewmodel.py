@@ -8,6 +8,8 @@ nothing in this module runs a command or touches the file system.
 from __future__ import annotations
 
 import gettext
+import hashlib
+import json
 from dataclasses import dataclass
 from enum import Enum
 
@@ -264,8 +266,110 @@ def readiness_rows(report: DoctorReport | None, error: ApplicationError | None =
 
 
 def can_connect(report: DoctorReport | None, profile: StoredProfileSummary | None) -> bool:
-    """Connect is enabled when the launcher exists and a default profile is stored."""
-    return bool(report and report.remmina.launcher and profile is not None)
+    """Connect is disabled only on hard failures, never on warnings.
+
+    Hard failures are the launcher or its private client binary missing (and a
+    missing default profile, which leaves nothing to connect to). Warnings such
+    as missing diagnostic tools never disable it.
+    """
+    return bool(
+        report and report.remmina.launcher and report.remmina.client and profile is not None
+    )
+
+
+MARKER_VERSION = 1
+
+
+@dataclass(frozen=True)
+class ReadinessMarker:
+    """Record of the last readiness pass: when it ran and a hash of what it saw.
+
+    It carries no profile data, paths, or check details — only an ISO-8601
+    timestamp and a digest of the row states, enough to notice a change.
+    """
+
+    timestamp: str
+    doctor_hash: str
+
+
+def readiness_hash(rows: list[StatusRow]) -> str:
+    """Stable digest of the readiness outcome (row keys and states only).
+
+    Recorded in the marker for later inspection only; startup never compares
+    it — regressions are detected from the fresh rows alone.
+    """
+    material = "\n".join(f"{row.key}={row.state}" for row in rows)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def readiness_passed(report: DoctorReport | None, rows: list[StatusRow]) -> bool:
+    """A pass means doctor ran and no check hard-failed; warnings still pass.
+
+    UNKNOWN rows also pass, consistent with ``can_connect`` gating only on
+    hard failures.
+    """
+    return report is not None and all(row.state != FAIL for row in rows)
+
+
+def marker_document(marker: ReadinessMarker) -> str:
+    return json.dumps(
+        {
+            "version": MARKER_VERSION,
+            "timestamp": marker.timestamp,
+            "doctor_hash": marker.doctor_hash,
+        }
+    )
+
+
+def parse_marker(text: str) -> ReadinessMarker | None:
+    """A strict parse; anything unexpected means \"no recorded pass\"."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    version = data.get("version")
+    if type(version) is not int or version != MARKER_VERSION:
+        return None
+    timestamp = data.get("timestamp")
+    doctor_hash = data.get("doctor_hash")
+    if not isinstance(timestamp, str) or not isinstance(doctor_hash, str):
+        return None
+    if len(doctor_hash) != 64 or any(char not in "0123456789abcdef" for char in doctor_hash):
+        return None
+    return ReadinessMarker(timestamp, doctor_hash)
+
+
+def startup_page(
+    marker: ReadinessMarker | None, profile: StoredProfileSummary | None
+) -> str:
+    """Open on Connect only when a pass was recorded and a default profile exists."""
+    if marker is not None and profile is not None:
+        return "connect"
+    return "readiness"
+
+
+def regression(
+    marker: ReadinessMarker | None, report: DoctorReport | None, rows: list[StatusRow]
+) -> bool:
+    """A recorded pass, and the fresh report now contains a hard failure.
+
+    A doctor error (``report is None``) is not a regression: nothing is known
+    to have failed, so the recorded pass is kept.
+    """
+    return marker is not None and report is not None and any(row.state == FAIL for row in rows)
+
+
+def regression_text(rows: list[StatusRow]) -> tuple[str, str]:
+    """Heading and body for the dialog shown when a background re-check regresses."""
+    failures = ", ".join(row.title for row in rows if row.state == FAIL)
+    heading = _("Readiness has changed")
+    body = _(
+        "A check that passed last time is now failing: {items}. "
+        "Close this message to review the details on the Readiness page."
+    ).format(items=failures)
+    return heading, body
 
 
 def readiness_summary(report: DoctorReport | None, rows: list[StatusRow]) -> str:

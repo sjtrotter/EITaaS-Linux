@@ -29,7 +29,7 @@ from eitaas.api import (  # noqa: E402
     Result,
     StoredProfileSummary,
 )
-from . import viewmodel  # noqa: E402
+from . import state, viewmodel  # noqa: E402
 from .viewmodel import ConnectState  # noqa: E402
 from .widgets import ProfileRowWidget, StatusRowWidget, accessible  # noqa: E402
 
@@ -56,6 +56,13 @@ class HelperWindow(Adw.ApplicationWindow):
         self.cancel_event: threading.Event | None = None
         self.worker: threading.Thread | None = None
         self.quit_pending = False
+        # A recorded pass from a previous run decides the startup page; the
+        # doctor refresh below still runs and keeps or clears the marker.
+        self.marker = state.read_marker()
+        self._startup_to_connect = self.marker is not None
+        self.regression_dialog: Adw.AlertDialog | None = None
+        self._regression_deferred = False
+        self._doctor_generation = 0
         self.set_title(_("EITaaS Connect"))
         self.set_default_size(680, 600)
         self.set_size_request(360, 400)
@@ -231,15 +238,67 @@ class HelperWindow(Adw.ApplicationWindow):
     # ----- readiness ---------------------------------------------------
 
     def refresh_readiness(self) -> None:
+        # Ctrl+R can fire while a run is in flight; the generation counter
+        # makes the older run's completion a no-op instead of letting it
+        # rewrite rows or the marker after a newer result landed.
+        self._doctor_generation += 1
+        generation = self._doctor_generation
         self.recheck.set_sensitive(False)
         self._render_rows(viewmodel.readiness_rows(None))
-        self._future(self.core.doctor_async(), self._readiness_done)
+        self._future(
+            self.core.doctor_async(),
+            lambda result: self._readiness_done(generation, result),
+        )
 
-    def _readiness_done(self, result: Result[DoctorReport]) -> None:
+    def _readiness_done(self, generation: int, result: Result[DoctorReport]) -> None:
+        if generation != self._doctor_generation:
+            return
         self.report = result.value
         self._render_rows(viewmodel.readiness_rows(result.value, result.error))
         self.recheck.set_sensitive(True)
         self._update_connect()
+        self._update_marker(result)
+
+    def _update_marker(self, result: Result[DoctorReport]) -> None:
+        """Refresh the last-readiness-pass marker from a finished doctor run.
+
+        A pass records a new marker; a regression forgets it and, when the
+        failing rows are not already on screen, surfaces a dialog. A doctor
+        error changes nothing.
+        """
+        if viewmodel.readiness_passed(result.value, self.rows):
+            self.marker = state.record_pass(viewmodel.readiness_hash(self.rows))
+        elif viewmodel.regression(self.marker, result.value, self.rows):
+            self.marker = None
+            state.clear_marker()
+            if self.stack.get_visible_child_name() != "readiness":
+                if self.connect_state is ConnectState.IDLE:
+                    self._show_regression()
+                else:
+                    # The window-modal dialog would block Cancel mid-launch and
+                    # its dismissal would yank the page; show it after the
+                    # connection attempt ends instead.
+                    self._regression_deferred = True
+
+    def _show_regression(self) -> None:
+        """A non-blocking alert; dismissing it in any way reviews the failures."""
+        if self.regression_dialog is not None:
+            return
+        heading, body = viewmodel.regression_text(self.rows)
+        dialog = Adw.AlertDialog(heading=heading, body=body)
+        dialog.add_response("review", _("Show readiness"))
+        dialog.set_default_response("review")
+        dialog.set_close_response("review")
+        dialog.connect("response", self._regression_dismissed)
+        self.regression_dialog = dialog
+        dialog.present(self)
+
+    def _regression_dismissed(self, _dialog: Adw.AlertDialog, _response: str) -> None:
+        self.regression_dialog = None
+        if self.marker is None:
+            # Only when no fresh pass was recorded while the dialog stood open.
+            state.clear_marker()
+        self.stack.set_visible_child_name("readiness")
 
     def _render_rows(self, rows: list[viewmodel.StatusRow]) -> None:
         for widget in self.readiness_rows:
@@ -260,6 +319,7 @@ class HelperWindow(Adw.ApplicationWindow):
 
     def _profiles_done(self, result: Result[tuple[StoredProfileSummary, ...]]) -> None:
         if result.error:
+            self._startup_to_connect = False
             self.show_error(result.error)
             return
         self.profiles = result.value or ()
@@ -277,6 +337,16 @@ class HelperWindow(Adw.ApplicationWindow):
         for widget in self.profile_rows:
             self.profile_group.add(widget)
         self._update_connect()
+        if self._startup_to_connect:
+            # First profile listing after construction: land on Connect when a
+            # pass was recorded and a default profile exists, unless the person
+            # (or a regression) already moved the stack.
+            self._startup_to_connect = False
+            if (
+                viewmodel.startup_page(self.marker, self.default_profile) == "connect"
+                and self.stack.get_visible_child_name() == "readiness"
+            ):
+                self.stack.set_visible_child_name("connect")
 
     @property
     def default_profile(self) -> StoredProfileSummary | None:
@@ -442,6 +512,10 @@ class HelperWindow(Adw.ApplicationWindow):
             if text:
                 self.toast(text)
         self._update_connect()
+        if self._regression_deferred:
+            self._regression_deferred = False
+            if self.stack.get_visible_child_name() != "readiness":
+                self._show_regression()
 
     def _show_diagnostics(self, outcome: ConnectionResult) -> None:
         """A failed run shows its reason-code lines in place and offers the redacted log."""

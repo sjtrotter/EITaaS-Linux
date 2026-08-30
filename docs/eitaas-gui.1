@@ -33,8 +33,9 @@ PROFILE STORE in
 .B Connect
 starts
 .B eitaas-remmina
-with the selected profile. The button is enabled only when the launcher is
-installed and a profile has been imported. While the client runs the page
+with the selected profile. The button is disabled only on hard failures: the
+launcher or its private client binary missing, or no imported profile.
+Warnings never disable it. While the client runs the page
 shows the phase and a Cancel button; sign-in and the PIN prompt happen in the
 client window. Closing the window while the client runs asks whether to
 disconnect and quit or keep working. When the client exits with a non-zero
@@ -44,6 +45,13 @@ reason-code and Remmina warning lines from the redacted session log, the
 log's path, and a "Copy diagnostic log" button that places the whole
 redacted log on the clipboard; see SESSION LOGS in
 .BR eitaas (1).
+.PP
+The first run opens on the Readiness page. After a run whose checks all
+passed (warnings allowed), and while a default profile exists, later starts
+open directly on the Connect page; the checks still run on every start, in
+the background. If a check that passed before now fails, a dialog names it
+and, when dismissed, switches to the Readiness page. The recorded pass is a
+timestamp and summary hash only; see FILES.
 .PP
 When
 .I FILE.rdpw
@@ -67,6 +75,11 @@ The default profile name, as
 .I $XDG_STATE_HOME/eitaas-remmina/logs/
 Redacted per-connection session logs (directory mode 0700, files mode 0600,
 newest five kept).
+.TP
+.I $XDG_STATE_HOME/eitaas-gui/last-readiness-pass.json
+The last readiness pass (directory mode 0700, file mode 0600): an ISO-8601
+timestamp and a SHA-256 hash of the readiness summary, nothing else. It only
+selects the startup page; deleting it is harmless.
 .SH KEYBOARD
 .TP
 .B Ctrl+R

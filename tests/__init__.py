@@ -20,6 +20,7 @@ if "src" not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from eitaas import profiles, remmina  # noqa: E402
+from eitaas_gui import state as gui_state  # noqa: E402
 
 _SUITE_HOME = Path(tempfile.mkdtemp(prefix="eitaas-tests-"))
 for _variable, _name in (
@@ -35,6 +36,7 @@ def _private_locations() -> dict[str, Path]:
         "profile store": profiles.store_dir(),
         "profile config": profiles.config_path(),
         "session logs": remmina.session_log_dir(),
+        "gui state": gui_state.marker_path(),
     }
 
 

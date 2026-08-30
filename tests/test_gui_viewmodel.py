@@ -1,6 +1,9 @@
 import ast
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from eitaas.api import (
     ApplicationError,
@@ -10,7 +13,7 @@ from eitaas.api import (
     SmartcardReport,
     StoredProfileSummary,
 )
-from eitaas_gui import viewmodel
+from eitaas_gui import state, viewmodel
 
 
 def bundle(launcher=True, client=True):
@@ -102,12 +105,17 @@ class ReadinessRowTests(unittest.TestCase):
 
 
 class ConnectTests(unittest.TestCase):
-    def test_can_connect_requires_launcher_and_profile(self):
+    def test_can_connect_disabled_only_on_hard_failures(self):
         self.assertTrue(viewmodel.can_connect(report(), PROFILE))
         self.assertFalse(viewmodel.can_connect(report(), None))
         self.assertFalse(viewmodel.can_connect(None, PROFILE))
         self.assertFalse(viewmodel.can_connect(report(remmina=bundle(launcher=False)), PROFILE))
-        self.assertTrue(viewmodel.can_connect(report(remmina=bundle(client=False)), PROFILE))
+        self.assertFalse(viewmodel.can_connect(report(remmina=bundle(client=False)), PROFILE))
+        # Warnings (missing diagnostic tools) never disable Connect.
+        self.assertTrue(viewmodel.can_connect(report(tools={"pcsc_scan": False}), PROFILE))
+        # Nor do soft smart-card failures; the client prompts in its own window.
+        self.assertTrue(viewmodel.can_connect(
+            report(pcsc_socket=False, smartcard=smartcard(pcscd=False)), PROFILE))
 
     def test_description_names_profile_and_handoff(self):
         text = viewmodel.connect_description(PROFILE, "All required checks passed.")
@@ -165,3 +173,112 @@ class DiagnosticTextTests(unittest.TestCase):
         self.assertIn("status 1", text)
         self.assertIn("no smart-card diagnostic lines", text)
         self.assertNotIn("Diagnostic log:", text)
+
+
+class ReadinessMarkerTests(unittest.TestCase):
+    def test_hash_is_stable_and_state_sensitive(self):
+        rows = viewmodel.readiness_rows(report())
+        again = viewmodel.readiness_rows(report())
+        self.assertEqual(viewmodel.readiness_hash(rows), viewmodel.readiness_hash(again))
+        changed = viewmodel.readiness_rows(report(tools={"pcsc_scan": False}))
+        self.assertNotEqual(viewmodel.readiness_hash(rows), viewmodel.readiness_hash(changed))
+
+    def test_readiness_passed_allows_warnings_only(self):
+        self.assertTrue(viewmodel.readiness_passed(report(), viewmodel.readiness_rows(report())))
+        warn = report(tools={"pcsc_scan": False})
+        self.assertTrue(viewmodel.readiness_passed(warn, viewmodel.readiness_rows(warn)))
+        fail = report(remmina=bundle(False, False))
+        self.assertFalse(viewmodel.readiness_passed(fail, viewmodel.readiness_rows(fail)))
+        self.assertFalse(viewmodel.readiness_passed(None, viewmodel.readiness_rows(None)))
+
+    def test_marker_document_round_trips(self):
+        marker = viewmodel.ReadinessMarker("2026-08-30T12:00:00+00:00", "ab" * 32)
+        self.assertEqual(viewmodel.parse_marker(viewmodel.marker_document(marker)), marker)
+
+    def test_parse_marker_rejects_anything_unexpected(self):
+        for text in (
+            "",
+            "not json",
+            "[]",
+            '"a string"',
+            "{}",
+            '{"version": 99, "timestamp": "t", "doctor_hash": "%s"}' % ("ab" * 32),
+            '{"version": true, "timestamp": "t", "doctor_hash": "%s"}' % ("ab" * 32),
+            '{"version": 1, "timestamp": 5, "doctor_hash": "%s"}' % ("ab" * 32),
+            '{"version": 1, "timestamp": "t", "doctor_hash": ""}',
+            '{"version": 1, "timestamp": "t", "doctor_hash": "h"}',
+            '{"version": 1, "timestamp": "t", "doctor_hash": "%s"}' % ("AB" * 32),
+            '{"version": 1, "timestamp": "t", "doctor_hash": "%s"}' % ("ab" * 31),
+            '{"version": 1, "timestamp": "t"}',
+        ):
+            self.assertIsNone(viewmodel.parse_marker(text), text)
+
+    def test_startup_page_needs_marker_and_default_profile(self):
+        marker = viewmodel.ReadinessMarker("t", "h")
+        self.assertEqual(viewmodel.startup_page(marker, PROFILE), "connect")
+        self.assertEqual(viewmodel.startup_page(None, PROFILE), "readiness")
+        self.assertEqual(viewmodel.startup_page(marker, None), "readiness")
+        self.assertEqual(viewmodel.startup_page(None, None), "readiness")
+
+    def test_regression_requires_marker_report_and_hard_failure(self):
+        marker = viewmodel.ReadinessMarker("t", "h")
+        failing = report(pcsc_socket=False, smartcard=smartcard(pcscd=False))
+        fail_rows = viewmodel.readiness_rows(failing)
+        self.assertTrue(viewmodel.regression(marker, failing, fail_rows))
+        warning = report(tools={"pcsc_scan": False})
+        self.assertFalse(viewmodel.regression(marker, warning, viewmodel.readiness_rows(warning)))
+        self.assertFalse(viewmodel.regression(None, failing, fail_rows))
+        error_rows = viewmodel.readiness_rows(None, ApplicationError("doctor_failed", "boom"))
+        self.assertFalse(viewmodel.regression(marker, None, error_rows),
+                         "a doctor error is not a regression")
+
+    def test_regression_text_names_the_failing_checks(self):
+        failing = report(pcsc_socket=False, smartcard=smartcard(pcscd=False))
+        heading, body = viewmodel.regression_text(viewmodel.readiness_rows(failing))
+        self.assertEqual(heading, "Readiness has changed")
+        self.assertIn("Smart-card service", body)
+        self.assertIn("Readiness page", body)
+
+
+class MarkerStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.state_home = Path(tempfile.mkdtemp(prefix="eitaas-gui-state-"))
+        environment = patch.dict(os.environ, {"XDG_STATE_HOME": str(self.state_home)})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_record_pass_writes_private_marker(self):
+        marker = state.record_pass("a" * 64)
+        path = state.marker_path()
+        self.assertEqual(path, self.state_home / "eitaas-gui" / "last-readiness-pass.json")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(state.read_marker(), marker)
+        self.assertEqual(marker.doctor_hash, "a" * 64)
+
+    def test_record_pass_restores_mode_on_an_existing_file(self):
+        state.record_pass("a" * 64)
+        state.marker_path().chmod(0o644)
+        state.record_pass("b" * 64)
+        self.assertEqual(state.marker_path().stat().st_mode & 0o777, 0o600)
+
+    def test_read_marker_rejects_garbage_symlinks_and_oversize(self):
+        self.assertIsNone(state.read_marker(), "missing file reads as no pass")
+        directory = state.state_dir()
+        directory.mkdir(parents=True)
+        path = state.marker_path()
+        path.write_text("not json")
+        self.assertIsNone(state.read_marker())
+        path.unlink()
+        path.symlink_to(directory / "elsewhere")
+        self.assertIsNone(state.read_marker(), "symlinks are refused")
+        path.unlink()
+        path.write_text("{}" + " " * 5000)
+        self.assertIsNone(state.read_marker(), "oversized files are refused")
+
+    def test_clear_marker_is_idempotent(self):
+        state.clear_marker()
+        state.record_pass("b" * 64)
+        state.clear_marker()
+        self.assertIsNone(state.read_marker())
+        state.clear_marker()
