@@ -1,3 +1,4 @@
+import time
 import unittest
 
 from eitaas.redaction import redact
@@ -127,6 +128,27 @@ class RedactionTests(unittest.TestCase):
         for line, expected in cases.items():
             with self.subTest(line=line):
                 self.assertEqual(redact(line), expected)
+
+    def test_quoted_values_may_contain_escaped_quotes(self):
+        # A JSON escape must not end the value early and leave the tail of the
+        # secret behind in the log.
+        self.assertEqual(
+            redact(r'{"authBlob":"synthetic\"blob\"value"}'),
+            '{"authBlob":"<redacted>"}',
+        )
+        self.assertEqual(
+            redact(r'{"access_token":"a\\","code":"synthetic-code"}'),
+            '{"access_token":"<redacted>","code":"<redacted>"}',
+        )
+
+    def test_long_hyphenated_line_does_not_backtrack(self):
+        # The compound-key prefix has to stay linear. A [\w-]* run overlaps the
+        # separator that follows it, which costs 20 s+ on a 16 KiB "a-a-a-..."
+        # line; the bound here is generous so CI load cannot flake it.
+        line = "a-" * 32768
+        start = time.perf_counter()
+        self.assertEqual(redact(line), line)
+        self.assertLess(time.perf_counter() - start, 5.0)
 
     def test_redaction_is_idempotent(self):
         for line in (

@@ -16,8 +16,12 @@ SENSITIVE_KEYS = re.compile(rf"(?i)({_SENSITIVE})")
 # ("proxy_password", "login-hint") and camelCase/PascalCase compounds are both
 # accepted, so FreeRDP's ARM fields ("redirectedAuthBlob", "RedirectionGuid")
 # match too. The camel boundary is asserted case-sensitively with (?-i:...)
-# because the rules below are case-insensitive as a whole.
-_KEY_PREFIX = r"(?:[\w-]*(?:[_-]|(?-i:(?<=[a-z0-9])(?=[A-Z]))))?"
+# because the rules below are case-insensitive as a whole. The prefix run is
+# [^\W_]+ rather than [\w-]*: it cannot overlap the separator it is followed
+# by, which keeps matching linear (a [\w-]* run backtracks quadratically on a
+# long "a-a-a-..." line). Each separator restarts the match at a word boundary,
+# so multi-part keys such as "a-b-password" still redact.
+_KEY_PREFIX = r"(?:[^\W_]+(?:[_-]|(?-i:(?<=[a-z0-9])(?=[A-Z]))))?"
 JWT = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?\b")
 # Remmina prints "proxy_password: x"; the key may carry a word prefix.
 # An already redacted value is left alone so redact() is idempotent.
@@ -26,9 +30,11 @@ KEY_VALUE = re.compile(rf"(?i)\b({_KEY_PREFIX}(?:{_SENSITIVE}))\s*[:=]\s*(?!<red
 # key. FreeRDP's OAuth token-endpoint response is exactly this shape
 # ({"token_type":"Bearer","access_token":"..."}), and its refresh token is
 # opaque, not a JWT. "cookie" is only sensitive in this quoted form; the bare
-# "Set-Cookie:" header is handled by COOKIE_HEADER below.
+# "Set-Cookie:" header is handled by COOKIE_HEADER below. The value spans
+# JSON escapes, so an embedded \" does not end it early and leave a tail
+# of the secret behind.
 QUOTED_KEY_VALUE = re.compile(
-    rf'(?i)"({_KEY_PREFIX}(?:{_SENSITIVE}|cookie))"(\s*:\s*)"(?:<redacted>|[^"]*)"'
+    rf'(?i)"({_KEY_PREFIX}(?:{_SENSITIVE}|cookie))"(\s*:\s*)"(?:<redacted>|(?:[^"\\]|\\.)*)"'
 )
 # Set-Cookie/Cookie header values; the cookie name is kept, its value is not.
 COOKIE_HEADER = re.compile(
