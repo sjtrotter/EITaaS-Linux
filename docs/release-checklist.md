@@ -12,7 +12,8 @@ public test evidence.
 - Test GNOME Wayland/XWayland, KDE Wayland/XWayland, and an X11 session.
 - Exercise the bundled client under X11 and XWayland sessions that are claimed as supported.
 - Verify server certificate validation remains enabled.
-- Verify clipboard redirection follows the profile's `redirectclipboard` field.
+- Verify clipboard redirection follows the profile's `redirectclipboard` field
+  and that a profile without it gets Remmina's default (enabled) until #74 lands.
 - Install, upgrade, and remove both DEB and RPM packages.
 - Confirm the release tag exactly matches the version in `pyproject.toml`.
 - Run `scripts/check-version-consistency.py --tag vX.Y.Z` before creating the tag.

@@ -27,10 +27,32 @@ def make_prefix(case: unittest.TestCase, *, client: bool = True, sso_mib: bool |
 
 
 class RemminaBundleTests(unittest.TestCase):
-    def test_launcher_is_resolved_from_path_without_execution(self):
-        with patch("eitaas.remmina.shutil.which", return_value="/usr/bin/eitaas-remmina") as which:
-            self.assertEqual(remmina.find_launcher(), "/usr/bin/eitaas-remmina")
+    def test_launcher_prefers_packaged_path_then_search_path(self):
+        packaged = make_prefix(self) / "eitaas-remmina"
+        packaged.write_text("#!/bin/sh\n")
+        packaged.chmod(0o755)
+        with patch("eitaas.remmina.INSTALLED_LAUNCHER", packaged), patch(
+            "eitaas.remmina.shutil.which", return_value="/opt/bin/eitaas-remmina"
+        ) as which:
+            self.assertEqual(remmina.find_launcher(), str(packaged))
+            which.assert_not_called()
+        with patch("eitaas.remmina.INSTALLED_LAUNCHER", packaged.with_name("missing")), patch(
+            "eitaas.remmina.shutil.which", return_value="/opt/bin/eitaas-remmina"
+        ) as which:
+            self.assertEqual(remmina.find_launcher(), "/opt/bin/eitaas-remmina")
         which.assert_called_once_with("eitaas-remmina")
+
+    def test_launch_profile_requires_rdpw_suffix(self):
+        root = make_prefix(self)
+        for suffix, ok in ((".rdpw", True), (".RDPW", True), (".rdp", False)):
+            profile = root / f"desktop{suffix}"
+            profile.write_bytes(b"full address:s:synthetic.wvd.azure.us\n")
+            profile.chmod(0o600)
+            if ok:
+                self.assertEqual(remmina.validate_launch_profile(profile), profile)
+            else:
+                with self.assertRaisesRegex(ValueError, "rdpw"):
+                    remmina.validate_launch_profile(profile)
 
     def test_private_client_uses_first_existing_candidate(self):
         first = make_prefix(self) / "bin" / "remmina"

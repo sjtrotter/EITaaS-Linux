@@ -77,9 +77,33 @@ class LaunchTests(unittest.TestCase):
 
         result = Application().launch(ConnectionRequest(str(self.profile())), progress, cancel)
         self.assertTrue(result.ok)
-        self.assertTrue(result.value.cancelled)
+        self.assertEqual(result.value, ConnectionResult(130, cancelled=True))
         process.terminate.assert_called_once()
         process.kill.assert_not_called()
+
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
+    def test_child_that_exits_normally_during_cancel_keeps_its_status(self, find_launcher, popen):
+        process = Mock(poll=Mock(return_value=None), returncode=2)
+        process.wait.return_value = 2
+        popen.return_value = process
+        cancel = threading.Event()
+        cancel_when_started = lambda event: cancel.set() if event.phase == "starting" else None
+        result = Application().launch(ConnectionRequest(str(self.profile())), cancel_when_started, cancel)
+        self.assertEqual(result.value, ConnectionResult(2, cancelled=True))
+
+    @patch("eitaas.api.subprocess.Popen")
+    @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
+    def test_rdp_profile_is_rejected_before_launch(self, find_launcher, popen):
+        profile = self.profile()
+        rdp = profile.with_suffix(".rdp")
+        profile.rename(rdp)
+        self.addCleanup(rdp.unlink, missing_ok=True)
+        result = Application().launch(ConnectionRequest(str(rdp)))
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "launch_failed")
+        self.assertIn(".rdpw", result.error.message)
+        popen.assert_not_called()
 
     @patch("eitaas.api.subprocess.Popen")
     @patch("eitaas.api.remmina.find_launcher", return_value=LAUNCHER)
@@ -95,7 +119,7 @@ class LaunchTests(unittest.TestCase):
 
         result = Application().launch(ConnectionRequest(str(self.profile())), progress, cancel)
         self.assertTrue(result.ok)
-        self.assertTrue(result.value.cancelled)
+        self.assertEqual(result.value, ConnectionResult(130, cancelled=True))
         process.terminate.assert_called_once()
         process.kill.assert_called_once()
 

@@ -25,7 +25,7 @@ client, an isolated Remmina and FreeRDP pair installed under a private prefix.
 .PP
 .B eitaas connect
 validates the profile (regular file, owned by the caller, mode 0600, at most
-1 MiB, .rdp or .rdpw extension) and then runs
+1 MiB, .rdpw extension) and then runs
 .B eitaas-remmina FILE
 with no other arguments, no shell, and no inherited standard streams. It does
 not construct RDP or authentication arguments; all connection policy is
@@ -41,8 +41,9 @@ Clipboard redirection has no switch in
 .BR eitaas .
 The bundled client follows the profile's
 .B redirectclipboard
-field through Remmina's RDPW importer; that field is not forwarded to FreeRDP's
-native profile parser.
+field through Remmina's RDPW importer; a profile that omits the field gets
+Remmina's default, which is clipboard enabled (a default-off policy is tracked
+in issue #74). The field is not forwarded to FreeRDP's native profile parser.
 .PP
 Never publish real RDP/RDPW files or authentication callback URLs. See the
 installed SECURITY.md documentation for reporting guidance.

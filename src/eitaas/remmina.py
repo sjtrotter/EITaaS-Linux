@@ -8,11 +8,15 @@ the launcher and reports what the installed bundle contains.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
+from .profile import ProfileError, validate_profile
+
 LAUNCHER = "eitaas-remmina"
+INSTALLED_LAUNCHER = Path("/usr/bin/eitaas-remmina")
 PRIVATE_CLIENTS = (
     Path("/usr/libexec/eitaas-remmina/bin/remmina"),
     Path("/usr/lib/eitaas-remmina/bin/remmina"),
@@ -25,8 +29,18 @@ _MAX_LIBRARY_SCAN = 64 * 1024 * 1024
 
 
 def find_launcher() -> str | None:
-    """Return the launcher path from PATH without executing it."""
+    """Return the packaged launcher, else the first on PATH, without executing it."""
+    if os.access(INSTALLED_LAUNCHER, os.X_OK) and INSTALLED_LAUNCHER.is_file():
+        return str(INSTALLED_LAUNCHER)
     return shutil.which(LAUNCHER)
+
+
+def validate_launch_profile(path_value: str | os.PathLike[str]) -> Path:
+    """Apply the Python profile checks plus the launcher's ``.rdpw`` rule."""
+    path = validate_profile(path_value)
+    if path.suffix.lower() != ".rdpw":
+        raise ProfileError("eitaas-remmina accepts only .rdpw profiles")
+    return path
 
 
 def private_client() -> Path | None:
@@ -55,8 +69,10 @@ def pinned_versions(manifest: Path | None = None) -> dict[str, str]:
 def sso_mib_builtin(client: Path | None) -> bool | None:
     """Report whether the bundle's FreeRDP client library links SSO-MIB.
 
-    The linkage is read from the library's dynamic string table (no process is
-    executed). Returns None when no library is available to inspect.
+    This reflects build-time linkage only, not whether an identity broker is
+    running (see ``identity_broker_available``). The linkage is read from the
+    library's dynamic string table (no process is executed). Returns None when
+    no library is available to inspect.
     """
     if client is None:
         return None

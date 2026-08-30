@@ -31,10 +31,12 @@ web client.
 - Real `.rdp` and `.rdpw` profiles, OAuth callbacks, keys, certificates, packet
   captures, and local agent state are excluded from Git.
 - Connection profiles should be owned by the current user and mode `0600`.
-- Clipboard policy is not a Python switch. The bundled client follows the
-  profile's `redirectclipboard` field through Remmina's RDPW importer; the
-  field is not among the keys forwarded to FreeRDP's native profile parser
-  (allowlist in `packaging/remmina/0006-*.patch`).
+- Clipboard redirection is not a Python switch. The bundled client follows the
+  profile's `redirectclipboard` field through Remmina's RDPW importer; a
+  profile that omits the field gets Remmina's default, which is clipboard
+  **enabled**. The field is not among the keys forwarded to FreeRDP's native
+  profile parser (allowlist in `packaging/remmina/0006-*.patch`). A
+  default-off policy is tracked in issue #74.
 
 On a shared computer, another process running as the same Linux account may be
 able to access an inserted smart card. Polkit cannot isolate mutually

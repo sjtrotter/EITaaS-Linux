@@ -20,7 +20,7 @@ from typing import Callable, Generic, TypeVar
 
 from . import certificates, doctor, remmina, smartcard
 from . import __version__
-from .profile import inspect_profile, validate_profile
+from .profile import inspect_profile
 from .redaction import redact
 
 T = TypeVar("T")
@@ -325,7 +325,7 @@ class Application:
         cancelled = cancel or threading.Event()
         try:
             progress(ProgressEvent("validating", "Validating connection profile"))
-            profile = validate_profile(request.profile)
+            profile = remmina.validate_launch_profile(request.profile)
             launcher = remmina.find_launcher()
             if launcher is None:
                 raise RuntimeError(f"{remmina.LAUNCHER} launcher is not installed")
@@ -347,7 +347,8 @@ class Application:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
-                    return Result(ConnectionResult(process.returncode or 130, cancelled=True))
+                    code = process.returncode
+                    return Result(ConnectionResult(130 if code < 0 else code, cancelled=True))
             return Result(ConnectionResult(process.returncode or 0))
         except Exception as error:
             return self._error("launch_failed", error, "Run eitaas doctor and correct failed checks.")

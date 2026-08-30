@@ -22,7 +22,8 @@ modules directly, parse CLI output, or construct client arguments.
 `Application.launch(request, on_progress=None, cancel=None)` takes a
 `ConnectionRequest(profile)` and returns `Result[ConnectionResult]`
 (`exit_code`, `cancelled`). It validates the profile with
-`profile.validate_profile`, resolves `eitaas-remmina` on `PATH`, and runs
+`profile.validate_profile` plus the launcher's `.rdpw`-only rule, resolves
+`eitaas-remmina` (`/usr/bin/eitaas-remmina`, then `PATH`), and runs
 exactly `[launcher, profile]` with no shell, no environment changes, and all
 standard streams on `DEVNULL`. Progress phases are `validating`, `starting`
 (cancellable), and `cancelling`. The stable error code is `launch_failed`.
