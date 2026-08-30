@@ -104,10 +104,18 @@ GTK 4/Libadwaita window with three pages:
 - **Readiness** shows the `eitaas doctor` result as plain-language rows
   (bundled client, desktop session, smart-card service, reader, card
   middleware, identity broker, diagnostic tools) with a Re-check button.
-- **Profile** lists the export steps, imports a downloaded `.rdpw` through the
-  file chooser (the same move-and-restrict as `eitaas profile import`), and
-  lists imported profiles with a selector for the one Connect uses and a
-  Remove action.
+- **Profile** walks through the export in six numbered steps: pick the web
+  client for your cloud (Azure US Government by default, or Azure commercial)
+  and press "Open web client" to open it in your browser; sign in with your
+  organization account (the browser may ask for your smart card (PIV)
+  certificate and PIN); click the settings cog in the top right; choose
+  "Download the rdp file"; click your desktop, which saves a file such as
+  `Desktop.rdpw` to Downloads; then press "I downloaded the RDP file" and pick
+  it. The import is the same move-and-restrict as `eitaas profile import`. A
+  "Why do I need this file?" expander explains that the `.rdpw` is a signed,
+  password-free description of your workspace and why it is moved out of
+  Downloads. Imported profiles are listed with a selector for the one Connect
+  uses and a Remove action.
 - **Connect** starts `eitaas-remmina` with the selected profile, shows the
   phase with a Cancel button while the client runs, and shows redacted errors
   in place.

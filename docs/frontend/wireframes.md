@@ -43,14 +43,19 @@ copy button (⧉). Re-check is disabled while `doctor` runs.
 │   [ Readiness ] [ Profile ] [ Connect ]                  │
 ├──────────────────────────────────────────────────────────┤
 │ Get your desktop profile                                 │
-│ 1. Sign in to the Azure Virtual Desktop web client your  │
-│    organization provided.                                │
-│ 2. Open the desktop you are assigned and choose to       │
-│    download or export its RDP file (.rdpw).              │
-│ 3. Return here and press the button below to import it.  │
-│    EITaaS Connect moves the file out of Downloads so it  │
-│    is not left readable by other accounts.               │
-│ Export instructions (project documentation)              │
+│ Web client                    [ Azure US Government ▾ ]  │
+│ Step 1  Open the Azure Virtual   [ Open web client ]     │
+│         Desktop web client.                              │
+│ Step 2  Sign in with your organization account in the    │
+│         browser (it may ask for your smart card (PIV)    │
+│         certificate and PIN).                            │
+│ Step 3  Click the settings cog in the top right corner.  │
+│ Step 4  Choose "Download the rdp file".                  │
+│ Step 5  Click your desktop. Desktop.rdpw is saved to     │
+│         your Downloads folder.                           │
+│ Step 6  Come back here, press "I downloaded the RDP      │
+│         file", and pick that file.                       │
+│ ▸ Why do I need this file?                               │
 │ ( I downloaded the RDP file )                            │
 │                                                          │
 │ Imported profiles                                        │

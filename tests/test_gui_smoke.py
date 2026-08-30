@@ -162,9 +162,19 @@ class HelperWindowSmokeTests(unittest.TestCase):
         self.assertIn("Desktop.rdpw", self.window.import_banner.get_title())
         self.assertTrue(source.exists(), "no auto-import on open")
 
+    def test_open_web_client_launches_selected_cloud_url(self):
+        launched = []
+        with patch.object(Gtk.UriLauncher, "launch", lambda launcher, *args: launched.append(launcher.get_uri())):
+            self.window.open_web_client()
+            self.window.cloud_row.set_selected(self.window.cloud_keys.index("azure_commercial"))
+            self.window.open_web_client()
+        self.assertEqual(launched, ["https://rdweb.wvd.azure.us/arm/webclient",
+                                    "https://client.wvd.microsoft.com/arm/webclient"])
+        self.assertEqual(len(self.window.step_rows), 6)
+
     def test_interactive_widgets_have_accessible_labels(self):
         widgets = [self.window.recheck, self.window.import_button, self.window.connect_button,
-                   self.window.cancel_button]
+                   self.window.cancel_button, self.window.open_client]
         for widget in widgets:
             label = Gtk.Accessible.get_accessible_role(widget)
             self.assertIsNotNone(label)

@@ -34,7 +34,6 @@ from .widgets import ProfileRowWidget, StatusRowWidget, accessible  # noqa: E402
 
 _ = gettext.gettext
 APP_ID = "org.eitaas.Helper"
-EXPORT_HELP_URL = "https://github.com/sjtrotter/EITaaS-Linux#current-workflow"
 
 
 def _on_main(callback: Callable[..., object], *args: object) -> None:
@@ -117,12 +116,34 @@ class HelperWindow(Adw.ApplicationWindow):
         self.import_banner.connect("button-clicked", lambda _banner: self._import_pending())
         accessible(self.import_banner, _("Profile opened from the file manager"))
         page.add(self._banner_group(self.import_banner))
-        steps = "\n".join(f"{index}. {text}" for index, text in enumerate(viewmodel.EXPORT_STEPS, 1))
-        export = Adw.PreferencesGroup(title=_("Get your desktop profile"), description=steps)
-        link = Gtk.LinkButton.new_with_label(EXPORT_HELP_URL, _("Export instructions (project documentation)"))
-        link.set_halign(Gtk.Align.START)
-        accessible(link, _("Open the export instructions in a browser"))
-        export.add(link)
+        export = Adw.PreferencesGroup(
+            title=_("Get your desktop profile"),
+            description=_("Follow these steps once; the file is then kept for you below."),
+        )
+        self.cloud_row = Adw.ComboRow(title=_("Web client"), subtitle=_("Which cloud your organization uses"))
+        self.cloud_keys = list(viewmodel.WEB_CLIENTS)
+        self.cloud_row.set_model(Gtk.StringList.new([viewmodel.cloud_label(key) for key in self.cloud_keys]))
+        self.cloud_row.set_selected(self.cloud_keys.index(viewmodel.DEFAULT_WEB_CLIENT))
+        accessible(self.cloud_row, _("Web client cloud"))
+        export.add(self.cloud_row)
+        self.step_rows: list[Adw.ActionRow] = []
+        for index, text in enumerate(viewmodel.EXPORT_STEPS, 1):
+            row = Adw.ActionRow(title=_("Step {number}").format(number=index), subtitle=text)
+            accessible(row, _("Step {number} of {total}").format(number=index, total=len(viewmodel.EXPORT_STEPS)), text)
+            self.step_rows.append(row)
+            export.add(row)
+        self.open_client = Gtk.Button.new_with_label(_("Open web client"))
+        self.open_client.set_valign(Gtk.Align.CENTER)
+        self.open_client.add_css_class("suggested-action")
+        accessible(self.open_client, _("Open the Azure Virtual Desktop web client in your browser"))
+        self.open_client.connect("clicked", lambda _button: self.open_web_client())
+        self.step_rows[0].add_suffix(self.open_client)
+        self.step_rows[0].set_activatable_widget(self.open_client)
+        why = Adw.ExpanderRow(title=_("Why do I need this file?"))
+        why_text = Gtk.Label(label=viewmodel.WHY_PROFILE, wrap=True, xalign=0, margin_top=8,
+                             margin_bottom=8, margin_start=12, margin_end=12)
+        why.add_row(why_text)
+        export.add(why)
         self.import_button = Gtk.Button.new_with_label(_("I downloaded the RDP file"))
         self.import_button.add_css_class("suggested-action")
         self.import_button.add_css_class("pill")
@@ -282,6 +303,20 @@ class HelperWindow(Adw.ApplicationWindow):
         if downloads:
             dialog.set_initial_folder(Gio.File.new_for_path(downloads))
         dialog.open(self, None, self._file_chosen)
+
+    def selected_cloud(self) -> str:
+        return self.cloud_keys[self.cloud_row.get_selected()]
+
+    def open_web_client(self) -> None:
+        """Open one of the two public AVD web clients in the default browser."""
+        url = viewmodel.web_client_url(self.selected_cloud())
+        Gtk.UriLauncher(uri=url).launch(self, None, self._web_client_opened)
+
+    def _web_client_opened(self, launcher: Gtk.UriLauncher, result: Gio.AsyncResult) -> None:
+        try:
+            launcher.launch_finish(result)
+        except GLib.Error as error:
+            self.toast(_("Could not open the browser: {reason}").format(reason=error.message))
 
     def _file_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
         try:

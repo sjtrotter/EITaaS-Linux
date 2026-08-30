@@ -135,6 +135,15 @@ class ConnectTests(unittest.TestCase):
         self.assertIn("Run eitaas doctor", body)
         self.assertEqual(viewmodel.error_text(ApplicationError("other", "x"))[0], "Something went wrong")
 
+    def test_web_client_urls_are_the_two_public_clients_only(self):
+        self.assertEqual(viewmodel.web_client_url("azure_government"), "https://rdweb.wvd.azure.us/arm/webclient")
+        self.assertEqual(viewmodel.web_client_url("azure_commercial"), "https://client.wvd.microsoft.com/arm/webclient")
+        self.assertEqual(viewmodel.DEFAULT_WEB_CLIENT, "azure_government")
+        with self.assertRaises(KeyError):
+            viewmodel.web_client_url("https://evil.example")
+        self.assertEqual(len(viewmodel.EXPORT_STEPS), 6)
+        self.assertTrue(all("CAC" not in text for text in (*viewmodel.EXPORT_STEPS, viewmodel.WHY_PROFILE)))
+
     def test_exit_text(self):
         self.assertIsNone(viewmodel.exit_text(0, False))
         self.assertEqual(viewmodel.exit_text(130, True), "Connection cancelled.")

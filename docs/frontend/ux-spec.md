@@ -41,9 +41,17 @@ certificate view.
 
 ## Profile import
 
-The Profile page shows three numbered export steps and a link to the README's
-"Current workflow" section. **I downloaded the RDP file** opens
-`Gtk.FileDialog` filtered to `*.rdpw`, starting in the Downloads directory.
+The Profile page shows a **Web client** chooser (Azure US Government by
+default, or Azure commercial; these two public web-client URLs are the only
+ones the helper opens, via `Gtk.UriLauncher`) and six numbered steps as list
+rows: open the web client (button on step 1), sign in with the organization
+account (the browser may ask for the smart card (PIV) certificate and PIN),
+click the settings cog, choose "Download the rdp file", click the desktop
+(saves e.g. `Desktop.rdpw` to Downloads), then press **I downloaded the RDP
+file**, which opens `Gtk.FileDialog` filtered to `*.rdpw`, starting in the
+Downloads directory. A "Why do I need this file?" expander explains that the
+`.rdpw` is a signed, password-free description of the workspace, is personal,
+and is moved out of Downloads so other users cannot read it.
 
 Import calls `Application.import_profile`, which *moves* the chosen file
 (rename, or copy + fsync + unlink across filesystems; symlinks and files owned

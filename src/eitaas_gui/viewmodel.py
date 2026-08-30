@@ -34,13 +34,27 @@ TOOL_PACKAGES = {
     "openssl": "openssl",
     "certutil": "nss-tools (Fedora) / libnss3-tools (Debian)",
 }
+# The only two public AVD web clients; the helper never opens other URLs.
+WEB_CLIENTS = {
+    "azure_government": "https://rdweb.wvd.azure.us/arm/webclient",
+    "azure_commercial": "https://client.wvd.microsoft.com/arm/webclient",
+}
+DEFAULT_WEB_CLIENT = "azure_government"
 EXPORT_STEPS = (
-    _("Sign in to the Azure Virtual Desktop web client your organization provided."),
-    _("Open the desktop you are assigned and choose to download or export its RDP file. "
-      "The file ends in .rdpw."),
-    _("Return here and press the button below to import it. EITaaS Connect moves the file "
-      "out of Downloads so it is not left readable by other accounts, and restricts it "
-      "to your user."),
+    _("Open the Azure Virtual Desktop web client (button on the right)."),
+    _("Sign in with your organization account in the browser. The browser may ask for your "
+      "smart card (PIV) certificate and PIN."),
+    _("Click the settings cog in the top right corner."),
+    _("Choose \u201cDownload the rdp file\u201d."),
+    _("Click your desktop (for example \u201cDesktop\u201d). A file named like Desktop.rdpw "
+      "is saved to your Downloads folder."),
+    _("Come back here, press \u201cI downloaded the RDP file\u201d, and pick that file."),
+)
+WHY_PROFILE = _(
+    "The .rdpw file is a signed description of your workspace that the remote desktop client "
+    "uses to reach the Azure Virtual Desktop gateway. It contains no password, but treat it as "
+    "personal: EITaaS Connect moves it out of Downloads into a private folder so it is not left "
+    "readable by other users of this computer."
 )
 CLOUD_LABELS = {
     "azure_government": _("Azure US Government"),
@@ -283,6 +297,11 @@ def readiness_summary(report: DoctorReport | None, rows: list[StatusRow]) -> str
 
 def cloud_label(cloud: str) -> str:
     return CLOUD_LABELS.get(cloud, cloud)
+
+
+def web_client_url(cloud: str) -> str:
+    """Only the two public web clients can be opened; anything else is refused."""
+    return WEB_CLIENTS[cloud]
 
 
 def profile_subtitle(profile: StoredProfileSummary) -> str:
