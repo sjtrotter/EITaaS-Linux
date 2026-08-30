@@ -1,17 +1,42 @@
-From 2c2442d7b9b53a856b3b9c1c3f42c25f59d2617f Mon Sep 17 00:00:00 2001
+From 786bd7ba648cc7e1428dbd011903620a3306f2e2 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 09:00:56 -0500
-Subject: [PATCH 8/8] RDP: make certificate loading asynchronous
+Subject: [PATCH] RDP: make certificate loading asynchronous
 
+Loading a PKCS #11 certificate with g_tls_certificate_new_from_pkcs11_uris()
+talks to the smart card and can block for a long time when the reader or
+token stalls. Run it in a GTask thread behind a modal progress dialog with
+the same bounded timeout as discovery, so the GTK main thread stays
+responsive and the user can cancel.
+
+Both cancellation and timeout are terminal: the user sees a clear error
+when the load timed out or failed, the challenge is cancelled exactly once
+by the caller, and the load state is marked abandoned so the completion
+callback only releases its own allocation and never touches the destroyed
+dialog, the toplevel, or the request. The loader thread itself cannot be
+interrupted because the GLib API has no cancellable; a timed-out thread
+finishes on its own and is then discarded.
+
+Certificate-PIN prompts are now bound to a certificate transaction that
+records the accepted challenge host and the selected certificate, expires
+after two minutes, and accepts a second PIN only for a WebKit retry. The
+transaction state is re-read after the PIN dialog's nested main loop so a
+challenge that replaced it meanwhile cannot leave a dangling pointer.
+
+The toplevel reference taken by the handler covers the new nested loop as
+well, and a window destroyed while the certificate was loading cancels the
+challenge instead of reusing the window.
+
+Generated with AI assistance (Claude); reviewed and tested by the author.
 ---
- plugins/rdp/rdp_web_auth_pkcs11.c | 188 +++++++++++++++++++++++++++---
- 1 file changed, 173 insertions(+), 15 deletions(-)
+ plugins/rdp/rdp_web_auth_pkcs11.c | 200 ++++++++++++++++++++++++++++--
+ 1 file changed, 187 insertions(+), 13 deletions(-)
 
 diff --git a/plugins/rdp/rdp_web_auth_pkcs11.c b/plugins/rdp/rdp_web_auth_pkcs11.c
-index dda8328a6..5d4590243 100644
+index 5d4c23dab..76bf9b93c 100644
 --- a/plugins/rdp/rdp_web_auth_pkcs11.c
 +++ b/plugins/rdp/rdp_web_auth_pkcs11.c
-@@ -34,8 +34,159 @@ typedef struct {
+@@ -35,6 +35,28 @@ typedef struct {
  	gboolean timed_out;
  } RemminaCertificateDiscovery;
  
@@ -27,6 +52,7 @@ index dda8328a6..5d4590243 100644
 +	guint timeout_source;
 +	gboolean abandoned;
 +	gboolean completed;
++	gboolean timed_out;
 +} RemminaCertificateLoad;
 +
 +typedef struct {
@@ -36,6 +62,11 @@ index dda8328a6..5d4590243 100644
 +	gboolean pin_submitted;
 +} RemminaCertificateAuthState;
 +
+ typedef struct {
+ 	GtkWindow *held;
+ 	GtkWindow *window;
+@@ -43,6 +65,21 @@ typedef struct {
+ 
  static gint discovery_active = 0;
  
 +static void certificate_auth_state_free(gpointer data)
@@ -53,6 +84,13 @@ index dda8328a6..5d4590243 100644
 +	g_object_set_data(G_OBJECT(web_view), "rdp-certificate-transaction", NULL);
 +}
 +
+ static void auth_toplevel_destroyed(GtkWidget *widget, gpointer user_data)
+ {
+ 	(void)widget;
+@@ -81,6 +118,135 @@ static void show_error(RemminaAuthToplevel *toplevel, const gchar *message)
+ 	gtk_widget_destroy(dialog);
+ }
+ 
 +static void certificate_load_input_free(gpointer data)
 +{
 +	RemminaCertificateLoadInput *input = data;
@@ -78,6 +116,7 @@ index dda8328a6..5d4590243 100644
 +{
 +	RemminaCertificateLoad *load = user_data;
 +	load->timeout_source = 0;
++	load->timed_out = TRUE;
 +	if (load->dialog)
 +		gtk_dialog_response(GTK_DIALOG(load->dialog), GTK_RESPONSE_REJECT);
 +	return G_SOURCE_REMOVE;
@@ -101,6 +140,11 @@ index dda8328a6..5d4590243 100644
 +		                        "The selected smart-card certificate could not be loaded");
 +}
 +
++/*
++ * Runs on the GTK thread once the loader thread finishes. When the dialog was
++ * abandoned (cancelled or timed out) the load owns nothing but itself, so it
++ * is released here without touching the dialog, the toplevel, or the request.
++ */
 +static void certificate_load_done(GObject *source, GAsyncResult *result, gpointer user_data)
 +{
 +	(void)source;
@@ -110,22 +154,27 @@ index dda8328a6..5d4590243 100644
 +	load->completed = TRUE;
 +	if (error)
 +		load->error_message = g_strdup(error->message);
++	g_clear_error(&error);
 +	if (load->abandoned) {
-+		g_clear_error(&error);
 +		certificate_load_free(load);
 +		return;
 +	}
 +	gtk_dialog_response(GTK_DIALOG(load->dialog),
-+	                    error ? GTK_RESPONSE_REJECT : GTK_RESPONSE_ACCEPT);
-+	g_clear_error(&error);
++	                    load->certificate ? GTK_RESPONSE_ACCEPT : GTK_RESPONSE_REJECT);
 +}
 +
-+static GTlsCertificate *load_certificate_async(GtkWindow *parent,
++/*
++ * Load the selected certificate away from the GTK thread while a cancellable
++ * progress dialog runs. Returns a new reference or NULL; every NULL return
++ * has already shown its error (unless the user cancelled) and leaves exactly
++ * one challenge cancellation to the caller.
++ */
++static GTlsCertificate *load_certificate_async(RemminaAuthToplevel *toplevel,
 +	                                           const RemminaPkcs11Certificate *choice)
 +{
 +	RemminaCertificateLoad *load = g_new0(RemminaCertificateLoad, 1);
 +	load->dialog = gtk_dialog_new_with_buttons(
-+		"Loading smart-card certificate", parent, GTK_DIALOG_MODAL,
++		"Loading smart-card certificate", toplevel->window, GTK_DIALOG_MODAL,
 +		"Cancel", GTK_RESPONSE_CANCEL, NULL);
 +	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 +	GtkWidget *spinner = gtk_spinner_new();
@@ -150,17 +199,20 @@ index dda8328a6..5d4590243 100644
 +	gint response = gtk_dialog_run(GTK_DIALOG(load->dialog));
 +	gtk_widget_destroy(load->dialog);
 +	load->dialog = NULL;
-+	if (response != GTK_RESPONSE_ACCEPT || !load->certificate) {
-+		if (load->completed && load->error_message) {
-+			GtkWidget *error_dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL,
-+				GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", load->error_message);
-+			gtk_dialog_run(GTK_DIALOG(error_dialog));
-+			gtk_widget_destroy(error_dialog);
-+		}
-+		if (load->completed)
++	if (response != GTK_RESPONSE_ACCEPT || !load->certificate || !toplevel->window) {
++		/*
++		 * Mark the load abandoned before running another nested loop: the
++		 * completion callback may fire inside show_error() and must then
++		 * only free the load instead of responding to the destroyed dialog.
++		 */
++		gboolean abandoned = !load->completed;
++		load->abandoned = abandoned;
++		const gchar *message = load->timed_out
++				       ? "Loading the smart-card certificate timed out" : load->error_message;
++		if (message && toplevel->window)
++			show_error(toplevel, message);
++		if (!abandoned)
 +			certificate_load_free(load);
-+		else
-+			load->abandoned = TRUE;
 +		return NULL;
 +	}
 +	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
@@ -171,38 +223,35 @@ index dda8328a6..5d4590243 100644
  static void certificate_free(gpointer data)
  {
  	RemminaPkcs11Certificate *cert = data;
-@@ -323,6 +474,7 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
- 	GtkWindow *parent = GTK_WINDOW(parent_data);
- 	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
+@@ -385,6 +551,7 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+ 	RemminaAuthToplevel toplevel = { 0 };
+ 	auth_toplevel_hold(&toplevel, parent_data);
  	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED) {
 +		certificate_auth_state_clear(web_view);
  		const gchar *request_host = trusted_request_host(web_view, request);
  		if (!request_host) {
  			webkit_authentication_request_cancel(request);
-@@ -357,21 +509,22 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
- 		gint selected = gtk_combo_box_get_active(GTK_COMBO_BOX(combo));
+@@ -424,21 +591,22 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+ 			response = GTK_RESPONSE_CANCEL;
  		if (response == GTK_RESPONSE_ACCEPT && selected >= 0 && (guint)selected < certs->len) {
  			RemminaPkcs11Certificate *choice = g_ptr_array_index(certs, selected);
 -			GError *error = NULL;
 -			GTlsCertificate *certificate = g_tls_certificate_new_from_pkcs11_uris(
 -			    choice->certificate_uri, choice->private_key_uri, &error);
--			if (certificate) {
--				WebKitCredential *credential = webkit_credential_new_for_certificate(
++			GTlsCertificate *certificate = load_certificate_async(&toplevel, choice);
+ 			if (certificate) {
++				RemminaCertificateAuthState *state = g_new0(RemminaCertificateAuthState, 1);
++				state->host = g_strdup(request_host);
++				state->certificate_uri = g_strdup(choice->certificate_uri);
++				state->expires_at = g_get_monotonic_time() + (2 * G_TIME_SPAN_MINUTE);
++				g_object_set_data_full(G_OBJECT(web_view), "rdp-certificate-transaction",
++				                       state, certificate_auth_state_free);
+ 				WebKitCredential *credential = webkit_credential_new_for_certificate(
 -				    certificate, WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
 -				g_object_set_data_full(G_OBJECT(web_view), "rdp-certificate-host",
 -				                       g_strdup(request_host), g_free);
--				webkit_authentication_request_authenticate(request, credential);
-+			GTlsCertificate *certificate = load_certificate_async(parent, choice);
-+				if (certificate) {
-+					RemminaCertificateAuthState *state = g_new0(RemminaCertificateAuthState, 1);
-+					state->host = g_strdup(request_host);
-+					state->certificate_uri = g_strdup(choice->certificate_uri);
-+					state->expires_at = g_get_monotonic_time() + (2 * G_TIME_SPAN_MINUTE);
-+					g_object_set_data_full(G_OBJECT(web_view), "rdp-certificate-transaction",
-+					                       state, certificate_auth_state_free);
-+					WebKitCredential *credential = webkit_credential_new_for_certificate(
-+					    certificate, WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
-+					webkit_authentication_request_authenticate(request, credential);
++					certificate, WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
+ 				webkit_authentication_request_authenticate(request, credential);
  				webkit_credential_free(credential);
  				g_object_unref(certificate);
  			} else {
@@ -212,39 +261,46 @@ index dda8328a6..5d4590243 100644
  		} else {
  			webkit_authentication_request_cancel(request);
  		}
-@@ -381,10 +534,14 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
- 	}
- 	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED) {
- 		const gchar *request_host = trusted_request_host(web_view, request);
--		const gchar *certificate_host = g_object_get_data(G_OBJECT(web_view),
--		                                                   "rdp-certificate-host");
--		if (!request_host || !certificate_host ||
--		    g_ascii_strcasecmp(request_host, certificate_host) != 0) {
-+		RemminaCertificateAuthState *state = g_object_get_data(
-+			G_OBJECT(web_view), "rdp-certificate-transaction");
-+		gboolean retrying = webkit_authentication_request_is_retry(request);
-+		if (!request_host || !state || !state->certificate_uri ||
-+		    g_get_monotonic_time() >= state->expires_at ||
-+		    g_ascii_strcasecmp(request_host, state->host) != 0 ||
-+		    (state->pin_submitted && !retrying)) {
-+			certificate_auth_state_clear(web_view);
- 			webkit_authentication_request_cancel(request);
- 			return TRUE;
- 		}
-@@ -404,11 +561,12 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
- 			    gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
- 			webkit_authentication_request_authenticate(request, credential);
- 			webkit_credential_free(credential);
-+			state->pin_submitted = TRUE;
- 		} else {
- 			webkit_authentication_request_cancel(request);
-+			certificate_auth_state_clear(web_view);
- 		}
- 		gtk_entry_set_text(GTK_ENTRY(entry), "");
--		g_object_set_data(G_OBJECT(web_view), "rdp-certificate-host", NULL);
- 		gtk_widget_destroy(dialog);
+@@ -448,10 +616,14 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
  		return TRUE;
  	}
+ 	const gchar *request_host = trusted_request_host(web_view, request);
+-	const gchar *certificate_host = g_object_get_data(G_OBJECT(web_view),
+-	                                                   "rdp-certificate-host");
+-	if (!request_host || !certificate_host ||
+-	    g_ascii_strcasecmp(request_host, certificate_host) != 0) {
++	RemminaCertificateAuthState *state = g_object_get_data(
++		G_OBJECT(web_view), "rdp-certificate-transaction");
++	gboolean retrying = webkit_authentication_request_is_retry(request);
++	if (!request_host || !state || !state->certificate_uri ||
++	    g_get_monotonic_time() >= state->expires_at ||
++	    g_ascii_strcasecmp(request_host, state->host) != 0 ||
++	    (state->pin_submitted && !retrying)) {
++		certificate_auth_state_clear(web_view);
+ 		webkit_authentication_request_cancel(request);
+ 		auth_toplevel_release(&toplevel);
+ 		return TRUE;
+@@ -467,16 +639,18 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+ 	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
+ 	gtk_widget_show_all(dialog);
+ 	gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+-	if (response == GTK_RESPONSE_ACCEPT && toplevel.window) {
++	state = g_object_get_data(G_OBJECT(web_view), "rdp-certificate-transaction");
++	if (response == GTK_RESPONSE_ACCEPT && toplevel.window && state) {
+ 		WebKitCredential *credential = webkit_credential_new_for_certificate_pin(
+ 			gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
+ 		webkit_authentication_request_authenticate(request, credential);
+ 		webkit_credential_free(credential);
++		state->pin_submitted = TRUE;
+ 	} else {
+ 		webkit_authentication_request_cancel(request);
++		certificate_auth_state_clear(web_view);
+ 	}
+ 	gtk_entry_set_text(GTK_ENTRY(entry), "");
+-	g_object_set_data(G_OBJECT(web_view), "rdp-certificate-host", NULL);
+ 	gtk_widget_destroy(dialog);
+ 	auth_toplevel_release(&toplevel);
+ 	return TRUE;
 -- 
 2.55.0
 
