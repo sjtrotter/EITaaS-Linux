@@ -43,3 +43,17 @@ The launcher uses an isolated configuration directory below
 `$XDG_STATE_HOME/eitaas-remmina` (or `~/.local/state/eitaas-remmina`) so user
 plugins and settings from the distribution Remmina installation are not mixed
 with the prototype.
+
+## Licensing and corresponding source
+
+This is a composite binary package, not a relicensing of Remmina or FreeRDP.
+Remmina and the EITaaS CAC integration compiled into its RDP plugin are
+GPL-2.0-or-later; the Remmina OpenSSL exception is shipped with the package.
+FreeRDP is Apache-2.0, and the standalone EITaaS launcher is MIT. See
+`THIRD_PARTY_NOTICES.md` for the component map and exact pinned sources.
+
+The source RPM is the corresponding, buildable source distribution for this
+prototype. It contains both pinned upstream archives, all downstream patches,
+the CAC integration sources, launcher, license texts, notice manifest, and the
+RPM spec. Rebuilding still downloads normal Fedora build dependencies; it does
+not fetch either application source tree.

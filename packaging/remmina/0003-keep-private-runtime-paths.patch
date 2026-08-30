@@ -1,5 +1,7 @@
 From: EITaaS-Linux contributors <noreply@example.invalid>
 Subject: [PATCH] Keep isolated runtime paths relocatable
+License: GPL-2.0-or-later
+Copyright: 2026 Stephen Trotter
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt

@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.6%{?dist}
+Release:        0.7%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -13,6 +13,8 @@ Source1:        https://gitlab.com/Remmina/Remmina/-/archive/%{remmina_commit}/R
 Source2:        eitaas_cac_auth.c
 Source3:        eitaas_cac_auth.h
 Source4:        eitaas-remmina
+Source5:        EITaaS-LICENSE
+Source6:        THIRD_PARTY_NOTICES.md
 Patch0:         0001-preserve-protected-rdpw-settings.patch
 Patch1:         0002-add-cac-webview-authentication.patch
 Patch2:         0003-keep-private-runtime-paths.patch
@@ -87,6 +89,16 @@ prefix=%{_libexecdir}/eitaas-remmina
 DESTDIR=%{buildroot} cmake --install freerdp-build
 DESTDIR=%{buildroot} cmake --install remmina-build
 install -Dpm0755 %{SOURCE4} %{buildroot}%{_bindir}/eitaas-remmina
+license_dir=%{buildroot}%{_licensedir}/%{name}
+install -Dpm0644 LICENSE "$license_dir/FreeRDP-LICENSE"
+install -Dpm0644 winpr/libwinpr/sysinfo/cpufeatures/NOTICE \
+  "$license_dir/FreeRDP-cpufeatures-NOTICE"
+install -Dpm0644 Remmina-%{remmina_commit}/COPYING "$license_dir/Remmina-COPYING"
+install -Dpm0644 Remmina-%{remmina_commit}/LICENSE "$license_dir/Remmina-LICENSE"
+install -Dpm0644 Remmina-%{remmina_commit}/LICENSE.OpenSSL \
+  "$license_dir/Remmina-LICENSE.OpenSSL"
+install -Dpm0644 %{SOURCE5} "$license_dir/EITaaS-LICENSE"
+install -Dpm0644 %{SOURCE6} "$license_dir/THIRD_PARTY_NOTICES.md"
 rm -rf %{buildroot}$prefix/include %{buildroot}$prefix/lib64/cmake \
        %{buildroot}$prefix/lib64/pkgconfig %{buildroot}$prefix/share/man
 rm -f %{buildroot}$prefix/lib64/*.so
@@ -97,13 +109,30 @@ test -x %{buildroot}%{_libexecdir}/eitaas-remmina/bin/remmina
 test -f "$plugin"
 grep -a -q 'Could not load the protected RDPW profile' "$plugin"
 grep -a -q 'Select smart-card authentication certificate' "$plugin"
+license_dir=%{buildroot}%{_licensedir}/%{name}
+test -s "$license_dir/FreeRDP-LICENSE"
+test -s "$license_dir/FreeRDP-cpufeatures-NOTICE"
+test -s "$license_dir/Remmina-COPYING"
+test -s "$license_dir/Remmina-LICENSE"
+test -s "$license_dir/Remmina-LICENSE.OpenSSL"
+test -s "$license_dir/EITaaS-LICENSE"
+test -s "$license_dir/THIRD_PARTY_NOTICES.md"
+grep -q 'Apache License' "$license_dir/FreeRDP-LICENSE"
+grep -q 'special exception' "$license_dir/Remmina-COPYING"
+grep -q 'GNU GENERAL PUBLIC LICENSE' "$license_dir/Remmina-LICENSE"
+grep -q 'OpenSSL License' "$license_dir/Remmina-LICENSE.OpenSSL"
+grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 
 %files
-%license LICENSE
+%license %{_licensedir}/%{name}
 %{_bindir}/eitaas-remmina
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.7
+- Install distinct EITaaS, Remmina, FreeRDP, and bundled-component notices
+- Document component licensing and verify corresponding sources in package checks
+
 * Sat Aug 29 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.6
 - Quit the isolated application when one-shot CAC authentication is cancelled
 

@@ -1,5 +1,7 @@
 From: EITaaS-Linux contributors <noreply@example.invalid>
 Subject: [PATCH] Preserve protected RDPW settings
+License: GPL-2.0-or-later
+Copyright: 2026 Stephen Trotter
 
 Keep the source path for imported RDPW profiles and populate FreeRDP settings
 from the original file before Remmina applies user-visible preferences. This
