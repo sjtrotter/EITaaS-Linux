@@ -34,6 +34,12 @@ redirection is what lets a PIV-authenticated site or a signing application
 *inside* the remote session see your card. The bundled client provides it; the
 `.rdpw` profile you export from the web client tells it where to connect.
 
+USB device redirection is included as well: every recipe declares libusb as a
+build dependency and leaves FreeRDP's `urbdrc` channel at its default, so the
+channel is compiled into the bundle on all three distributions. What is
+actually redirected in a session still depends on your profile and on the host
+policy.
+
 ## Install
 
 There is no distribution repository yet. Build the package for your

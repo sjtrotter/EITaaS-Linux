@@ -16,13 +16,25 @@ outlive its reason.
 from __future__ import annotations
 
 import re
-import subprocess
 import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Historical records; their wording is deliberately preserved.
 HISTORY = ("docs/adr/", "docs/audits/")
+# Where this repository keeps prose. Globbed rather than listed by Git, because
+# the package recipes run the suite from an unpacked source tree; they are
+# narrow rather than a whole-tree walk, because that tree also holds the
+# extracted Remmina and FreeRDP sources, whose documentation is not ours.
+DOCUMENT_GLOBS = (
+    "*.md",
+    "NOTICE",
+    "docs/**/*",
+    "completions/*",
+    "packaging/**/*.md",
+    "upstream/**/*.md",
+    "po/*.md",
+)
 # Files a user, packager, or contributor reads about the product as it is.
 SCANNED_SUFFIXES = {".md", ".1", ".json", ".txt"}
 SCANNED_EXTRA = {"NOTICE"}
@@ -54,27 +66,24 @@ ALLOWED = {
 }
 
 
-def tracked_documents() -> list[Path]:
-    """Current-facing text files under Git, excluding the historical records."""
-    try:
-        listing = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "ls-files", "-z"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
-    except (OSError, subprocess.CalledProcessError) as error:  # unpacked tarball
-        raise unittest.SkipTest(f"documents can only be enumerated in a Git checkout: {error}")
-    documents = []
-    for name in listing.split("\0"):
-        if not name or name.startswith(HISTORY):
-            continue
-        path = Path(name)
-        scanned = path.suffix in SCANNED_SUFFIXES or path.name in SCANNED_EXTRA
-        if not scanned and path.parts[0] != "completions":
-            continue
-        documents.append(path)
-    return documents
+def current_documents() -> list[Path]:
+    """Current-facing text files in this repository, minus the historical records."""
+    documents = set()
+    for pattern in DOCUMENT_GLOBS:
+        for path in PROJECT_ROOT.glob(pattern):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(PROJECT_ROOT)
+            if str(relative).startswith(HISTORY):
+                continue
+            text = (
+                relative.suffix in SCANNED_SUFFIXES
+                or relative.name in SCANNED_EXTRA
+                or relative.parts[0] == "completions"
+            )
+            if text:
+                documents.add(relative)
+    return sorted(documents)
 
 
 class ForbiddenTermTests(unittest.TestCase):
@@ -82,7 +91,7 @@ class ForbiddenTermTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.documents = tracked_documents()
+        cls.documents = current_documents()
         cls.hits: dict[str, list[tuple[str, int, str]]] = {term: [] for term in FORBIDDEN}
         for path in cls.documents:
             try:
@@ -94,9 +103,19 @@ class ForbiddenTermTests(unittest.TestCase):
                     if pattern.search(line):
                         cls.hits[term].append((str(path), number, line.strip()))
 
-    def test_the_document_set_is_not_empty(self):
+    def test_the_document_set_covers_every_place_prose_lives(self):
+        """One representative per glob, so a silently empty scan cannot pass."""
         names = {str(path) for path in self.documents}
-        for expected in ("README.md", "CLAUDE.md", "NOTICE", "docs/eitaas.1", "completions/_eitaas"):
+        for expected in (
+            "README.md",
+            "NOTICE",
+            "docs/eitaas.1",
+            "docs/frontend/ux-spec.md",
+            "completions/_eitaas",
+            "packaging/remmina/README.md",
+            "upstream/remmina/README.md",
+            "po/README.md",
+        ):
             self.assertIn(expected, names)
         self.assertFalse(any(name.startswith(HISTORY) for name in names))
 
