@@ -1,4 +1,4 @@
-From 72e496cdb4474fa6df5b6c6b2ecc97708f0bf229 Mon Sep 17 00:00:00 2001
+From 69e04b6ac22aa55872a50b818e0cd22ca3f1dce8 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 14:26:46 -0500
 Subject: [PATCH 6/7] RDP: extend ARM gateway response timeout

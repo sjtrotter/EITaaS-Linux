@@ -1,4 +1,4 @@
-From 885647d2165c398118fdc5609d63ec5b3b8ebcbf Mon Sep 17 00:00:00 2001
+From 2f5e58e5bbee380a918e8ef523420c192e23731a Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 17:07:42 -0500
 Subject: [PATCH 7/7] RDP: test the protected connection-file helpers
@@ -15,8 +15,9 @@ session; it covers the size bound and the file-type check, the refusal to
 follow a symbolic link, UTF-8 and UTF-16 decoding of the same file, invalid
 and NUL-bearing text, the three classifications, the keys the allowlist keeps
 and drops, the refusal of a buffer holding an embedded "/" command-line
-argument, and that a carriage return inside a line hides nothing from either
-the allowlist or the classification.
+argument, that a carriage return inside a line hides nothing from either the
+allowlist or the classification, and that a value carrying a carriage return
+cannot swallow the setting behind it when the importer reads the same lines.
 
 Testing is opt-in: -DBUILD_TESTING=ON adds the target and enables ctest,
 and a default build is unchanged. The fixture is a synthetic Azure Virtual
@@ -38,10 +39,10 @@ reviewed and tested by the author.
 ---
  CMakeLists.txt                      |   6 +
  plugins/rdp/CMakeLists.txt          |   4 +
- plugins/rdp/test/CMakeLists.txt     |  28 ++++
+ plugins/rdp/test/CMakeLists.txt     |  28 +++
  plugins/rdp/test/synthetic-avd.rdpw |  13 ++
- plugins/rdp/test/test_rdp_rdpw.c    | 248 ++++++++++++++++++++++++++++
- 5 files changed, 299 insertions(+)
+ plugins/rdp/test/test_rdp_rdpw.c    | 276 ++++++++++++++++++++++++++++
+ 5 files changed, 327 insertions(+)
  create mode 100644 plugins/rdp/test/CMakeLists.txt
  create mode 100644 plugins/rdp/test/synthetic-avd.rdpw
  create mode 100644 plugins/rdp/test/test_rdp_rdpw.c
@@ -133,10 +134,10 @@ index 000000000..22de84e9f
 +alternate shell:s:not-an-avd-setting
 diff --git a/plugins/rdp/test/test_rdp_rdpw.c b/plugins/rdp/test/test_rdp_rdpw.c
 new file mode 100644
-index 000000000..e5d472ab8
+index 000000000..475382b94
 --- /dev/null
 +++ b/plugins/rdp/test/test_rdp_rdpw.c
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,276 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -364,6 +365,33 @@ index 000000000..e5d472ab8
 +			REMMINA_RDPW_AVD_WITHOUT_GATEWAY);
 +}
 +
++/*
++ * The importer reads the same buffer through the same splitter, so a value
++ * carrying a carriage return cannot become part of a profile field: the text
++ * behind the CR is a line of its own, exactly as the connection path and
++ * FreeRDP's parser see it.
++ */
++static void test_a_value_cannot_swallow_the_next_setting(void)
++{
++	gchar **lines = remmina_rdpw_split_lines(
++		"full address:s:host.rdp.test\rusername:s:user@rdp.test\r\n"
++		"resourceprovider:s:arm\n");
++	guint kept = 0;
++
++	g_assert_nonnull(lines);
++	for (gchar **line = lines; *line; line++) {
++		if (!**line)
++			continue;       /* CRLF yields an empty element; callers skip it */
++		g_assert_null(strchr(*line, '\r'));
++		g_assert_null(strchr(*line, '\n'));
++		kept++;
++	}
++	g_assert_cmpuint(kept, ==, 3);
++	g_assert_cmpstr(lines[0], ==, "full address:s:host.rdp.test");
++	g_assert_cmpstr(lines[1], ==, "username:s:user@rdp.test");
++	g_strfreev(lines);
++}
++
 +int main(int argc, char *argv[])
 +{
 +	g_test_init(&argc, &argv, NULL);
@@ -383,6 +411,7 @@ index 000000000..e5d472ab8
 +	g_test_add_func("/rdpw/allowlist/keys", test_allowlist_keeps_only_routing_settings);
 +	g_test_add_func("/rdpw/allowlist/arguments", test_allowlist_refuses_embedded_arguments);
 +	g_test_add_func("/rdpw/allowlist/carriage-return", test_a_carriage_return_hides_nothing);
++	g_test_add_func("/rdpw/split/carriage-return", test_a_value_cannot_swallow_the_next_setting);
 +	return g_test_run();
 +}
 -- 

@@ -1,4 +1,4 @@
-From fa086034f39567ca3f7cf923e031297eeaa3e3b1 Mon Sep 17 00:00:00 2001
+From c2e35ea364637d97d9f59a235e57e46d72c8f853 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 3/7] RDP: honor configured AVD scope and redirect format

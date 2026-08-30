@@ -1,4 +1,4 @@
-From a2f714b38417d87f6271eb560b3815222d8df11e Mon Sep 17 00:00:00 2001
+From e8c8dd2d499cf6f63b398fec9670a816ca35b4c4 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 1/7] RDP: preserve protected RDPW settings
@@ -25,9 +25,10 @@ inside a line cannot hide a setting from the filter or from the check below.
 The plugin-level parse happens once, in remmina_rdp_main(), rather than for
 every queued input event.
 
-Reading, decoding, classifying and filtering a protected file live in
-rdp_rdpw.c, which depends on GLib alone: the importer and the connection
-path share one BOM/UTF-16 decoder instead of carrying a copy each, and the
+Reading, decoding, splitting, classifying and filtering a protected file
+live in rdp_rdpw.c, which depends on GLib alone: the importer and the
+connection path share one BOM/UTF-16 decoder and one line splitter instead
+of carrying a copy each, so every one of them sees the same lines, and the
 helpers can be exercised without a display or a session.
 
 A profile is treated as Azure Virtual Desktop only when it selects the ARM
@@ -68,9 +69,9 @@ reviewed and tested by the author.
  plugins/rdp/CMakeLists.txt                |   2 +
  plugins/rdp/rdp_file.c                    |  65 +++++-
  plugins/rdp/rdp_plugin.c                  |  37 ++++
- plugins/rdp/rdp_rdpw.c                    | 251 ++++++++++++++++++++++
- plugins/rdp/rdp_rdpw.h                    |  29 +++
- 6 files changed, 385 insertions(+), 1 deletion(-)
+ plugins/rdp/rdp_rdpw.c                    | 254 ++++++++++++++++++++++
+ plugins/rdp/rdp_rdpw.h                    |  30 +++
+ 6 files changed, 389 insertions(+), 1 deletion(-)
  create mode 100644 plugins/rdp/rdp_rdpw.c
  create mode 100644 plugins/rdp/rdp_rdpw.h
 
@@ -101,7 +102,7 @@ index e78d9b27b..5904c5780 100644
      rdp_settings.h
      rdp_graphics.c
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
-index e93a6aef7..ae3d25541 100644
+index e93a6aef7..6b772b5f9 100644
 --- a/plugins/rdp/rdp_file.c
 +++ b/plugins/rdp/rdp_file.c
 @@ -37,6 +37,7 @@
@@ -132,7 +133,7 @@ index e93a6aef7..ae3d25541 100644
 +static RemminaFile *remmina_rdp_file_import_utf8(const gchar *utf8)
 +{
 +	RemminaFile *remminafile = remmina_plugin_service->file_new();
-+	gchar **lines = g_strsplit(utf8, "\n", -1);
++	gchar **lines = remmina_rdpw_split_lines(utf8);
 +
 +	for (gchar **line = lines; line && *line; line++) {
 +		g_strchomp(*line);
@@ -266,10 +267,10 @@ index 5aff61676..b7ffc5e95 100644
  	datapath = g_build_path("/",
 diff --git a/plugins/rdp/rdp_rdpw.c b/plugins/rdp/rdp_rdpw.c
 new file mode 100644
-index 000000000..aadeb2576
+index 000000000..006200a51
 --- /dev/null
 +++ b/plugins/rdp/rdp_rdpw.c
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,254 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -395,10 +396,13 @@ index 000000000..aadeb2576
 +/*
 + * Split the text into lines the way FreeRDP's connection-file parser does:
 + * on CR as well as LF. Splitting on LF alone would leave a carriage return
-+ * inside a line, so one allowlisted line could carry settings that this file
-+ * never inspects but the parser would still act on.
++ * inside a line, so one line could carry settings that the caller never
++ * inspects but the parser would still act on. Everything that reads a
++ * protected file — the importer included — splits it through here, so all of
++ * them see the same lines. Empty elements are expected (CRLF produces one)
++ * and are dropped by the callers, which need a "key:type:value" line.
 + */
-+static gchar **rdpw_split_lines(const gchar *utf8)
++gchar **remmina_rdpw_split_lines(const gchar *utf8)
 +{
 +	return g_strsplit_set(utf8, "\r\n", -1);
 +}
@@ -430,7 +434,7 @@ index 000000000..aadeb2576
 +	gboolean gateway = FALSE;
 +
 +	g_return_val_if_fail(utf8, REMMINA_RDPW_GENERIC);
-+	gchar **lines = rdpw_split_lines(utf8);
++	gchar **lines = remmina_rdpw_split_lines(utf8);
 +	for (gchar **line = lines; line && *line; line++) {
 +		const gchar *value = NULL;
 +		gchar *key = rdpw_split_line(g_strchomp(*line), &value);
@@ -496,7 +500,7 @@ index 000000000..aadeb2576
 +{
 +	g_return_val_if_fail(utf8 && filtered_length, NULL);
 +	GString *filtered = g_string_sized_new(strlen(utf8));
-+	gchar **lines = rdpw_split_lines(utf8);
++	gchar **lines = remmina_rdpw_split_lines(utf8);
 +	gboolean refused = FALSE;
 +
 +	for (gchar **line = lines; line && *line; line++) {
@@ -523,10 +527,10 @@ index 000000000..aadeb2576
 +}
 diff --git a/plugins/rdp/rdp_rdpw.h b/plugins/rdp/rdp_rdpw.h
 new file mode 100644
-index 000000000..a7423f751
+index 000000000..199f763b1
 --- /dev/null
 +++ b/plugins/rdp/rdp_rdpw.h
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,30 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -552,6 +556,7 @@ index 000000000..a7423f751
 +
 +gchar *remmina_rdpw_read_file(const gchar *path, gsize *length, GError **error);
 +gchar *remmina_rdpw_to_utf8(const gchar *contents, gsize length);
++gchar **remmina_rdpw_split_lines(const gchar *utf8);
 +RemminaRdpwKind remmina_rdpw_classify(const gchar *utf8);
 +gchar *remmina_rdpw_filter_native_settings(const gchar *utf8, gsize *filtered_length);
 +

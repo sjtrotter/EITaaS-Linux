@@ -1,4 +1,4 @@
-From 44df4b74ec0e9a9f8a7802784cc48d838f50785d Mon Sep 17 00:00:00 2001
+From 38822ac924e4c5b6f6b98e821fd8e13569a82259 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 4/7] RDP: bind and own OAuth callback results

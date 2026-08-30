@@ -1,4 +1,4 @@
-From 9cf9be73eba94e604e7ec94a42db2893f6e1b687 Mon Sep 17 00:00:00 2001
+From 50a52599be5b851975a44b39d911ab557d13b221 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 5/7] RDP: handle PKCS11 client certificates in WebKit

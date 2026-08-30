@@ -1,4 +1,4 @@
-From 44db83125bf6386f91f0fa7a1981639633281ad6 Mon Sep 17 00:00:00 2001
+From 0eade1961323bd58a4bf8016d37fc339d43579ff Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 2/7] RDP: select Azure US Government AVD authentication

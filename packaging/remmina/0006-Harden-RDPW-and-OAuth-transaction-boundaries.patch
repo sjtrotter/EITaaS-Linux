@@ -1,4 +1,4 @@
-From 0a19fa095396331bd7b5da96c865cdf7302ce165 Mon Sep 17 00:00:00 2001
+From 5ad32929063016eb296063ea9e4080f99dcb5ec1 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 11:15:06 -0500
 Subject: [PATCH] Harden RDPW and OAuth transaction boundaries
@@ -7,17 +7,17 @@ License: GPL-2.0-or-later
 
 Copyright: 2026 Stephen Trotter
 ---
- plugins/rdp/rdp_file.c     | 126 +++++++++---
+ plugins/rdp/rdp_file.c     | 129 +++++++++---
  plugins/rdp/rdp_file.h     |  13 ++
  plugins/rdp/rdp_plugin.c   | 127 +++++++++---
  plugins/rdp/rdp_web_auth.c | 396 +++++++++++++++++++++++++++++++------
- 4 files changed, 555 insertions(+), 107 deletions(-)
+ 4 files changed, 558 insertions(+), 107 deletions(-)
 
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
-index 63f5e0e..54c8647 100644
+index 63f5e0e..3690364 100644
 --- a/plugins/rdp/rdp_file.c
 +++ b/plugins/rdp/rdp_file.c
-@@ -250,6 +250,91 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
+@@ -250,6 +250,94 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
  	return remminafile;
  }
  
@@ -86,7 +86,10 @@ index 63f5e0e..54c8647 100644
 +	}
 +
 +	RemminaFile *remminafile = remmina_plugin_service->file_new();
-+	gchar **lines = g_strsplit(utf8, "\n", -1);
++	/* The same lines the classification and the connection path see: FreeRDP's
++	   parser splits on CR as well as LF, so a value carrying a carriage return
++	   must not swallow the setting behind it. */
++	gchar **lines = g_strsplit_set(utf8, "\r\n", -1);
 +	for (gchar **line = lines; line && *line; line++) {
 +		g_strchomp(*line);
 +		gchar *first = strchr(*line, ':');
@@ -109,7 +112,7 @@ index 63f5e0e..54c8647 100644
  RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from_file)
  {
  	TRACE_CALL(__func__);
-@@ -260,7 +345,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -260,7 +348,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  	gboolean protected_profile = extension && g_ascii_strcasecmp(extension, ".rdpw") == 0;
  	gchar *protected_contents = NULL;
  	gsize protected_length = 0;
@@ -118,7 +121,7 @@ index 63f5e0e..54c8647 100644
  
  	if (protected_profile) {
  		if (!remmina_rdp_file_read_protected(from_file, &protected_contents,
-@@ -269,8 +354,17 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -269,8 +357,17 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  			g_free(protected_contents);
  			return NULL;
  		}
@@ -138,7 +141,7 @@ index 63f5e0e..54c8647 100644
  	}
  
  	channel = g_io_channel_new_file(from_file, "r", &error);
-@@ -278,37 +372,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -278,37 +375,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  	if (channel == NULL) {
  		g_print("Failed to import %s: %s\n", from_file, error->message);
  		g_clear_error(&error);
