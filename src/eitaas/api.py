@@ -10,6 +10,7 @@ worker thread and must marshal updates onto the toolkit event loop.
 
 from __future__ import annotations
 
+import datetime
 import subprocess
 import threading
 import urllib.parse
@@ -18,7 +19,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
-from . import certificates, doctor, remmina, smartcard
+from . import certificates, doctor, profiles, remmina, smartcard
 from . import __version__
 from .profile import inspect_profile
 from .redaction import redact
@@ -135,8 +136,22 @@ class CertificateFetchReport:
 
 
 @dataclass(frozen=True)
+class StoredProfileSummary:
+    """An imported profile in the private store; names only, never paths."""
+
+    name: str
+    cloud: str
+    size: int
+    mode: str
+    imported: str
+    default: bool
+
+
+@dataclass(frozen=True)
 class ConnectionRequest:
-    profile: str
+    """``profile`` is an explicit path; ``None`` selects the stored default."""
+
+    profile: str | None = None
 
 
 @dataclass(frozen=True)
@@ -238,6 +253,63 @@ class Application:
                 "profile_invalid", error, "Choose a current .rdp or .rdpw file owned by you with mode 0600."
             )
 
+    def _stored_summary(self, item: profiles.StoredProfile) -> StoredProfileSummary:
+        summary = self.inspect_profile(str(item.path)).value
+        imported = datetime.datetime.fromtimestamp(item.imported).isoformat(timespec="seconds")
+        return StoredProfileSummary(
+            name=item.name,
+            cloud=summary.cloud if summary else "unknown",
+            size=summary.size if summary else 0,
+            mode=summary.mode if summary else "unknown",
+            imported=imported,
+            default=item.default,
+        )
+
+    def import_profile(self, path: str) -> Result[StoredProfileSummary]:
+        """Move a downloaded ``.rdpw`` into the private store as the default."""
+        try:
+            return Result(self._stored_summary(profiles.import_profile(path)))
+        except Exception as error:
+            return self._error(
+                "profile_import_failed",
+                error,
+                "Choose the .rdpw file you exported from the web client; it must be a regular file owned by you.",
+            )
+
+    def import_profile_async(self, path: str) -> Future[Result[StoredProfileSummary]]:
+        return _BACKGROUND_OPERATIONS.submit(self.import_profile, path)
+
+    def list_profiles(self) -> Result[tuple[StoredProfileSummary, ...]]:
+        try:
+            return Result(tuple(self._stored_summary(item) for item in profiles.list_profiles()))
+        except Exception as error:
+            return self._error("profile_store_failed", error)
+
+    def list_profiles_async(self) -> Future[Result[tuple[StoredProfileSummary, ...]]]:
+        return _BACKGROUND_OPERATIONS.submit(self.list_profiles)
+
+    def default_profile(self) -> Result[StoredProfileSummary | None]:
+        try:
+            item = profiles.default_profile()
+            return Result(self._stored_summary(item) if item else None)
+        except Exception as error:
+            return self._error("profile_store_failed", error)
+
+    def select_profile(self, name: str) -> Result[StoredProfileSummary]:
+        """Make an imported profile the default used by ``launch``."""
+        try:
+            return Result(self._stored_summary(profiles.set_default(name)))
+        except Exception as error:
+            return self._error("profile_store_failed", error, "Use a name from the imported profile list.")
+
+    def remove_profile(self, name: str) -> Result[bool]:
+        """Delete an imported profile from the private store."""
+        try:
+            profiles.remove_profile(name)
+            return Result(True)
+        except Exception as error:
+            return self._error("profile_store_failed", error, "Use a name from the imported profile list.")
+
     def smartcard_status(self) -> Result[SmartcardReport]:
         try:
             data = smartcard.status()
@@ -308,6 +380,15 @@ class Application:
             )
         )
 
+    @staticmethod
+    def _launch_path(request: ConnectionRequest) -> Path:
+        if request.profile:
+            return Path(request.profile)
+        stored = profiles.default_profile()
+        if stored is None:
+            raise RuntimeError("no imported profile; run: eitaas profile import FILE.rdpw")
+        return stored.path
+
     def launch(
         self,
         request: ConnectionRequest,
@@ -316,7 +397,8 @@ class Application:
     ) -> Result[ConnectionResult]:
         """Validate the profile and run the bundled ``eitaas-remmina`` launcher.
 
-        The child receives exactly ``[launcher, profile]`` with no shell, no
+        Without an explicit ``request.profile`` the stored default profile
+        (``eitaas profile import``) is used. The child receives exactly ``[launcher, profile]`` with no shell, no
         environment changes, and all standard streams on ``DEVNULL``. Endpoint
         allowlisting and the refusal of terminal OAuth are enforced inside the
         bundled client (Remmina patches), not here.
@@ -325,7 +407,7 @@ class Application:
         cancelled = cancel or threading.Event()
         try:
             progress(ProgressEvent("validating", "Validating connection profile"))
-            profile = remmina.validate_launch_profile(request.profile)
+            profile = remmina.validate_launch_profile(self._launch_path(request))
             launcher = remmina.find_launcher()
             if launcher is None:
                 raise RuntimeError(f"{remmina.LAUNCHER} launcher is not installed")

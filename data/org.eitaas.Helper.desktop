@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=EITaaS Connect
+GenericName=Remote desktop setup helper
+Comment=Check readiness, import an exported .rdpw profile, and connect with the bundled eitaas-remmina client
+Exec=eitaas-gui %f
+Icon=org.eitaas.Helper
+Terminal=false
+Categories=Network;RemoteAccess;
+MimeType=application/x-eitaas-rdpw;
+Keywords=AVD;RDP;smart card;PIV;
+StartupNotify=true

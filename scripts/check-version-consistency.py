@@ -32,6 +32,11 @@ def main() -> int:
         ),
         "Arch": match(root / "packaging/arch/PKGBUILD", r'^pkgver=(\S+)$', "pkgver"),
         "manual page": match(root / "docs/eitaas.1", r'"EITaaS-Linux ([^"]+)"', "version"),
+        "AppStream metainfo": match(
+            root / "data/org.eitaas.Helper.metainfo.xml",
+            r'<release version="([^"]+)"',
+            "release version",
+        ),
     }
     expected = versions["pyproject"]
     mismatches = {name: value for name, value in versions.items() if value != expected}

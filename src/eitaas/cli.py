@@ -15,11 +15,15 @@ def _print(data: object, as_json: bool) -> None:
     if as_json:
         print(json.dumps(data, indent=2, sort_keys=True))
         return
-    if isinstance(data, dict):
-        for key, value in data.items():
-            print(f"{key}: {value}")
-    else:
-        print(data)
+    items = data if isinstance(data, list) else [data]
+    for index, item in enumerate(items):
+        if index:
+            print()
+        if isinstance(item, dict):
+            for key, value in item.items():
+                print(f"{key}: {value}")
+        else:
+            print(item)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -38,7 +42,23 @@ def parser() -> argparse.ArgumentParser:
     connect_cmd = commands.add_parser(
         "connect", help="validate a protected RDPW profile and start eitaas-remmina"
     )
-    connect_cmd.add_argument("profile")
+    connect_cmd.add_argument(
+        "profile", nargs="?", help="explicit .rdpw path; default: the imported default profile"
+    )
+    profile_cmd = commands.add_parser("profile", help="manage imported profiles")
+    profile_commands = profile_cmd.add_subparsers(dest="profile_command", required=True)
+    profile_import = profile_commands.add_parser(
+        "import", help="move a downloaded .rdpw into the private store and make it default"
+    )
+    profile_import.add_argument("path")
+    profile_import.add_argument("--json", action="store_true")
+    profile_list = profile_commands.add_parser("list", help="list imported profiles")
+    profile_list.add_argument("--json", action="store_true")
+    profile_select = profile_commands.add_parser("select", help="make an imported profile the default")
+    profile_select.add_argument("name")
+    profile_select.add_argument("--json", action="store_true")
+    profile_remove = profile_commands.add_parser("remove", help="delete an imported profile")
+    profile_remove.add_argument("name")
     cert_cmd = commands.add_parser("certificates", help="fetch or inspect official certificate bundles")
     cert_commands = cert_cmd.add_subparsers(dest="certificate_command", required=True)
     cert_fetch = cert_commands.add_parser("fetch", help="download a digest-pinned official bundle")
@@ -50,6 +70,16 @@ def parser() -> argparse.ArgumentParser:
     cert_inspect.add_argument("bundle")
     cert_inspect.add_argument("--json", action="store_true")
     return root
+
+
+def _profile_command(app: Application, args: argparse.Namespace) -> Result[object]:
+    if args.profile_command == "import":
+        return app.import_profile(args.path)
+    if args.profile_command == "list":
+        return app.list_profiles()
+    if args.profile_command == "select":
+        return app.select_profile(args.name)
+    return app.remove_profile(args.name)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
         result = app.launch(ConnectionRequest(args.profile))
         if result.ok:
             return result.value.exit_code if result.value else 2
+    elif args.command == "profile":
+        result = _profile_command(app, args)
+        if result.ok:
+            if result.value is not None and result.value is not True:
+                _print(result.value, args.json)
+            return 0
     elif args.command == "certificates":
         result = (
             app.fetch_certificates(args.url, args.sha256, args.output)

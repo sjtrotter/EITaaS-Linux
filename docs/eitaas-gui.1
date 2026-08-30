@@ -1,0 +1,75 @@
+.TH EITAAS-GUI 1 "August 2026" "EITaaS-Linux 0.1.0" "User Commands"
+.SH NAME
+eitaas-gui \- EITaaS Connect, a graphical readiness, profile import, and connect helper
+.SH SYNOPSIS
+.B eitaas-gui
+.RI [ FILE.rdpw ]
+.br
+.B eitaas-gui --version
+.SH DESCRIPTION
+.B eitaas-gui
+(EITaaS Connect, application id org.eitaas.Helper) is a GTK 4/Libadwaita
+window over the same application API as
+.BR eitaas (1).
+It is installed by the optional eitaas-linux-gui package and has three pages.
+.PP
+.B Readiness
+shows the
+.B eitaas doctor
+result as plain-language rows: bundled remote desktop client, desktop session,
+smart-card service, smart-card reader, card middleware, identity broker, and
+diagnostic tools. Each row states Ready, Needs attention, Not ready, or Not
+checked, explains what was checked, and names the package or command that
+fixes it. Commands are shown with a copy button; nothing privileged is run.
+.PP
+.B Profile
+lists the steps for exporting a .rdpw profile from the web client, opens a
+file chooser to import one, and lists the imported profiles with a selector
+for the one Connect uses and a Remove action. Import moves the file into the
+private store, restricts it to the user, and makes it the default; see
+PROFILE STORE in
+.BR eitaas (1).
+.PP
+.B Connect
+starts
+.B eitaas-remmina
+with the selected profile. The button is enabled only when the launcher is
+installed and a profile has been imported. While the client runs the page
+shows the phase and a Cancel button; sign-in and the PIN prompt happen in the
+client window. Closing the window while the client runs asks whether to
+disconnect and quit or keep working.
+.PP
+When
+.I FILE.rdpw
+is given, or the desktop entry opens a file of MIME type
+application/x-eitaas-rdpw, the Profile page shows a banner offering to import
+that file. Nothing is imported or connected until Import and then Connect are
+pressed.
+.PP
+.B --version
+prints the version and exits without a display.
+.SH FILES
+.TP
+.I $XDG_DATA_HOME/eitaas-remmina/profiles/
+Imported profiles (directory mode 0700, files mode 0600).
+.TP
+.I $XDG_CONFIG_HOME/eitaas/profiles.ini
+The default profile name, as
+.B [profiles] default = NAME
+(mode 0600).
+.SH KEYBOARD
+.TP
+.B Ctrl+R
+Re-check readiness.
+.TP
+.B Ctrl+O
+Choose a .rdpw file to import.
+.TP
+.B Ctrl+Return
+Connect.
+.TP
+.B Ctrl+Q
+Quit.
+.SH SEE ALSO
+.BR eitaas (1),
+.B eitaas-remmina

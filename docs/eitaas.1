@@ -13,7 +13,21 @@ eitaas \- diagnose and launch community AVD connections with smart-card redirect
 .RI [ --json ]
 .br
 .B eitaas connect
+.RI [ FILE ]
+.br
+.B eitaas profile import
 .I FILE
+.RI [ --json ]
+.br
+.B eitaas profile list
+.RI [ --json ]
+.br
+.B eitaas profile select
+.I NAME
+.RI [ --json ]
+.br
+.B eitaas profile remove
+.I NAME
 .br
 .B eitaas certificates
 .RI { fetch | inspect }
@@ -27,9 +41,24 @@ client, an isolated Remmina and FreeRDP pair installed under a private prefix.
 validates the profile (regular file, owned by the caller, mode 0600, at most
 1 MiB, .rdpw extension) and then runs
 .B eitaas-remmina FILE
-with no other arguments, no shell, and no inherited standard streams. It does
-not construct RDP or authentication arguments; all connection policy is
-applied inside the bundled client.
+with no other arguments, no shell, and no inherited standard streams. Without
+.I FILE
+it uses the default profile from the private store (see PROFILE STORE) and
+fails with "no imported profile; run: eitaas profile import FILE.rdpw" when
+none has been imported. It does not construct RDP or authentication
+arguments; all connection policy is applied inside the bundled client.
+.PP
+.B eitaas profile
+manages the private store of imported profiles.
+.B import
+moves a downloaded .rdpw into the store, restricts it, and makes it the
+default;
+.B list
+prints the stored profiles (names only);
+.B select
+makes an imported profile the default;
+.B remove
+deletes it from the store.
 .PP
 It does not disable certificate verification, request a CAC PIN, or install
 polkit rules or certificate trust anchors during ordinary operation.
@@ -66,6 +95,36 @@ manifest (or "unknown"), whether the installed FreeRDP client library links
 SSO-MIB, identity-broker registration on the session bus, the PC/SC socket,
 and the presence of smart-card tools. Readiness requires the launcher, the
 private client, and healthy smart-card checks.
+.SH PROFILE STORE
+.B eitaas profile import
+requires a regular .rdpw file owned by the caller, at most 1 MiB, not a
+symbolic link, and not already in the store. The file is moved (renamed, or
+copied with fsync and unlinked across filesystems) into
+.I $XDG_DATA_HOME/eitaas-remmina/profiles/
+(default
+.IR ~/.local/share/eitaas-remmina/profiles/ ),
+which is created with mode 0700 and must be owned by the caller. The stored
+file keeps its basename (a -2, -3, ... suffix is added on collision) and is
+set to mode 0600.
+.PP
+The default name is written to
+.I $XDG_CONFIG_HOME/eitaas/profiles.ini
+(default
+.IR ~/.config/eitaas/profiles.ini ,
+mode 0600) as the only key:
+.B [profiles] default = NAME.
+When the configured name no longer exists, or the file is absent, the most
+recently imported profile is the default. Removing the default profile makes
+the next most recent import the default.
+.PP
+Profile contents are never parsed by the store; listings show the basename,
+cloud classification, size, mode, and import time only. Errors use the codes
+.B profile_import_failed
+and
+.BR profile_store_failed .
+The graphical helper
+.BR eitaas-gui (1)
+uses the same store.
 .SH EXIT STATUS
 Zero indicates success. One indicates completed diagnostics with unmet
 requirements. Two indicates invalid input or an operation error. A connection
@@ -73,6 +132,7 @@ otherwise returns the exit status of the
 .B eitaas-remmina
 child.
 .SH SEE ALSO
+.BR eitaas-gui (1),
 .BR pcsc_scan (1),
 .BR pkcs11-tool (1),
 .BR remmina (1)

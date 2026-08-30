@@ -1,7 +1,7 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
   "product": {
-    "name": "EITaaS-Linux",
+    "name": "EITaaS Connect",
     "subtitle": "Community AVD connection helper"
   },
   "layout": {

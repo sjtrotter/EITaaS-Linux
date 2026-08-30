@@ -16,3 +16,14 @@ Description: community Linux helper for EITaaS Azure Virtual Desktop
  Provides read-only diagnostics, protected RDPW profile handling, smart-card
  checks, and a validated wrapper around the bundled one-shot eitaas-remmina
  client, which is required for connections.
+
+Package: eitaas-linux-gui
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}, eitaas-linux (= ${binary:Version}), python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
+Recommends: eitaas-remmina
+Description: graphical readiness/profile/connect helper for EITaaS AVD
+ Optional GTK 4 / Libadwaita front end for the eitaas command-line helper.
+ It shows readiness diagnostics, inspects RDPW profiles, and launches the
+ bundled one-shot eitaas-remmina client for connections. The desktop entry,
+ MIME association for .rdpw profiles, icons, and GTK dependencies live in this
+ package so that CLI-only installations stay lean.

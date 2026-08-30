@@ -23,6 +23,17 @@ jobs:
       - run: python -m unittest discover -s tests -v
         env:
           PYTHONPATH: src
+      - name: Install GTK 4 / Libadwaita for the GUI smoke test
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          xvfb python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 desktop-file-utils
+          appstream shared-mime-info
+      # setup-python's interpreter cannot import the distribution `gi`, so the
+      # smoke test runs under the system python (it skips when gi is missing).
+      - name: GUI smoke test under Xvfb
+        run: xvfb-run -a /usr/bin/python3 -m unittest tests.test_gui_smoke -v
+        env:
+          PYTHONPATH: src
       - run: scripts/check-repository-artifacts.sh
       - run: python -m build
       - uses: actions/upload-artifact@v4
@@ -68,7 +79,7 @@ jobs:
       - run: >-
           sudo apt-get update && sudo apt-get install -y
           build-essential debhelper dh-python pybuild-plugin-pyproject python3-all
-          python3-setuptools python3-wheel lintian
+          python3-setuptools python3-wheel lintian desktop-file-utils
       - name: Build DEB from canonical source
         run: |
           archive=$(scripts/build-source-tarball.sh HEAD dist)
@@ -77,14 +88,20 @@ jobs:
           lintian --suppress-tags
           bad-distribution-in-changes-file,initial-upload-closes-no-bugs
           dist/*.changes
-      - run: sudo apt-get install -y ./dist/eitaas-linux_0.1.0-1_all.deb
+      # desktop-file-utils is only needed for the post-install validation; the
+      # package build itself runs no GUI tests (they skip without gi).
+      - run: >-
+          sudo apt-get install -y ./dist/eitaas-linux_0.1.0-1_all.deb
+          ./dist/eitaas-linux-gui_0.1.0-1_all.deb
       - run: eitaas --version
+      - run: eitaas-gui --version
+      - run: desktop-file-validate /usr/share/applications/org.eitaas.Helper.desktop
       - name: Run installed diagnostics
         run: |
           status=0
           eitaas doctor --json > doctor.json || status=$?
           test "$status" -eq 0 -o "$status" -eq 1
-      - run: sudo apt-get remove -y eitaas-linux
+      - run: sudo apt-get remove -y eitaas-linux-gui eitaas-linux
       - uses: actions/upload-artifact@v4
         with:
           name: deb-package
@@ -103,20 +120,22 @@ jobs:
       - run: >-
           dnf install -y git findutils rpm-build python3-devel
           python3-setuptools pyproject-rpm-macros python3-wheel rpmlint
+          desktop-file-utils appstream gtk4 libadwaita python3-gobject
       - uses: actions/checkout@v4
       - name: Build RPM from canonical source
         run: |
           archive=$(scripts/build-source-tarball.sh HEAD dist)
           scripts/build-rpm.sh "$archive"
-      - run: rpmlint packaging/rpm/eitaas-linux.spec dist/*.rpm
+      - run: rpmlint -r packaging/rpm/eitaas-linux.rpmlintrc packaging/rpm/eitaas-linux.spec dist/*.rpm
       - run: dnf install -y dist/eitaas-linux-*.noarch.rpm
       - run: eitaas --version
+      - run: eitaas-gui --version
       - name: Run installed diagnostics
         run: |
           status=0
           eitaas doctor --json > doctor.json || status=$?
           test "$status" -eq 0 -o "$status" -eq 1
-      - run: dnf remove -y eitaas-linux
+      - run: dnf remove -y eitaas-linux-gui eitaas-linux
       - uses: actions/upload-artifact@v4
         with:
           name: rpm-package
@@ -130,6 +149,7 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel git namcap
           python-build python-installer python-setuptools python-wheel
           opensc pcsclite ccid pcsc-tools
+          python-gobject gtk4 libadwaita desktop-file-utils
       - uses: actions/checkout@v4
       - name: Build package as an unprivileged user
         run: |
@@ -142,12 +162,13 @@ jobs:
       - run: namcap packaging/arch/PKGBUILD dist/*.pkg.tar.zst
       - run: pacman -U --noconfirm dist/eitaas-linux-*.pkg.tar.zst
       - run: eitaas --version
+      - run: eitaas-gui --version
       - name: Run installed diagnostics
         run: |
           status=0
           eitaas doctor --json > doctor.json || status=$?
           test "$status" -eq 0 -o "$status" -eq 1
-      - run: pacman -R --noconfirm eitaas-linux
+      - run: pacman -R --noconfirm eitaas-linux-gui eitaas-linux
       - uses: actions/upload-artifact@v4
         with:
           name: arch-package

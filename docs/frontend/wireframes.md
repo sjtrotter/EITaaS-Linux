@@ -1,145 +1,166 @@
-# Frontend state wireframes
+# EITaaS Connect wireframes
 
-These wireframes define hierarchy and behavior, not pixel-exact rendering.
-GTK and Qt should use native widgets and spacing.
+These wireframes define hierarchy and behavior for the GTK 4/Libadwaita
+helper `eitaas-gui`, not pixel-exact rendering. Native Libadwaita widgets and
+spacing are used throughout. "Desktop.rdpw" is a sample file name.
 
-## First run
-
-```text
-┌──────────────────────────────────────────────────────────┐
-│ EITaaS-Linux                                             │
-│ Community AVD connection helper                         │
-│                                                          │
-│ Connect to your assigned desktop from Linux using a      │
-│ profile exported from your authorized AVD web client.    │
-│                                                          │
-│ This is independent community software.                  │
-│                                                          │
-│ [ Choose desktop profile ]   [ Run system check ]        │
-│                                                          │
-│ Privacy and security                      About           │
-└──────────────────────────────────────────────────────────┘
-```
-
-## Ready desktop
-
-```text
-┌──────────────┬───────────────────────────────────────────┐
-│ Desktops     │ Your desktops                             │
-│ System Check │                                           │
-│ Settings     │ ┌───────────────────────────────────────┐ │
-│              │ │  ▣  Enterprise Desktop               │ │
-│              │ │     Ready                            │ │
-│              │ │                         [ Connect ]   │ │
-│              │ └───────────────────────────────────────┘ │
-│              │                                           │
-│              │ [ Add desktop profile ]                   │
-└──────────────┴───────────────────────────────────────────┘
-```
-
-## Degraded readiness
+## Readiness page
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Enterprise Desktop                         Needs attention│
+│   [ Readiness ] [ Profile ] [ Connect ]                  │
+├──────────────────────────────────────────────────────────┤
+│ System readiness                              [ Re-check ]│
+│ Each line states what was checked and what to do if it   │
+│ failed. Nothing is changed on your system.               │
 │                                                          │
-│ ✓ Profile protected                                     │
-│ ! eitaas-remmina client not installed                   │
-│ ✓ Smart-card service available                          │
-│ ! Reader not detected                                   │
-│                                                          │
-│ [ View system check ]                         [ Close ]   │
+│ ✓ Bundled remote desktop client                          │
+│   Ready. The eitaas-remmina launcher and its private     │
+│   client are installed (Remmina 1.4.43, FreeRDP 3.31.0). │
+│ ✓ Desktop session                                        │
+│   Ready. A graphical session is available (wayland).     │
+│ ✗ Smart-card service                                 [⧉] │
+│   Not ready. The pcscd socket is not active.             │
+│   Start the service (needs administrator rights) with:   │
+│   systemctl enable --now pcscd.socket                    │
+│ ? Smart-card reader                                      │
+│   Not checked. pcsc_scan is not installed. Install the   │
+│   pcsc-tools package.                                    │
+│ ✓ Card middleware (OpenSC)                               │
+│ ! Identity broker                                        │
+│   Needs attention. No identity broker is registered.     │
+│ ! Diagnostic tools                                       │
 └──────────────────────────────────────────────────────────┘
 ```
 
-There is no **Connect anyway** action for a missing required capability or
-certificate-validation failure.
+Each row shows the state word before the detail; a row with a command gains a
+copy button (⧉). Re-check is disabled while `doctor` runs.
 
-## Connection confirmation
+## Profile page
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Connect to Enterprise Desktop                            │
+│   [ Readiness ] [ Profile ] [ Connect ]                  │
+├──────────────────────────────────────────────────────────┤
+│ Get your desktop profile                                 │
+│ 1. Sign in to the Azure Virtual Desktop web client your  │
+│    organization provided.                                │
+│ 2. Open the desktop you are assigned and choose to       │
+│    download or export its RDP file (.rdpw).              │
+│ 3. Return here and press the button below to import it.  │
+│    EITaaS Connect moves the file out of Downloads so it  │
+│    is not left readable by other accounts.               │
+│ Export instructions (project documentation)              │
+│ ( I downloaded the RDP file )                            │
 │                                                          │
-│ Smart-card passthrough and clipboard sharing follow the  │
-│ exported profile.                                        │
-│                                                          │
-│ [ Cancel ]                                  [ Connect ]   │
+│ Imported profiles                                        │
+│ Stored privately under your user data directory.         │
+│ (•) Desktop.rdpw                              [ Remove ] │
+│     Azure US Government · 2048 bytes · mode 0600 ·       │
+│     imported 2026-08-30 09:12:00                         │
+│ ( ) Desktop-2.rdpw                            [ Remove ] │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Connecting and cancellation
+The radio button selects the profile Connect uses. With no import yet the list
+shows a single row "No profile imported yet".
+
+## Import banner (`eitaas-gui Desktop.rdpw` or file-manager double-click)
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Connecting to Enterprise Desktop                         │
-│                                                          │
-│ ◌ Starting the remote desktop client…                    │
-│                                                          │
-│ Authentication is handled by the remote desktop client.  │
-│                                                          │
-│                                             [ Cancel ]    │
+│ Import Desktop.rdpw into your private profile store?     │
+│                                              [ Import ]  │
+├──────────────────────────────────────────────────────────┤
+│ Get your desktop profile                                 │
+│ …                                                        │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Authentication handoff
+Nothing happens until Import is pressed; the file is then moved into the store
+and becomes the default. There is no automatic connect.
+
+## Remove confirmation
+
+```text
+┌──────────────────────────────────────────────┐
+│ Remove Desktop.rdpw?                         │
+│                                              │
+│ The imported file is deleted from your       │
+│ private profile store.                       │
+│                                              │
+│ [ Keep ]                          [ Remove ] │
+└──────────────────────────────────────────────┘
+```
+
+Keep is the default response; Remove is styled destructive.
+
+## Connect page (idle)
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Authentication required                                  │
+│   [ Readiness ] [ Profile ] [ Connect ]                  │
+├──────────────────────────────────────────────────────────┤
 │                                                          │
-│ Complete sign-in in the remote desktop client window.    │
-│ EITaaS-Linux does not read or store your authentication   │
-│ response.                                                 │
+│                        ▣                                 │
+│                     Connect                              │
 │                                                          │
-│ [ Cancel connection ]                                    │
+│ Connect opens Desktop.rdpw in the bundled remote desktop │
+│ client. Sign-in, certificate selection, and the PIN      │
+│ prompt happen in that window. All required checks passed.│
+│                                                          │
+│                   (  Connect  )                          │
 └──────────────────────────────────────────────────────────┘
 ```
 
-No callback URL, code, username, tenant, or browser contents appear here.
+Connect is enabled only when the launcher is installed and a default profile
+exists; otherwise the description says which checks need attention or asks for
+an import first.
 
-## Failure
+## Running and cancelling
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Could not start the connection                           │
+│                     Connect                              │
 │                                                          │
-│ The eitaas-remmina client is not installed.              │
+│      ◌ Remote desktop client started      [ Cancel ]     │
 │                                                          │
-│                                                          │
-│ [ Run system check ]  [ Copy safe details ]  [ Close ]   │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Connected and disconnecting
+The phase label shows "Starting", then the `launch` progress messages. After
+Cancel it reads "Stopping the remote desktop client" and the button is
+disabled until the child exits. There is no Authenticating or Connected state.
 
-The bundled client's window represents the connected desktop. The launcher card may
-show **Connection process running**, not **Connected**, unless the core gains a
-verified session signal.
+## Launch error
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ Enterprise Desktop                         Process running│
+│                     Connect                              │
 │                                                          │
-│ The remote desktop client is active.                     │
-│                                                          │
-│ [ Disconnect ]                                [ Hide ]    │
+│                   (  Connect  )                          │
+│ ┌──────────────────────────────────────────────────────┐ │
+│ │ Could not start the connection                       │ │
+│ │ eitaas-remmina launcher is not installed             │ │
+│ └──────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Certificate inspection
+The card holds the title for the error code, the redacted message, and the
+recovery text when supplied. No child output or arguments appear.
+
+## Disconnect and quit
 
 ```text
-┌──────────────────────────────────────────────────────────┐
-│ Certificate bundle                                       │
-│                                                          │
-│ File       Certificates_PKCS7…p7b                        │
-│ SHA-256    12:34:…                                       │
-│                                                          │
-│ ▸ DoD Root CA …        Self-signed candidate             │
-│ ▸ DoD ID CA …          Intermediate                      │
-│                                                          │
-│ Inspection does not add trust.                           │
-│                                             [ Close ]     │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ Disconnect and quit?                             │
+│                                                  │
+│ The remote desktop client is still running.      │
+│                                                  │
+│ [ Keep working ]          [ Disconnect and quit ] │
+└──────────────────────────────────────────────────┘
 ```
+
+Shown on close-request while a connection runs. Keep working is the default;
+Disconnect and quit sets the cancellation event and joins the worker before
+the window closes.

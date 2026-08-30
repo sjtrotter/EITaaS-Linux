@@ -1,13 +1,24 @@
 #compdef eitaas
 
 _arguments -C \
-  '1:command:(doctor inspect-profile smartcard connect certificates)' \
+  '1:command:(doctor inspect-profile smartcard connect profile certificates)' \
   '*::argument:->args'
 
 case $words[2] in
   doctor) _arguments '--json[emit JSON]' ;;
   inspect-profile) _arguments '1:profile:_files -g "*.rdp(w|)(.)"' '--json[emit JSON]' ;;
   smartcard) _arguments '1:command:(status)' '--json[emit JSON]' ;;
-  connect) _arguments '1:profile:_files -g "*.rdp(w|)(.)"' ;;
+  connect) _arguments '::profile:_files -g "*.rdpw(.)"' ;;
+  profile)
+    _arguments -C \
+      '1:command:(import list select remove)' \
+      '*::argument:->profile_args'
+    case $words[2] in
+      import) _arguments '1:profile:_files -g "*.rdpw(.)"' '--json[emit JSON]' ;;
+      list) _arguments '--json[emit JSON]' ;;
+      select) _arguments '1:name:' '--json[emit JSON]' ;;
+      remove) _arguments '1:name:' ;;
+    esac
+    ;;
   certificates) _arguments '1:command:(fetch inspect)' ;;
 esac
