@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eux
+set -eu
 
 if [ "$#" -ne 1 ]; then
   echo "usage: test-remmina-deb-lifecycle.sh PACKAGE.deb" >&2
@@ -10,6 +10,13 @@ package=$(readlink -f -- "$1")
 expected_version=$(dpkg-deb -f "$package" Version)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
+
+# Official minimal container images may configure dpkg to path-exclude most
+# documentation at install time. Verify package payload compliance directly.
+dpkg-deb --fsys-tarfile "$package" | tar -tf - >"$work/package-files.txt"
+grep -q './usr/share/doc/eitaas-remmina/sources.json' "$work/package-files.txt"
+grep -q './usr/share/doc/eitaas-remmina/THIRD_PARTY_NOTICES.md' "$work/package-files.txt"
+grep -q './usr/share/doc/eitaas-remmina/licenses/Remmina-COPYING' "$work/package-files.txt"
 
 dpkg-deb --raw-extract "$package" "$work/old"
 sed -i 's/^Version: .*/Version: 1.4.43+eitaas0.7/' "$work/old/DEBIAN/control"
@@ -22,9 +29,6 @@ apt-get install -y "$package" >/dev/null
 test "$(dpkg-query -W -f='${Version}' eitaas-remmina)" = "$expected_version"
 test -x /usr/bin/eitaas-remmina
 test -f /usr/lib/eitaas-remmina/lib/remmina/plugins/remmina-plugin-rdp.so
-find /usr/share/doc/eitaas-remmina -maxdepth 2 -type f -print
-test -f /usr/share/doc/eitaas-remmina/sources.json \
-  || test -f /usr/share/doc/eitaas-remmina/sources.json.gz
 ldd /usr/lib/eitaas-remmina/bin/remmina | tee "$work/ldd.txt"
 if grep -q 'not found' "$work/ldd.txt"; then
   echo 'unresolved runtime library in installed package' >&2
