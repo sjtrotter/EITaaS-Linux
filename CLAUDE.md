@@ -32,7 +32,7 @@ no connection-manager mode, no Flatpak/AppImage.
   API results expose basenames, never full profile paths; child output is never returned.
 - Child processes: fixed argv, no shell, timeouts, bounded output, stdio to `DEVNULL` unless required.
 - Untrusted `.rdpw` content reaches FreeRDP's native parser only through the explicit allowlist
-  (`packaging/remmina/0006-*.patch`, `upstream/remmina/0005-*.patch`).
+  (`packaging/remmina/0005/0006-*.patch`, `upstream/remmina/0005-*.patch`).
 - OAuth: `state` + PKCE S256, exact callback scheme/host/port/path, one terminal result per transaction
   (`packaging/remmina/0006-*.patch`, `upstream/remmina/0007/0009-*.patch`; remaining gaps tracked in #60).
 - No polkit/pcsc-lite overrides, no automatic trust-store changes, no `sudo` in diagnostics.
