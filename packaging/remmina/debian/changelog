@@ -1,0 +1,5 @@
+eitaas-remmina (1.4.43+eitaas0.8) unstable; urgency=medium
+
+  * Initial native Debian-family package for the enhanced client.
+
+ -- Stephen Trotter <sjtrotter@users.noreply.github.com>  Sun, 30 Aug 2026 00:00:00 -0500

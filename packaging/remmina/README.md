@@ -5,8 +5,9 @@ All packaging formats must consume the pinned source and ordered patch data in
 are recorded in `docs/adr/0001-remmina-packaging-strategy.md`.
 
 This package combines a private Remmina 1.4.43 build with private FreeRDP
-3.31.0 libraries under `/usr/libexec/eitaas-remmina`. It does not replace the
-distribution packages.
+3.31.0 libraries under a distribution-native private prefix
+(`/usr/libexec/eitaas-remmina` on Fedora and `/usr/lib/eitaas-remmina` on
+Debian-family systems). It does not replace the distribution packages.
 
 The downstream changes preserve the original protected RDPW profile through
 FreeRDP's parser, select ARM/AAD transport, honor smart-card redirection, and
@@ -31,7 +32,20 @@ Pinned Remmina source:
 - commit `030946c83fe1b7218a21b6d32f9c975b243b7031`
 - SHA-256 `8976850314dddab8cfe74f413233a712e7ba4b6ccf72b56cbf635b51f1ea2801`
 
-Build conservatively with `RPM_BUILD_NCPUS=1` and `_smp_build_ncpus 1`.
+Build RPMs conservatively with `RPM_BUILD_NCPUS=1` and `_smp_build_ncpus 1`.
+Build native DEB source and binary packages on Ubuntu 24.04 or Debian 13 with:
+
+```console
+scripts/build-remmina-deb.sh
+```
+
+The DEB builder consumes the same `sources.json`, verifies both upstream
+archives, applies the same ordered patch series, and forces a single compile
+job. It writes packages and corresponding source artifacts to `dist/`. These
+DEBs are build- and lifecycle-tested in clean containers; Azure Government and
+CAC hardware validation is still required on each distribution before either
+becomes a supported runtime target.
+
 After installation, launch only through:
 
 ```console
@@ -56,8 +70,9 @@ GPL-2.0-or-later; the Remmina OpenSSL exception is shipped with the package.
 FreeRDP is Apache-2.0, and the standalone EITaaS launcher is MIT. See
 `THIRD_PARTY_NOTICES.md` for the component map and exact pinned sources.
 
-The source RPM is the corresponding, buildable source distribution for this
-prototype. It contains both pinned upstream archives, all downstream patches,
-the CAC integration sources, launcher, license texts, notice manifest, and the
-RPM spec. Rebuilding still downloads normal Fedora build dependencies; it does
-not fetch either application source tree.
+The source RPM and Debian source package are corresponding, buildable source
+distributions for this prototype. Each contains both pinned upstream archives,
+all downstream patches, the CAC integration sources, launcher, license texts,
+notice manifest, and native packaging metadata. Rebuilding still downloads
+normal distribution build dependencies; it does not fetch either application
+source tree.

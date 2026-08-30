@@ -16,11 +16,14 @@ falls back to printing an authorization URL and reading a callback from the
 terminal.
 
 Ubuntu 22.04 is not supported by the distribution dependency path because its
-standard repositories provide FreeRDP 2. Current Ubuntu and Fedora releases are
-candidate targets and must pass CI plus the manual release matrix. The isolated
-SDL/WebView authentication client has passed its Azure Government, PIV, and
-CAC-redirection hardware gates only on Fedora 44. Its current package recipe is
-RPM-specific.
+standard repositories provide FreeRDP 2. Ubuntu 24.04, Debian 13, and current
+Fedora releases are candidate targets and must pass CI plus the manual release
+matrix. Native DEBs for Ubuntu 24.04 and Debian 13 are built from the shared
+pinned-source manifest and pass clean install, upgrade, linkage, and removal
+checks in containers. The isolated SDL/WebView authentication client has passed
+its Azure Government, PIV, and CAC-redirection hardware gates only on Fedora
+44; successful DEB packaging does not yet establish runtime or hardware
+support on Ubuntu or Debian.
 
 Arch Linux is also a candidate target. The upstream `PKGBUILD` pins a reviewed
 source revision and checksum and depends only on official repository packages.

@@ -1,0 +1,81 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+PREFIX = /usr/lib/eitaas-remmina
+FREERDP = FreeRDP-3.31.0
+REMMINA = Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031
+PACKAGE_ROOT = $(CURDIR)/debian/eitaas-remmina
+PRIVATE_ROOT = $(CURDIR)/debian/private-root
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	cmake -S $(FREERDP) -B freerdp-build -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
+		-DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF \
+		-DWITH_SERVER=OFF -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF \
+		-DWITH_DOCUMENTATION=OFF -DWITH_FUSE=OFF -DWITH_CUPS=OFF \
+		-DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
+		-DWITH_ALSA=OFF -DWITH_PULSE=OFF -DWITH_JPEG=OFF -DWITH_GSM=OFF \
+		-DWITH_LAME=OFF -DWITH_OPENH264=OFF
+
+override_dh_auto_build:
+	cmake --build freerdp-build --parallel 1
+	DESTDIR=$(PRIVATE_ROOT) cmake --install freerdp-build
+	cmake -S $(REMMINA) -B remmina-build -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) \
+		-DCMAKE_PREFIX_PATH=$(PRIVATE_ROOT)$(PREFIX) \
+		-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+		-DCMAKE_INSTALL_RPATH='$$ORIGIN/../lib:$$ORIGIN/..' \
+		-DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
+		-DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
+		-DWITH_CUPS=OFF -DWITH_AVAHI=OFF \
+		-DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF \
+		-DWITH_STATS=OFF -DWITH_TIP=OFF -DWITH_MANPAGES=OFF \
+		-DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF -DWITH_GVNC=OFF \
+		-DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF \
+		-DWITH_XDMCP=OFF -DWITH_NX=OFF -DWITH_PYTHONLIBS=OFF
+	cmake --build remmina-build --parallel 1
+
+override_dh_auto_install:
+	DESTDIR=$(PACKAGE_ROOT) cmake --install freerdp-build
+	DESTDIR=$(PACKAGE_ROOT) cmake --install remmina-build
+	install -Dpm0755 eitaas-remmina $(PACKAGE_ROOT)/usr/bin/eitaas-remmina
+	install -Dpm0644 sources.json \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/sources.json
+	install -Dpm0644 THIRD_PARTY_NOTICES.md \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/THIRD_PARTY_NOTICES.md
+	install -Dpm0644 $(FREERDP)/LICENSE \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/licenses/FreeRDP-LICENSE
+	install -Dpm0644 $(FREERDP)/winpr/libwinpr/sysinfo/cpufeatures/NOTICE \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/licenses/FreeRDP-cpufeatures-NOTICE
+	install -Dpm0644 $(FREERDP)/winpr/libwinpr/sysinfo/cpufeatures/NOTICE \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/NOTICE
+	install -Dpm0644 $(REMMINA)/COPYING \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/licenses/Remmina-COPYING
+	install -Dpm0644 $(REMMINA)/LICENSE \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/licenses/Remmina-LICENSE
+	install -Dpm0644 $(REMMINA)/LICENSE.OpenSSL \
+		$(PACKAGE_ROOT)/usr/share/doc/eitaas-remmina/licenses/Remmina-LICENSE.OpenSSL
+	rm -rf $(PACKAGE_ROOT)$(PREFIX)/include $(PACKAGE_ROOT)$(PREFIX)/lib/cmake \
+		$(PACKAGE_ROOT)$(PREFIX)/lib/pkgconfig $(PACKAGE_ROOT)$(PREFIX)/share/man
+	rm -f $(PACKAGE_ROOT)$(PREFIX)/lib/*.so
+
+override_dh_auto_test:
+	test -x remmina-build/src/remmina
+	test -f remmina-build/plugins/rdp/remmina-plugin-rdp.so
+	grep -a -q 'Select smart-card authentication certificate' \
+		remmina-build/plugins/rdp/remmina-plugin-rdp.so
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(PACKAGE_ROOT)$(PREFIX)/lib
+
+override_dh_makeshlibs:
+	true
+
+override_dh_auto_clean:
+	rm -rf freerdp-build remmina-build debian/private-root
+	dh_auto_clean

@@ -1,0 +1,35 @@
+Source: eitaas-remmina
+Section: net
+Priority: optional
+Maintainer: Stephen Trotter <sjtrotter@users.noreply.github.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake,
+ gettext,
+ libcurl4-openssl-dev,
+ libgtk-3-dev,
+ libicu-dev,
+ libjson-c-dev,
+ libjson-glib-dev,
+ libkrb5-dev,
+ libpcsclite-dev,
+ libsecret-1-dev,
+ libsodium-dev,
+ libsoup-3.0-dev,
+ libssh-dev,
+ libssl-dev,
+ libusb-1.0-0-dev,
+ libwebkit2gtk-4.1-dev,
+ ninja-build,
+ zlib1g-dev
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/sjtrotter/EITaaS-Linux
+
+Package: eitaas-remmina
+Architecture: amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}, gnutls-bin, opensc, pcscd
+Description: isolated Remmina AVD and CAC prototype for EITaaS
+ Private Remmina and FreeRDP build for protected Azure Virtual Desktop RDPW
+ profiles, embedded Azure Government CAC authentication, and smart-card
+ redirection. It does not replace distribution Remmina or FreeRDP.
