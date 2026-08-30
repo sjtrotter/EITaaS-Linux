@@ -25,7 +25,9 @@ try:
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
     from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
-except (ImportError, ValueError) as error:  # pragma: no cover - environment dependent
+# AttributeError covers an incomplete `gi` (a build root that has the
+# namespace but not PyGObject itself).
+except (ImportError, ValueError, AttributeError) as error:  # pragma: no cover - environment dependent
     SKIP_REASON = f"GTK 4 / Libadwaita bindings unavailable: {error}"
 else:
     if not Gtk.init_check():

@@ -164,6 +164,7 @@ jobs:
           libcurl-devel libicu-devel libsecret-devel libsodium-devel
           libsoup3-devel libssh-devel openssl-devel
           pcsc-lite-devel webkit2gtk4.1-devel zlib-devel
+          gtk4 libadwaita python3-gobject
       - uses: actions/checkout@v4
       - name: Build the combined package from canonical source
         run: |
