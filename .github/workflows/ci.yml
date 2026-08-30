@@ -176,20 +176,36 @@ jobs:
           libusb-1.0-0-dev libwebkit2gtk-4.1-dev lintian ninja-build opensc
           patch pcscd python3 zlib1g-dev
       - uses: actions/checkout@v4
+      - name: Resolve pinned versions from the packaging manifests
+        run: |
+          manifest=packaging/remmina/sources.json
+          read_manifest() {
+            python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"][sys.argv[2]][sys.argv[3]])' \
+              "$manifest" "$1" "$2"
+          }
+          {
+            echo "DEB_VERSION=$(dpkg-parsechangelog -l packaging/remmina/debian/changelog -S Version)"
+            echo "FREERDP_VERSION=$(read_manifest freerdp version)"
+            echo "REMMINA_COMMIT=$(read_manifest remmina commit)"
+          } >>"$GITHUB_ENV"
       - name: Build binary and native source packages
         run: scripts/build-remmina-deb.sh
       - name: Verify Debian policy metadata
-        run: lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license dist/eitaas-remmina_1.4.43+eitaas0.9_amd64.changes
+        run: |
+          lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license \
+            "dist/eitaas-remmina_${DEB_VERSION}_amd64.changes"
       - name: Test install, upgrade, dependencies, and removal
-        run: scripts/test-remmina-deb-lifecycle.sh dist/eitaas-remmina_1.4.43+eitaas0.9_amd64.deb
+        run: scripts/test-remmina-deb-lifecycle.sh "dist/eitaas-remmina_${DEB_VERSION}_amd64.deb"
       - name: Verify corresponding source contents
         run: |
           target=$(mktemp -d)
-          dpkg-source --extract dist/eitaas-remmina_1.4.43+eitaas0.9.dsc "$target/source"
-          test -f "$target/source/FreeRDP-3.31.0/LICENSE"
-          test -f "$target/source/Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031/COPYING"
-          test -f "$target/source/patches/0004-use-profile-avd-scope.patch"
+          dpkg-source --extract "dist/eitaas-remmina_${DEB_VERSION}.dsc" "$target/source"
+          test -f "$target/source/FreeRDP-${FREERDP_VERSION}/LICENSE"
+          test -f "$target/source/Remmina-${REMMINA_COMMIT}/COPYING"
           test -f "$target/source/sources.json"
+          for patch in $(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["patches"]))' packaging/remmina/sources.json); do
+            test -f "$target/source/patches/$patch"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

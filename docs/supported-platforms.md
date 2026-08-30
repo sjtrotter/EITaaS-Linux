@@ -15,6 +15,18 @@ AAD without either path is reported as unavailable because FreeRDP otherwise
 falls back to printing an authorization URL and reading a callback from the
 terminal.
 
+The isolated enhanced Remmina package does not offer both paths everywhere.
+`packaging/remmina/eitaas-remmina.spec` builds FreeRDP and Remmina with
+`-DWITH_SSO_MIB=ON`, while `packaging/remmina/debian/rules` and
+`packaging/remmina/arch/PKGBUILD` build both with `-DWITH_SSO_MIB=OFF`. The
+identity-broker route is therefore compiled into the Fedora RPM only; on the
+DEB and Arch packages the embedded WebKitGTK CAC WebView is the authentication
+path. This follows the validation state: the RPM is the hardware-tested
+baseline including the broker path, and the DEB and Arch packages are
+candidates whose controlled path is the browser view. The per-recipe flags are
+asserted by `tests/test_remmina_packaging.py` and explained in
+`packaging/remmina/README.md`.
+
 Ubuntu 22.04 is not supported by the distribution dependency path because its
 standard repositories provide FreeRDP 2. Ubuntu 24.04, Debian 13, and current
 Fedora releases are candidate targets and must pass CI plus the manual release

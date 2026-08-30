@@ -8,6 +8,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = PROJECT_ROOT / "packaging" / "remmina"
 SPEC = (PACKAGE_DIR / "eitaas-remmina.spec").read_text()
 MANIFEST = json.loads((PACKAGE_DIR / "sources.json").read_text())
+CHANGELOG = (PACKAGE_DIR / "debian" / "changelog").read_text()
+WORKFLOW = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+
+
+def debian_version():
+    """Return the version of the newest packaging/remmina/debian/changelog entry."""
+    match = re.match(r"^\S+ \(([^)]+)\)", CHANGELOG)
+    assert match, "unparsable Debian changelog header"
+    return match.group(1)
 
 
 class RemminaPackagingComplianceTests(unittest.TestCase):
@@ -46,6 +55,98 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn('package_dir/sources.json', builder)
         self.assertIn('prepare-remmina-deb-source.py', builder)
         self.assertIn('sha256sum "$archive"', builder)
+
+    def test_sso_mib_is_enabled_only_for_the_hardware_tested_rpm(self):
+        # Intentional per-distribution policy, documented in
+        # packaging/remmina/README.md ("SSO-MIB per distribution") and
+        # docs/supported-platforms.md: the RPM is the hardware-tested baseline
+        # and carries the identity-broker path, while the DEB and Arch
+        # candidates ship only the embedded WebKitGTK CAC WebView path.
+        rules = (PACKAGE_DIR / "debian" / "rules").read_text()
+        pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
+
+        # Both the FreeRDP and the Remmina configure lines of the spec opt in.
+        self.assertEqual(SPEC.count("-DWITH_SSO_MIB=ON"), 2)
+        self.assertNotIn("-DWITH_SSO_MIB=OFF", SPEC)
+        self.assertIn("BuildRequires:  sso-mib-devel", SPEC)
+
+        for name, recipe in (("debian/rules", rules), ("arch/PKGBUILD", pkgbuild)):
+            with self.subTest(recipe=name):
+                self.assertEqual(recipe.count("-DWITH_SSO_MIB=OFF"), 2)
+                self.assertNotIn("-DWITH_SSO_MIB=ON", recipe)
+                self.assertNotIn("sso-mib", recipe.replace("-DWITH_SSO_MIB=OFF", ""))
+
+        # Every recipe still builds the browser/CAC authentication path.
+        for name, recipe in (
+            ("eitaas-remmina.spec", SPEC),
+            ("debian/rules", rules),
+            ("arch/PKGBUILD", pkgbuild),
+        ):
+            with self.subTest(recipe=name):
+                self.assertIn("-DWITH_RDP_AUTH_AAD=ON", recipe)
+
+    def test_sso_mib_policy_is_documented_where_support_is_declared(self):
+        for path in (
+            PACKAGE_DIR / "README.md",
+            PROJECT_ROOT / "docs" / "supported-platforms.md",
+        ):
+            with self.subTest(document=path.name):
+                text = path.read_text()
+                self.assertIn("-DWITH_SSO_MIB=ON", text)
+                self.assertIn("-DWITH_SSO_MIB=OFF", text)
+                self.assertIn("identity-broker", text)
+
+    def test_recorded_downstream_revisions_agree_with_the_shared_manifest(self):
+        package_version = MANIFEST["package_version"]
+
+        # RPM: Version is the pinned upstream Remmina version and Release is
+        # the downstream revision.
+        release = re.search(r"(?m)^Release:\s+(\S+?)%\{\?dist\}$", SPEC)
+        self.assertIsNotNone(release)
+        release = release.group(1)
+        self.assertRegex(release, r"^\d+\.\d+$")
+        self.assertIn(f"- {package_version}-{release}\n", SPEC.split("%changelog", 1)[1])
+
+        # Debian native package: <upstream version>+eitaas<downstream revision>.
+        self.assertEqual(debian_version(), f"{package_version}+eitaas{release}")
+
+        # Arch: pkgver is substituted from the manifest by
+        # scripts/build-remmina-arch.sh, and pkgrel is Arch's own packaging
+        # revision, which no manifest field records; only check it is a plain
+        # positive integer.
+        pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
+        self.assertIn("pkgver=@PKGVER@", pkgbuild)
+        self.assertNotIn(package_version, pkgbuild)
+        pkgrel = re.search(r"(?m)^pkgrel=(\S+)$", pkgbuild)
+        self.assertIsNotNone(pkgrel)
+        self.assertRegex(pkgrel.group(1), r"^[1-9]\d*$")
+
+    def test_debian_build_and_ci_derive_versions_instead_of_hard_coding_them(self):
+        builder = (PROJECT_ROOT / "scripts" / "build-remmina-deb.sh").read_text()
+        lifecycle = (PROJECT_ROOT / "scripts" / "test-remmina-deb-lifecycle.sh").read_text()
+
+        self.assertIn("dpkg-parsechangelog", builder)
+        self.assertIn('source_root="$build_root/eitaas-remmina-$version"', builder)
+        self.assertIn("dpkg-parsechangelog", WORKFLOW)
+        self.assertIn("DEB_VERSION", WORKFLOW)
+        # The lifecycle downgrade target is derived from the package under test.
+        self.assertIn('prior_version="$expected_version~0"', lifecycle)
+
+        pinned = {
+            "debian version": debian_version(),
+            "package version": MANIFEST["package_version"],
+            "freerdp version": MANIFEST["sources"]["freerdp"]["version"],
+            "remmina commit": MANIFEST["sources"]["remmina"]["commit"],
+        }
+        consumers = {
+            "scripts/build-remmina-deb.sh": builder,
+            "scripts/test-remmina-deb-lifecycle.sh": lifecycle,
+            ".github/workflows/ci.yml": WORKFLOW,
+        }
+        for label, value in pinned.items():
+            for name, text in consumers.items():
+                with self.subTest(pinned=label, consumer=name):
+                    self.assertNotIn(value, text)
 
     def test_pinned_manifest_matches_rpm_spec(self):
         freerdp = MANIFEST["sources"]["freerdp"]

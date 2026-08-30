@@ -100,6 +100,33 @@ The launcher uses an isolated configuration directory below
 plugins and settings from the distribution Remmina installation are not mixed
 with the prototype.
 
+## SSO-MIB per distribution
+
+The three recipes deliberately differ on one build flag, and the difference is
+asserted by `tests/test_remmina_packaging.py` so it cannot drift silently.
+
+| Recipe | FreeRDP and Remmina flag | Identity-broker route |
+| --- | --- | --- |
+| `eitaas-remmina.spec` (Fedora RPM) | `-DWITH_SSO_MIB=ON` | compiled in |
+| `debian/rules` (Ubuntu 24.04, Debian 13) | `-DWITH_SSO_MIB=OFF` | not compiled in |
+| `arch/PKGBUILD` (Arch) | `-DWITH_SSO_MIB=OFF` | not compiled in |
+
+The RPM is the exact bundle that passed the Azure Government, PIV, and
+CAC-redirection hardware gates on Fedora 44, and that tested baseline includes
+the Microsoft Identity Broker path; the spec therefore also carries
+`BuildRequires: sso-mib-devel`. The DEB and Arch packages are build- and
+lifecycle-tested candidates that have not passed those hardware gates, so the
+embedded WebKitGTK CAC WebView is their controlled authentication path and
+neither recipe declares an `sso-mib` build or runtime dependency.
+
+The consequence is that today the identity-broker route is available only from
+the RPM. All three recipes build the RDP plugin with `-DWITH_RDP_AUTH_AAD=ON`,
+so the embedded WebView CAC path is present in every package. Turning either
+`OFF` into `ON` is a support-matrix change, not a packaging tweak: it would add
+a broker route to a platform whose broker behavior has not been validated on
+hardware, so it belongs with the corresponding update to
+`docs/supported-platforms.md`.
+
 ## Licensing and corresponding source
 
 This is a composite binary package, not a relicensing of Remmina or FreeRDP.

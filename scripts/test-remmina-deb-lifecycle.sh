@@ -18,12 +18,18 @@ grep -q './usr/share/doc/eitaas-remmina/sources.json' "$work/package-files.txt"
 grep -q './usr/share/doc/eitaas-remmina/THIRD_PARTY_NOTICES.md' "$work/package-files.txt"
 grep -q './usr/share/doc/eitaas-remmina/licenses/Remmina-COPYING' "$work/package-files.txt"
 
+# Synthesize the "already installed" package from the one under test rather
+# than pinning a version string a manifest already owns. A "~" suffix always
+# sorts before the unsuffixed version in Debian's comparison, so the upgrade
+# below is a genuine upgrade for whatever the changelog currently records.
+prior_version="$expected_version~0"
+
 dpkg-deb --raw-extract "$package" "$work/old"
-sed -i 's/^Version: .*/Version: 1.4.43+eitaas0.7/' "$work/old/DEBIAN/control"
+sed -i "s/^Version: .*/Version: $prior_version/" "$work/old/DEBIAN/control"
 dpkg-deb --build "$work/old" "$work/eitaas-remmina-old.deb" >/dev/null
 
 apt-get install -y "$work/eitaas-remmina-old.deb" >/dev/null
-test "$(dpkg-query -W -f='${Version}' eitaas-remmina)" = '1.4.43+eitaas0.7'
+test "$(dpkg-query -W -f='${Version}' eitaas-remmina)" = "$prior_version"
 
 apt-get install -y "$package" >/dev/null
 test "$(dpkg-query -W -f='${Version}' eitaas-remmina)" = "$expected_version"
