@@ -64,9 +64,9 @@ upstream report or test fixture.
 
 Security hardening is tracked in EITaaS-Linux issues #49–#63. The series
 binds protected-profile content before parsing, restricts OAuth settings to
-supported cloud/client combinations, binds CAC challenges to the verified
-HTTPS authentication origin, correlates PIN requests, and bounds and cancels
-PKCS #11 discovery. Untrusted profile content never reaches `g_error()`:
+supported cloud/client combinations, binds smart-card challenges to the
+verified HTTPS authentication origin, correlates PIN requests, and bounds and
+cancels PKCS #11 discovery. Untrusted profile content never reaches `g_error()`:
 every rejection is a plugin error the user sees, not an abort. These controls
 must remain equivalent to the downstream queue in `packaging/remmina/`. No
 upstream merge request should be opened until the corresponding issue has a

@@ -59,16 +59,6 @@ def parser() -> argparse.ArgumentParser:
     profile_select.add_argument("--json", action="store_true")
     profile_remove = profile_commands.add_parser("remove", help="delete an imported profile")
     profile_remove.add_argument("name")
-    cert_cmd = commands.add_parser("certificates", help="fetch or inspect official certificate bundles")
-    cert_commands = cert_cmd.add_subparsers(dest="certificate_command", required=True)
-    cert_fetch = cert_commands.add_parser("fetch", help="download a digest-pinned official bundle")
-    cert_fetch.add_argument("url")
-    cert_fetch.add_argument("--sha256", required=True)
-    cert_fetch.add_argument("--output")
-    cert_fetch.add_argument("--json", action="store_true")
-    cert_inspect = cert_commands.add_parser("inspect", help="inspect a PKCS#7 bundle without trusting it")
-    cert_inspect.add_argument("bundle")
-    cert_inspect.add_argument("--json", action="store_true")
     return root
 
 
@@ -110,15 +100,6 @@ def main(argv: list[str] | None = None) -> int:
         if result.ok:
             if result.value is not None and result.value is not True:
                 _print(result.value, args.json)
-            return 0
-    elif args.command == "certificates":
-        result = (
-            app.fetch_certificates(args.url, args.sha256, args.output)
-            if args.certificate_command == "fetch"
-            else app.inspect_certificates(args.bundle)
-        )
-        if result.ok:
-            _print(result.value, args.json)
             return 0
     else:
         return 2

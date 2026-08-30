@@ -14,13 +14,12 @@ import datetime
 import stat
 import subprocess
 import threading
-import urllib.parse
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
-from . import certificates, doctor, profiles, remmina, smartcard
+from . import doctor, profiles, remmina, smartcard
 from . import __version__
 from .profile import inspect_profile
 from .redaction import redact
@@ -113,28 +112,6 @@ class SmartcardComponent:
 class SmartcardReport:
     components: tuple[SmartcardComponent, ...]
     ready: bool
-
-
-@dataclass(frozen=True)
-class CertificateSummary:
-    subject: str
-    issuer: str
-    sha256_fingerprint: str
-    self_signed_candidate: bool
-
-
-@dataclass(frozen=True)
-class CertificateBundleReport:
-    display_name: str
-    sha256: str
-    certificates: tuple[CertificateSummary, ...]
-
-
-@dataclass(frozen=True)
-class CertificateFetchReport:
-    display_name: str
-    sha256: str
-    source_host: str
 
 
 @dataclass(frozen=True)
@@ -344,34 +321,6 @@ class Application:
     def smartcard_status_async(self) -> Future[Result[SmartcardReport]]:
         """Run bounded PC/SC and middleware checks on a worker thread."""
         return _BACKGROUND_OPERATIONS.submit(self.smartcard_status)
-
-    def inspect_certificates(self, path: str) -> Result[CertificateBundleReport]:
-        try:
-            data = certificates.inspect(path)
-            items = tuple(
-                CertificateSummary(
-                    subject=str(item["subject"]),
-                    issuer=str(item["issuer"]),
-                    sha256_fingerprint=str(item["sha256_fingerprint"]),
-                    self_signed_candidate=bool(item["self_signed_candidate"]),
-                )
-                for item in data["certificates"]
-            )
-            return Result(CertificateBundleReport(Path(path).name, str(data["sha256"]), items))
-        except Exception as error:
-            return self._error("certificate_inspection_failed", error)
-
-    def fetch_certificates(
-        self, url: str, expected_sha256: str, destination: str | None = None
-    ) -> Result[CertificateFetchReport]:
-        try:
-            data = certificates.fetch(url, expected_sha256, destination)
-            host = urllib.parse.urlsplit(str(data["source"])).hostname or ""
-            return Result(
-                CertificateFetchReport(Path(str(data["path"])).name, str(data["sha256"]), host)
-            )
-        except Exception as error:
-            return self._error("certificate_fetch_failed", error)
 
     def diagnostics(self, profile: str | None = None) -> Result[DiagnosticReport]:
         """Build a safe support report without full paths or raw command output."""

@@ -13,7 +13,7 @@ modules directly, parse CLI output, or construct client arguments.
 - Profile values remain redacted according to the core profile policy.
 - Launcher arguments and child-process output are not emitted as progress
   events.
-- The application layer never accepts, requests, or returns a CAC PIN.
+- The application layer never accepts, requests, or returns a smart-card PIN.
 - `Application.diagnostics` composes a support-safe report from the same typed
   results. It omits full profile paths, child output, and command arguments.
 
@@ -122,6 +122,13 @@ arguments, or logs.
 Dataclass fields and stable error codes form the public application contract.
 New optional fields may be added in minor releases. Removing or changing fields
 requires a major version change.
+
+**Breaking change in the 0.2.0 development line (#75):** `Application.inspect_certificates`,
+`Application.fetch_certificates`, `CertificateSummary`, `CertificateBundleReport`,
+`CertificateFetchReport`, and the `certificate_inspection_failed` /
+`certificate_fetch_failed` error codes were removed together with the CLI's
+`certificates` subcommand. DoD PKI trust installation is out of scope (#8);
+no frontend consumed the surface and no release shipped one that did.
 
 **Breaking change in the 0.1.0 development line (#69):** `Application.connect`,
 `ConnectionRequest.backend`, `ConnectionRequest.clipboard`,

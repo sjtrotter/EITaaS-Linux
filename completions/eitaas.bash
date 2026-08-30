@@ -4,7 +4,7 @@ _eitaas()
     COMPREPLY=()
     current="${COMP_WORDS[COMP_CWORD]}"
     previous="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="doctor inspect-profile smartcard connect profile certificates"
+    commands="doctor inspect-profile smartcard connect profile"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$current") )
@@ -14,7 +14,6 @@ _eitaas()
         doctor) COMPREPLY=( $(compgen -W "--json" -- "$current") ) ;;
         connect) COMPREPLY=( $(compgen -f -- "$current") ) ;;
         smartcard) COMPREPLY=( $(compgen -W "status" -- "$current") ) ;;
-        certificates) COMPREPLY=( $(compgen -W "fetch inspect" -- "$current") ) ;;
         inspect-profile)
             if [ "$previous" = "inspect-profile" ]; then
                 COMPREPLY=( $(compgen -f -- "$current") )

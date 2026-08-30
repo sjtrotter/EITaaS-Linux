@@ -16,7 +16,7 @@ reports whether the launcher and private client are installed and the pinned
 versions from the installed manifest; distribution FreeRDP packages are not
 consulted.
 
-The only supported authentication path is the embedded CAC WebView. The
+The only supported authentication path is the embedded smart-card WebView. The
 terminal URL/callback fallback is refused inside the bundled client, and the
 Microsoft Identity Broker (SSO-MIB) route is not compiled in anywhere:
 `packaging/rpm/eitaas-linux.spec`, `packaging/debian/rules`, and
@@ -41,9 +41,14 @@ taken from the distribution and the DEB recipe is validated only on Ubuntu
 targets and must pass CI plus the manual release matrix. Native DEBs for
 Ubuntu 24.04 and Debian 13 are built from the shared pinned-source manifest
 and pass clean install, upgrade, linkage, and removal checks in containers.
-The bundled client has passed its Azure Government, PIV, and CAC-redirection
-hardware gates only on Fedora 44; successful DEB packaging does not yet
+The bundled client has passed its Azure Government and smart card (PIV)
+redirection hardware gates only on Fedora 44; successful DEB packaging does not yet
 establish runtime or hardware support on Ubuntu or Debian.
+
+Submission to the distribution repositories (Fedora, Debian, the AUR) is a
+possible later goal, most likely once Remmina upstream carries the patches this
+bundle applies. Nothing is committed to it, and none of the artifacts below is
+an official distribution or AUR package today.
 
 Arch Linux is also a candidate target. The upstream `PKGBUILD` pins a reviewed
 source revision and checksum and depends only on official repository packages.
@@ -52,7 +57,7 @@ It is not an official Arch repository or AUR package.
 The Arch package is also built against the repository snapshot recorded in
 `packaging/remmina/SNAPSHOT`. It consumes the shared pinned-source manifest and
 installs its private client under `/usr/lib/eitaas-remmina`; successful package
-CI does not establish Arch CAC hardware support.
+CI does not establish Arch smart-card hardware support.
 
 The bundled Remmina client is a GTK 3 application; the Fedora 44 GNOME
 Wayland test succeeded through XWayland, but multimonitor scaling and pointer
@@ -64,7 +69,7 @@ One artifact per distribution now carries every component, so a single gate
 column applies to the whole product on that target. `A` is an automated CI
 gate; `H` is a manual hardware/AVD gate (see ADR-0001 for the full matrix).
 
-| Artifact | Build | lint (rpmlint/lintian/namcap) | Install, upgrade from the split packages, remove | `eitaas doctor` and desktop-file check | Corresponding source | CAC/AVD hardware |
+| Artifact | Build | lint (rpmlint/lintian/namcap) | Install, upgrade from the split packages, remove | `eitaas doctor` and desktop-file check | Corresponding source | Smart-card/AVD hardware |
 | --- | --- | --- | --- | --- | --- | --- |
 | `eitaas-linux` RPM (Fedora 44, x86_64) | A | A | A | A | A | H (passed) |
 | `eitaas-linux` DEB (Ubuntu 24.04, amd64) | A | A | A | A | A | H (not run) |

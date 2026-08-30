@@ -22,11 +22,11 @@ Files: FreeRDP-*/*
 Copyright: FreeRDP contributors
 License: Apache-2.0
 
-Files: packaging/remmina/eitaas_cac_auth.c
- packaging/remmina/eitaas_cac_auth.h
+Files: packaging/remmina/eitaas_smartcard_auth.c
+ packaging/remmina/eitaas_smartcard_auth.h
  packaging/remmina/*.patch
- Remmina-*/plugins/rdp/eitaas_cac_auth.c
- Remmina-*/plugins/rdp/eitaas_cac_auth.h
+ Remmina-*/plugins/rdp/eitaas_smartcard_auth.c
+ Remmina-*/plugins/rdp/eitaas_smartcard_auth.h
 Copyright: 2026 Stephen Trotter
 License: GPL-2+
 

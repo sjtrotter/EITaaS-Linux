@@ -11,9 +11,10 @@ Name:           eitaas-linux
 Version:        0.2.0
 Release:        2%{?dist}
 Summary:        EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI
-# The package is a composite: Remmina and the EITaaS CAC integration compiled
-# into its RDP plugin are GPL-2.0-or-later, FreeRDP is Apache-2.0, and the
-# EITaaS Python tooling and launcher are MIT. See THIRD_PARTY_NOTICES.md.
+# The package is a composite: Remmina and the EITaaS smart card (PIV)
+# integration compiled into its RDP plugin are GPL-2.0-or-later, FreeRDP is
+# Apache-2.0, and the EITaaS Python tooling and launcher are MIT. See
+# THIRD_PARTY_NOTICES.md.
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://github.com/sjtrotter/EITaaS-Linux
 Source0:        https://github.com/sjtrotter/EITaaS-Linux/archive/refs/tags/v%{version}.tar.gz
@@ -76,7 +77,7 @@ Provides:       eitaas-linux-gui = %{version}-%{release}
 
 %description
 Everything needed to reach an EITaaS Azure Virtual Desktop workspace with
-Common Access Card redirection: the isolated one-shot Remmina and FreeRDP
+smart card (PIV) redirection: the isolated one-shot Remmina and FreeRDP
 client built from the pins in sources.json and installed under a private
 prefix, the eitaas-remmina launcher, the eitaas command-line diagnostics, and
 the EITaaS Connect GTK 4 helper. The private client does not replace the
@@ -85,8 +86,8 @@ distribution Remmina or FreeRDP packages.
 %prep
 %setup -q -n eitaas-linux-%{version} -a 1 -a 2
 remmina=Remmina-%{remmina_commit}
-cp packaging/remmina/eitaas_cac_auth.c "$remmina/plugins/rdp/eitaas_cac_auth.c"
-cp packaging/remmina/eitaas_cac_auth.h "$remmina/plugins/rdp/eitaas_cac_auth.h"
+cp packaging/remmina/eitaas_smartcard_auth.c "$remmina/plugins/rdp/eitaas_smartcard_auth.c"
+cp packaging/remmina/eitaas_smartcard_auth.h "$remmina/plugins/rdp/eitaas_smartcard_auth.h"
 # sources.json owns the ordered patch series; the spec never repeats it.
 for patch in $(%{python3} -c 'import json,sys;print("\n".join(json.load(open(sys.argv[1]))["patches"]))' %{manifest}); do
   patch --fuzz=0 -p1 -d "$remmina" < "packaging/remmina/$patch"

@@ -17,8 +17,8 @@ community work, not an official Microsoft or United States Government client.
 
 The project icon (`org.eitaas.Helper`) combines an abstract remote display and
 a generic card chip. It must not use Microsoft/Windows marks, military seals,
-government agency emblems, smart card (PIV) artwork, or modified copies of existing product
-icons.
+government agency emblems, smart card (PIV) artwork, or modified copies of
+existing product icons.
 
 The helper uses native Libadwaita controls, typography, spacing, and window
 chrome, and follows the system light/dark preference. `design-tokens.json`
@@ -49,9 +49,6 @@ Readiness page is not already visible — an alert dialog names the failing
 checks; dismissing it in any way (button, Escape, or close) switches to the
 Readiness page. The dialog uses a normal `Adw.AlertDialog` with an async
 response handler; it never blocks the main loop.
-
-Certificates remain CLI-only (`eitaas certificates`); the helper has no
-certificate view.
 
 ## Profile import
 
@@ -118,13 +115,25 @@ shows "Stopping the remote desktop client".
 
 The core cannot observe authentication or session establishment, so there is
 no Authenticating or Connected state. Sign-in, certificate selection, and the
-PIN prompt happen in the Remmina window. When the child exits, a toast reports
-"Connection cancelled." or a non-zero exit status; a clean exit shows nothing.
-Import and profile rows are disabled while a connection is running.
+PIN prompt happen in the Remmina window. A cancelled run reports
+"Connection cancelled." as a toast and a clean run with no warnings shows
+nothing. Import and profile rows are disabled while a connection is running.
 
 Closing the window while the client runs asks **Disconnect and quit** /
 **Keep working** (default Keep working). Quit sets the cancellation event and
 joins the worker with a 7 s grace period.
+
+## Diagnostics after a failed run
+
+A run that exits non-zero, or that exits cleanly but logged `smartcard-auth:`
+warning lines, shows `viewmodel.diagnostic_text` in place on the Connect page:
+the exit status (or "exited normally but reported smart-card warnings"), the
+last reason-code and Remmina warning lines from the redacted session log, and
+the log's path. The lines are fetched with `Application.session_log` on a
+worker thread, so the page first shows the status and path and then gains the
+lines. A **Copy diagnostic log** button appears with them and places the whole
+redacted log on the clipboard. Raw child output never reaches the page by any
+other route.
 
 ## Failures and recovery
 

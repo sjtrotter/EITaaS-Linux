@@ -152,6 +152,28 @@ disabled until the child exits. There is no Authenticating or Connected state.
 The card holds the title for the error code, the redacted message, and the
 recovery text when supplied. No child output or arguments appear.
 
+## Diagnostics after a failed run
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│                     Connect                              │
+│                                                          │
+│                   (  Connect  )   ( Copy diagnostic log )│
+│ ┌──────────────────────────────────────────────────────┐ │
+│ │ The remote desktop client exited with status 1.      │ │
+│ │ Last diagnostic lines:                               │ │
+│ │ smartcard-auth: discovery-empty: no certificate      │ │
+│ │ Diagnostic log: ~/.local/state/eitaas-remmina/logs/  │ │
+│ │ session-20260830T091200.000000-4242.log              │ │
+│ └──────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+Shown when the client exits non-zero, or exits cleanly after logging
+`smartcard-auth:` warnings. The reason-code lines arrive from the redacted
+session log on a worker thread, so the status and path appear first. Copy
+diagnostic log puts the whole redacted log on the clipboard.
+
 ## Disconnect and quit
 
 ```text

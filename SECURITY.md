@@ -2,8 +2,8 @@
 
 ## Reporting a vulnerability
 
-Do not open a public issue containing credentials, OAuth callback URLs, CAC
-data, `.rdp`/`.rdpw` contents, tenant or host-pool identifiers, packet captures,
+Do not open a public issue containing credentials, OAuth callback URLs,
+smart-card data, `.rdp`/`.rdpw` contents, tenant or host-pool identifiers, packet captures,
 or operational details about government systems.
 
 Use GitHub private vulnerability reporting for this repository. If that option
