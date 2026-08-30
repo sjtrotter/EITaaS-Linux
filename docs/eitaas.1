@@ -107,6 +107,8 @@ the number of
 .B remmina
 processes already running; the last line is
 .BR exit=CODE .
+Logging is best effort: a log that cannot be created is skipped rather than
+allowed to stop the connection.
 The bundled client logs each smart-card authentication stage as
 .BR "smartcard-auth: CODE" .
 The codes are stable: challenge-received, challenge-accepted,

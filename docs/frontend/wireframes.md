@@ -187,5 +187,5 @@ diagnostic log puts the whole redacted log on the clipboard.
 ```
 
 Shown on close-request while a connection runs. Keep working is the default;
-Disconnect and quit sets the cancellation event and joins the worker before
-the window closes.
+Disconnect and quit hides the window and sets the cancellation event, and the
+window is destroyed once the child has exited.

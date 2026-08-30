@@ -61,16 +61,17 @@ click the settings cog, choose "Download the rdp file", click the desktop
 (saves e.g. `Desktop.rdpw` to Downloads), then press **I downloaded the RDP
 file**, which opens `Gtk.FileDialog` filtered to `*.rdpw`, starting in the
 Downloads directory. A "Why do I need this file?" expander explains that the
-`.rdpw` is a signed, password-free description of the workspace, is personal,
-and is moved out of Downloads so other users cannot read it.
+`.rdpw` describes the workspace the client connects to, is personal, and is
+moved out of Downloads into a directory this project restricts to the user
+(the exact wording is `viewmodel.WHY_PROFILE`).
 
 Import calls `Application.import_profile`, which *moves* the chosen file
 (rename, or copy + fsync + unlink across filesystems; symlinks and files owned
 by another user are refused) into `$XDG_DATA_HOME/eitaas-remmina/profiles/`
 (directory mode `0700`, file mode `0600`), keeps the basename (adding `-2`,
 `-3`, … on collision), re-validates it, and makes it the default. The step text
-explains that the file is moved out of Downloads so it is not left readable by
-other accounts. A toast confirms "Imported NAME; it is now the default."
+explains that the file is moved out of Downloads into a directory restricted
+to the user. A toast confirms "Imported NAME; it is now the default."
 
 The **Imported profiles** list shows one row per stored file: basename, cloud
 label, size, mode, and import date (exactly the `StoredProfileSummary` fields).
@@ -120,8 +121,10 @@ PIN prompt happen in the Remmina window. A cancelled run reports
 nothing. Import and profile rows are disabled while a connection is running.
 
 Closing the window while the client runs asks **Disconnect and quit** /
-**Keep working** (default Keep working). Quit sets the cancellation event and
-joins the worker with a 7 s grace period.
+**Keep working** (default Keep working). Quit hides the window and sets the
+cancellation event; the worker is never joined on the GTK thread, and the
+window is destroyed from the `launch` completion callback once the child has
+exited.
 
 ## Diagnostics after a failed run
 

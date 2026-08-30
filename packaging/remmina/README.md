@@ -33,9 +33,10 @@ dialog keeps the GTK interface responsive. Cancelling discovery ends the
 containing AVD authentication attempt. Core dumps are disabled before opening
 the authentication view.
 
-The handler accepts certificate and PIN challenges only from the exact HTTPS
-authority that initiated the AAD WebView, limited to supported Microsoft
-commercial and US Government login hosts. It rejects proxy, mismatched,
+The handler accepts certificate and PIN challenges only from the HTTPS
+authority that initiated the AAD WebView, or that authority's `certauth.`
+sibling host, limited to supported Microsoft commercial and US Government
+login hosts. It rejects proxy, mismatched,
 standalone PIN, and insecure-origin challenges. PKCS #11 discovery uses the
 `p11tool` this build pins (`-DREMMINA_P11TOOL=/usr/bin/p11tool`, the path the
 package's `gnutls-utils`/`gnutls-bin` dependency installs; a build that pins

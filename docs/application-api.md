@@ -109,8 +109,10 @@ off the main loop, either through the `*_async` futures (`doctor_async`,
 `list_profiles_async`, `import_profile_async`) or on a short-lived daemon
 thread for `select_profile`, `remove_profile`, and `launch`; results and
 progress events are delivered to the toolkit with `GLib.idle_add`. The launch
-worker owns the `threading.Event`; Cancel sets it, and window shutdown sets it
-and joins the worker with a 7 s grace period before the process exits.
+worker owns the `threading.Event`; Cancel sets it. Window shutdown while a
+connection runs never joins the worker on the GTK thread: the window hides,
+the cancellation event stops the child, and the `launch` completion callback
+destroys the window once the child has exited.
 
 The child owns its embedded-WebView authentication
 interaction and does not inherit terminal streams. Callback URLs,

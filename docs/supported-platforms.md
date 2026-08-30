@@ -42,13 +42,8 @@ targets and must pass CI plus the manual release matrix. Native DEBs for
 Ubuntu 24.04 and Debian 13 are built from the shared pinned-source manifest
 and pass clean install, upgrade, linkage, and removal checks in containers.
 The bundled client has passed its Azure Government and smart card (PIV)
-redirection hardware gates only on Fedora 44; successful DEB packaging does not yet
-establish runtime or hardware support on Ubuntu or Debian.
-
-Submission to the distribution repositories (Fedora, Debian, the AUR) is a
-possible later goal, most likely once Remmina upstream carries the patches this
-bundle applies. Nothing is committed to it, and none of the artifacts below is
-an official distribution or AUR package today.
+redirection hardware gates only on Fedora 44; successful DEB packaging does
+not yet establish runtime or hardware support on Ubuntu or Debian.
 
 Arch Linux is also a candidate target. The upstream `PKGBUILD` pins a reviewed
 source revision and checksum and depends only on official repository packages.
@@ -62,6 +57,11 @@ CI does not establish Arch smart-card hardware support.
 The bundled Remmina client is a GTK 3 application; the Fedora 44 GNOME
 Wayland test succeeded through XWayland, but multimonitor scaling and pointer
 alignment remain unsupported pending issue #29.
+
+Submission to the distribution repositories (Fedora, Debian, the AUR) is a
+possible later goal, most likely once Remmina upstream carries the patches this
+bundle applies. Nothing is committed to it, and none of the artifacts below is
+an official distribution or AUR package today.
 
 ## Gate table per artifact
 

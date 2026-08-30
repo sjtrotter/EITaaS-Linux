@@ -93,9 +93,9 @@ downloaded the RDP file** (Ctrl+O), and pick it.
 
 Importing *moves* the file out of Downloads into
 `$XDG_DATA_HOME/eitaas-remmina/profiles/` (directory mode 0700, file mode
-0600) and makes it the profile Connect uses. Downloads is usually readable by
-other accounts on the machine; the private store is not. The "Why do I need
-this file?" expander explains what the `.rdpw` is. Imported profiles are listed
+0600) and makes it the profile Connect uses, so the profile no longer depends
+on whatever permissions your download directory happens to have. The "Why do I
+need this file?" expander explains what the `.rdpw` is. Imported profiles are listed
 with a selector for the one Connect uses and a Remove action; double-clicking a
 `.rdpw` file in your file manager opens this page with an offer to import it,
 and nothing is imported or connected until you press the button.
@@ -127,8 +127,9 @@ window:
 
 - the view opens only on an HTTPS Microsoft sign-in host
   (`login.microsoftonline.com` or `login.microsoftonline.us`), and certificate
-  and PIN challenges are accepted only from that exact verified authority —
-  proxy, mismatched-origin, and standalone PIN challenges are refused;
+  and PIN challenges are accepted only from that verified authority or its
+  `certauth.` sibling host — proxy, mismatched-origin, and standalone PIN
+  challenges are refused;
 - when the site asks for a client certificate, the client lists your card's
   authentication, identity, and PIV-labelled certificates through GnuTLS'
   `p11tool` and shows a chooser;
@@ -145,8 +146,7 @@ you into a connection manager: this is not a connection manager, by design
 (ADR-0002).
 
 Do not publish, attach, or commit an exported profile. Treat it as
-user- and resource-specific connection material even though it holds no
-password.
+user- and resource-specific connection material.
 
 ## Security defaults
 
@@ -216,7 +216,8 @@ Every connection writes the client's output, redacted line by line, to
 (`~/.local/state/...` by default; directory 0700, files 0600, about 2 MiB each,
 the newest five kept). The first lines record the version, the profile
 basename, and how many `remmina` processes were already running; the last line
-is `exit=<code>`.
+is `exit=<code>`. Logging is best effort: a log that cannot be created is
+skipped rather than allowed to stop the connection.
 
 - **In the helper:** after a failed run the Connect page shows the last
   `smartcard-auth:` reason-code and Remmina warning lines from that log, names
