@@ -193,6 +193,7 @@ static GPtrArray *discover_certificates(GtkWindow *parent,
 	if (response != GTK_RESPONSE_ACCEPT) {
 		discovery->abandoned = TRUE;
 		webkit_authentication_request_cancel(request);
+		gtk_window_close(parent);
 		return NULL;
 	}
 

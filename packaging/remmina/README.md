@@ -9,8 +9,9 @@ FreeRDP's parser, select ARM/AAD transport, honor smart-card redirection, and
 handle WebKitGTK client-certificate and PIN challenges with PKCS #11-backed
 CAC credentials. Only authentication, identity, and PIV-labelled certificates
 are shown. Certificate discovery runs on a worker while a cancellable progress
-dialog keeps the GTK interface responsive. Core dumps are disabled before
-opening the authentication view.
+dialog keeps the GTK interface responsive. Cancelling discovery ends the
+containing AVD authentication attempt. Core dumps are disabled before opening
+the authentication view.
 
 Authentication cloud selection is automatic. Protected profiles whose gateway
 ends in `.wvd.azure.us` use the Azure Government authority and AVD scope;
