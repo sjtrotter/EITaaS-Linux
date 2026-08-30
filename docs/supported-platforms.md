@@ -32,6 +32,12 @@ FreeRDP 3 clients, including X11, Wayland, and SDL variants, but `eitaas doctor`
 must still confirm AAD, PC/SC, and a secure non-terminal authentication path at
 runtime. The Fedora WebView RPM is not installed by the Arch package.
 
+The isolated enhanced Remmina package is also built against the repository
+snapshot recorded in `packaging/remmina/arch/SNAPSHOT`. It consumes the shared
+pinned-source manifest and installs its private client under
+`/usr/lib/eitaas-remmina`; successful package CI does not establish Arch CAC
+hardware support.
+
 Under Wayland, automatic selection first requires secure authentication. A live
 identity broker permits the normal X11, SDL, then Wayland preference; without a
 broker, a WebView-enabled SDL client is selected. Native Wayland remains an

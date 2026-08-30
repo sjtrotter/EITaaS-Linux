@@ -46,6 +46,18 @@ DEBs are build- and lifecycle-tested in clean containers; Azure Government and
 CAC hardware validation is still required on each distribution before either
 becomes a supported runtime target.
 
+Build the native Arch package against the repository snapshot recorded in
+`arch/SNAPSHOT` with:
+
+```console
+scripts/build-remmina-arch.sh
+```
+
+The Arch builder must run unprivileged. It derives the version and complete
+corresponding-source checksum from `sources.json`, forces one compile job, and
+writes the package to `dist/`. Arch remains candidate-only pending its hardware
+matrix.
+
 After installation, launch only through:
 
 ```console
@@ -70,9 +82,9 @@ GPL-2.0-or-later; the Remmina OpenSSL exception is shipped with the package.
 FreeRDP is Apache-2.0, and the standalone EITaaS launcher is MIT. See
 `THIRD_PARTY_NOTICES.md` for the component map and exact pinned sources.
 
-The source RPM and Debian source package are corresponding, buildable source
-distributions for this prototype. Each contains both pinned upstream archives,
-all downstream patches, the CAC integration sources, launcher, license texts,
-notice manifest, and native packaging metadata. Rebuilding still downloads
-normal distribution build dependencies; it does not fetch either application
-source tree.
+The source RPM, Debian source package, and Arch corresponding-source tarball
+are buildable source distributions for this prototype. Each contains both
+pinned upstream archives, all downstream patches, the CAC integration sources,
+launcher, license texts, notice manifest, and native packaging metadata.
+Rebuilding still downloads normal distribution build dependencies; it does not
+fetch either application source tree.

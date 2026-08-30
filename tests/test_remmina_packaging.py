@@ -32,6 +32,21 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn("/usr/libexec/eitaas-remmina/bin/remmina", launcher)
         self.assertIn("/usr/lib/eitaas-remmina/bin/remmina", launcher)
 
+    def test_native_arch_recipe_uses_private_prefix_and_embedded_auth(self):
+        pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
+        self.assertIn("_prefix='/usr/lib/eitaas-remmina'", pkgbuild)
+        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", pkgbuild)
+        self.assertIn("-DWITH_PCSC=ON", pkgbuild)
+        self.assertIn("-DWITH_SSO_MIB=OFF", pkgbuild)
+        self.assertIn("--parallel 1", pkgbuild)
+        self.assertNotIn("https://github.com/FreeRDP", pkgbuild)
+
+    def test_arch_builder_derives_version_and_checksum_from_shared_manifest(self):
+        builder = (PROJECT_ROOT / "scripts" / "build-remmina-arch.sh").read_text()
+        self.assertIn('package_dir/sources.json', builder)
+        self.assertIn('prepare-remmina-deb-source.py', builder)
+        self.assertIn('sha256sum "$archive"', builder)
+
     def test_pinned_manifest_matches_rpm_spec(self):
         freerdp = MANIFEST["sources"]["freerdp"]
         remmina = MANIFEST["sources"]["remmina"]
