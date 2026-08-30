@@ -22,7 +22,8 @@ apt-get install -y "$package" >/dev/null
 test "$(dpkg-query -W -f='${Version}' eitaas-remmina)" = "$expected_version"
 test -x /usr/bin/eitaas-remmina
 test -f /usr/lib/eitaas-remmina/lib/remmina/plugins/remmina-plugin-rdp.so
-test -f /usr/share/doc/eitaas-remmina/sources.json
+test -f /usr/share/doc/eitaas-remmina/sources.json \
+  || test -f /usr/share/doc/eitaas-remmina/sources.json.gz
 grep -q '/usr/lib/eitaas-remmina/bin/remmina' /usr/bin/eitaas-remmina
 ldd /usr/lib/eitaas-remmina/bin/remmina | tee "$work/ldd.txt"
 if grep -q 'not found' "$work/ldd.txt"; then

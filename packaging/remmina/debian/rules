@@ -76,9 +76,6 @@ override_dh_shlibdeps:
 override_dh_makeshlibs:
 	true
 
-override_dh_compress:
-	dh_compress -Xsources.json
-
 override_dh_auto_clean:
 	rm -rf freerdp-build remmina-build debian/private-root
 	dh_auto_clean
