@@ -212,23 +212,6 @@ def _middleware_row(report: DoctorReport) -> StatusRow:
     )
 
 
-def _broker_row(report: DoctorReport) -> StatusRow:
-    if report.identity_broker:
-        return StatusRow(
-            "broker",
-            _("Identity broker"),
-            OK,
-            _("The Microsoft identity broker is registered on the session bus."),
-        )
-    return StatusRow(
-        "broker",
-        _("Identity broker"),
-        WARN,
-        _("No identity broker is registered. Sign-in uses the client's embedded browser "
-          "view with your smart card instead; nothing else is required."),
-    )
-
-
 def _session_row(report: DoctorReport) -> StatusRow:
     if report.display or report.wayland_display:
         return StatusRow(
@@ -276,7 +259,6 @@ def readiness_rows(report: DoctorReport | None, error: ApplicationError | None =
         _pcscd_row(report),
         _reader_row(report),
         _middleware_row(report),
-        _broker_row(report),
         _tools_row(report),
     ]
 

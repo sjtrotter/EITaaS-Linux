@@ -4,7 +4,7 @@ Do not use real profiles, account identifiers, callback URLs, or CAC output as
 public test evidence.
 
 - Confirm Azure US Government initial authentication with an authorized test account.
-- Confirm authentication uses an identity broker or embedded WebView and never
+- Confirm authentication uses the embedded WebView and never
   emits or requests an authorization URL, callback URL, code, or token.
 - Confirm CAC authentication is passed into the desktop.
 - Run `certutil -scinfo` inside the Windows session.

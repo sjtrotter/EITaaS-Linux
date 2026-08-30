@@ -20,7 +20,6 @@ def report() -> dict[str, object]:
         "display": bool(os.environ.get("DISPLAY")),
         "wayland_display": bool(os.environ.get("WAYLAND_DISPLAY")),
         "remmina": remmina.status(),
-        "identity_broker": remmina.identity_broker_available(),
         "tools": {
             name: bool(shutil.which(name))
             for name in ("pcsc_scan", "pkcs11-tool", "systemctl", "openssl", "certutil")

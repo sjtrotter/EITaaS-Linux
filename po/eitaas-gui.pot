@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: eitaas-gui 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sjtrotter/EITaaS-Linux/issues\n"
-"POT-Creation-Date: 2026-08-30 12:53-0500\n"
+"POT-Creation-Date: 2026-08-30 13:05-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -192,121 +192,107 @@ msgid ""
 msgstr ""
 
 #: src/eitaas_gui/viewmodel.py:219 src/eitaas_gui/viewmodel.py:225
-msgid "Identity broker"
-msgstr ""
-
-#: src/eitaas_gui/viewmodel.py:221
-msgid "The Microsoft identity broker is registered on the session bus."
-msgstr ""
-
-#: src/eitaas_gui/viewmodel.py:227
-msgid ""
-"No identity broker is registered. Sign-in uses the client's embedded browser "
-"view with your smart card instead; nothing else is required."
-msgstr ""
-
-#: src/eitaas_gui/viewmodel.py:236 src/eitaas_gui/viewmodel.py:242
 msgid "Desktop session"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:238
+#: src/eitaas_gui/viewmodel.py:221
 #, python-brace-format
 msgid "A graphical session is available ({kind})."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:244
+#: src/eitaas_gui/viewmodel.py:227
 msgid "No display was detected, so the remote desktop window cannot open."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:245
+#: src/eitaas_gui/viewmodel.py:228
 msgid "Run EITaaS Connect from a graphical desktop session."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:254 src/eitaas_gui/viewmodel.py:261
+#: src/eitaas_gui/viewmodel.py:237 src/eitaas_gui/viewmodel.py:244
 msgid "Diagnostic tools"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:256
+#: src/eitaas_gui/viewmodel.py:239
 msgid "All optional diagnostic tools are installed."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:263
+#: src/eitaas_gui/viewmodel.py:246
 #, python-brace-format
 msgid "Missing: {tools}. They are optional for connecting."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:264
+#: src/eitaas_gui/viewmodel.py:247
 #, python-brace-format
 msgid "Install: {packages}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:271
+#: src/eitaas_gui/viewmodel.py:254
 msgid "The readiness check has not run yet."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:272
+#: src/eitaas_gui/viewmodel.py:255
 msgid "Readiness check"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:272
+#: src/eitaas_gui/viewmodel.py:255
 msgid "Press Re-check."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:291
+#: src/eitaas_gui/viewmodel.py:273
 msgid "Readiness has not been checked."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:294
+#: src/eitaas_gui/viewmodel.py:276
 msgid "All required checks passed."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:295
+#: src/eitaas_gui/viewmodel.py:277
 #, python-brace-format
 msgid "Needs attention: {items}."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:308
+#: src/eitaas_gui/viewmodel.py:290
 #, python-brace-format
 msgid "{cloud} · {size} bytes · mode {mode} · imported {date}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:318
+#: src/eitaas_gui/viewmodel.py:300
 #, python-brace-format
 msgid "Import a profile on the Profile page first. {summary}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:319
+#: src/eitaas_gui/viewmodel.py:301
 #, python-brace-format
 msgid ""
 "Connect opens {name} in the bundled remote desktop client. Sign-in, "
 "certificate selection, and the PIN prompt happen in that window. {summary}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:326
+#: src/eitaas_gui/viewmodel.py:308
 msgid "Could not start the connection"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:327
+#: src/eitaas_gui/viewmodel.py:309
 msgid "Could not import the profile"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:328
+#: src/eitaas_gui/viewmodel.py:310
 msgid "Could not update the profile list"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:329
+#: src/eitaas_gui/viewmodel.py:311
 msgid "Could not run the readiness check"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:335
+#: src/eitaas_gui/viewmodel.py:317
 msgid "Something went wrong"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:345
+#: src/eitaas_gui/viewmodel.py:327
 msgid "Connection cancelled."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:348
+#: src/eitaas_gui/viewmodel.py:330
 #, python-brace-format
 msgid "The remote desktop client exited with status {code}."
 msgstr ""

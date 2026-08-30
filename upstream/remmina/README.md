@@ -3,26 +3,26 @@
 This directory contains a generic, unbranded patch series prepared against
 Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`. It is one
 linear series exported with `git format-patch` from the local GitLab-fork
-branch `contrib/eitaas-series-v3-logging-main` (head `6d75d9fe9`); each commit is a
+branch `contrib/eitaas-series-v3` (head `63a378399`); each commit is a
 complete logical change with no fix-up of an earlier commit:
 
-1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`fb4db9ea7`) reads a
+1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`15f44629c`) reads a
    protected `.rdpw` profile once into a bounded buffer, imports the generic
    fields from that buffer, and passes only an explicit AVD
    routing/authentication allowlist to FreeRDP's native parser before
    connecting;
 2. `0002-RDP-select-Azure-US-Government-AVD-authentication.patch`
-   (`3b4eb7823`) selects the Azure US Government authority, scope, and
+   (`456f88065`) selects the Azure US Government authority, scope, and
    redirect format for gateways in the public `.wvd.azure.us` namespace;
 3. `0003-RDP-honor-configured-AVD-scope-and-redirect-format.patch`
-   (`8010014ef`) makes the WebKit token path consume FreeRDP's configured AVD
+   (`fb4319f8d`) makes the WebKit token path consume FreeRDP's configured AVD
    scope and redirect format after validating the cloud/client combination;
-4. `0004-RDP-bind-and-own-OAuth-callback-results.patch` (`cb7cb20f2`)
+4. `0004-RDP-bind-and-own-OAuth-callback-results.patch` (`7310296d6`)
    replaces the polled, borrowed callback URI with a reference-counted OAuth
    transaction: exact redirect/state validation, PKCE S256, one terminal
    result, a finite wait, and a dialog torn down with its transaction; and
 5. `0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch`
-   (`6d75d9fe9`) handles WebKitGTK client-certificate and certificate-PIN
+   (`63a378399`) handles WebKitGTK client-certificate and certificate-PIN
    challenges with bounded, cancellable PKCS #11 discovery, asynchronous
    certificate loading, origin-bound PIN transactions, and a held toplevel,
    and logs every stage through `REMMINA_PLUGIN_DEBUG`/`REMMINA_PLUGIN_WARNING`
@@ -46,37 +46,25 @@ queue in `packaging/remmina/`. No upstream merge request should be opened
 until the corresponding issue has a developer-attested verification comment.
 The earlier three-branch exports (`contrib/rdpw-govcloud`,
 `contrib/avd-settings-auth`, `contrib/webkit-pkcs11-auth` and their
-`-issue60`/`-issue61` follow-ups) and the `contrib/eitaas-series-v2`/`-v2b`
-branches are superseded by this series. The same logging commit rebased onto
-the SSO-MIB-off / FreeRDP 3.30-wording series of `contrib/eitaas-series-v2b`
-(EITaaS-Linux #81) is pushed as `contrib/eitaas-series-v3-logging` (head
-`383b1e56e`, identical plugin tree); whichever of the two lands second is
-re-exported from the other.
+`-issue60`/`-issue61` follow-ups) and the `contrib/eitaas-series-v2`/`-v2b`,
+`contrib/eitaas-series-v3-logging-main`, and `contrib/eitaas-series-v3-logging`
+branches are superseded by this series: `contrib/eitaas-series-v3` carries the
+logging tree of `contrib/eitaas-series-v3-logging-main` (`6d75d9fe9`, identical
+tree) with the commit messages reworded to the SSO-MIB-off / FreeRDP 3.30
+wording of EITaaS-Linux #77/#81.
 
 ## FreeRDP compatibility
 
-FreeRDP 3.31.0 is the EITaaS tested and pinned version, but it is important not
-to overstate the requirement in an upstream proposal:
-
-- the `.rdpw`, AVD-setting, WebKit, and PKCS #11 changes use FreeRDP APIs that
-  are already present in 3.30.0;
-- FreeRDP 3.30.0's SSO-MIB path creates its public client with the fixed
-  commercial `common` authority;
-- FreeRDP 3.31.0 instead builds the SSO-MIB authority from
-  `FreeRDP_GatewayAzureActiveDirectory` and the selected tenant. That change
-  is required for the identity-broker path to honor a sovereign authority such
-  as `login.microsoftonline.us`.
-
-Accordingly, each commit describes itself as tested with FreeRDP 3.31.0,
-while **FreeRDP 3.31.0 or newer is required for complete sovereign-cloud
-support when SSO-MIB is enabled**. Browser fallback is not evidence that the
-older identity-broker path works. EITaaS bundles 3.31.0 because that exact
-Remmina/FreeRDP combination passed GovCloud browser authentication, CAC login,
-smart-card redirection, removal/reinsertion, and reconnect testing, and because
-pinning the pair avoids distribution ABI and feature differences.
-
-Relevant upstream comparison:
-<https://github.com/FreeRDP/FreeRDP/compare/3.30.0...3.31.0>.
+The series requires FreeRDP 3.16.0 or newer and is tested with FreeRDP 3.30.0
+(the version EITaaS pins in `packaging/remmina/sources.json`). The binding
+symbols are `FreeRDP_GatewayAvdScope` and `FreeRDP_GatewayAvdAccessAadFormat`,
+both added in FreeRDP 3.16.0 (commit `6168a7bf`);
+`FreeRDP_GatewayAzureActiveDirectory` and `FreeRDP_GatewayAvdUseTenantid` need
+3.10.0, and everything else the series uses predates FreeRDP 3.0. Each commit
+body states the same tested version and floor. The series makes no claim about FreeRDP's SSO-MIB identity-broker
+path: EITaaS builds with `WITH_SSO_MIB=OFF` and validates only the WebKit
+browser path, so do not present browser results as evidence for the broker
+route or vice versa.
 
 ## Apply and validate
 
@@ -91,13 +79,13 @@ git checkout c620366ed85def5c3de2549eec7fcbef577281d8
 git am /path/to/EITaaS-Linux/upstream/remmina/*.patch
 ```
 
-A minimal RDP-plugin build against an installed FreeRDP 3.31.0, once with
+A minimal RDP-plugin build against an installed FreeRDP 3.30.0, once with
 WebKit AAD support and once without it, is:
 
 ```console
 for aad in ON OFF; do
   cmake -S . -B build-$aad -G Ninja \
-    -DCMAKE_PREFIX_PATH=/path/to/freerdp-3.31.0 \
+    -DCMAKE_PREFIX_PATH=/path/to/freerdp-3.30.0 \
     -DWITH_FREERDP3=ON \
     -DWITH_RDP=ON \
     -DWITH_RDP_AUTH_AAD=$aad \

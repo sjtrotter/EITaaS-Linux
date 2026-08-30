@@ -28,8 +28,6 @@ PRIVATE_CLIENTS = (
 # Every recipe installs the pinned-source manifest (the bundle SSOT) here.
 INSTALLED_MANIFEST = Path("/usr/share/doc/eitaas-remmina/sources.json")
 UNKNOWN_VERSION = "unknown"
-_SSO_MIB_SONAME = b"libsso-mib.so"
-_MAX_LIBRARY_SCAN = 64 * 1024 * 1024
 
 
 def find_launcher() -> str | None:
@@ -70,64 +68,6 @@ def pinned_versions(manifest: Path | None = None) -> dict[str, str]:
     return versions
 
 
-def sso_mib_builtin(client: Path | None) -> bool | None:
-    """Report whether the bundle's FreeRDP client library links SSO-MIB.
-
-    This reflects build-time linkage only, not whether an identity broker is
-    running (see ``identity_broker_available``). The linkage is read from the
-    library's dynamic string table (no process is executed). Returns None when
-    no library is available to inspect.
-    """
-    if client is None:
-        return None
-    prefix = client.parent.parent
-    libraries = sorted(prefix.glob("lib*/libfreerdp-client3.so.3*"))
-    if not libraries:
-        return None
-    for library in libraries:
-        try:
-            if library.stat().st_size > _MAX_LIBRARY_SCAN:
-                continue
-            if _SSO_MIB_SONAME in library.read_bytes():
-                return True
-        except OSError:
-            continue
-    return False
-
-
-def identity_broker_available() -> bool:
-    """Check D-Bus registration without activating the identity broker."""
-    gdbus = shutil.which("gdbus")
-    if not gdbus:
-        return False
-    for method in ("ListNames", "ListActivatableNames"):
-        try:
-            result = subprocess.run(
-                [
-                    gdbus,
-                    "call",
-                    "--session",
-                    "--dest",
-                    "org.freedesktop.DBus",
-                    "--object-path",
-                    "/org/freedesktop/DBus",
-                    "--method",
-                    f"org.freedesktop.DBus.{method}",
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                timeout=3,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        if result.returncode == 0 and "'com.microsoft.identity.broker1'" in result.stdout:
-            return True
-    return False
-
-
 def status() -> dict[str, object]:
     """Describe the installed bundle for ``eitaas doctor``."""
     client = private_client()
@@ -138,7 +78,6 @@ def status() -> dict[str, object]:
         "client_path": str(client) if client else None,
         "remmina_version": versions["remmina"],
         "freerdp_version": versions["freerdp"],
-        "sso_mib": sso_mib_builtin(client),
     }
 
 

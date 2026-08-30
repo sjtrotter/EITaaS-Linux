@@ -39,6 +39,8 @@ user-supplied protected GovCloud `.rdpw` profile directly and exits when that
 connection or its authentication flow ends. It does not replace, decorate, or
 extend the distribution Remmina installation.
 
+*Superseded by the 2026-08-30 note (#77): SSO-MIB was dropped and the pin follows 3.30.x.*
+
 The 3.31.0 pin is a validated product baseline, not a claim that every patch
 requires that version to compile. The relevant `.rdpw` and AVD settings APIs
 are present in FreeRDP 3.30.0. However, 3.30.0's SSO-MIB implementation fixes
@@ -164,3 +166,15 @@ attached.
 - [Ubuntu 24.04 `remmina-plugin-rdp` package](https://packages.ubuntu.com/noble/remmina-plugin-rdp)
 - [Debian 13 `remmina-dev` package](https://packages.debian.org/trixie/remmina-dev)
 - [Arch Linux Remmina package contents](https://archlinux.org/packages/extra/x86_64/remmina/files/)
+
+### Note (2026-08-30, #77)
+
+The identity-broker (SSO-MIB) route described above was dropped: it was never
+hardware-validated on a sovereign cloud, only exists on Intune-enrolled
+devices, and was the sole reason for the FreeRDP 3.31.0 pin. Every recipe now
+builds with `WITH_SSO_MIB=OFF`, and the pin follows the FreeRDP 3.30.x line.
+The requirement statement for the patches is "FreeRDP >= 3.16 settings API
+(`FreeRDP_GatewayAvdScope`, `FreeRDP_GatewayAvdAccessAadFormat`), tested with
+3.30.x". The product boundary (one-shot `eitaas-remmina PROFILE.rdpw`, no
+plugin, no connection manager) is unchanged; the embedded WebView is the only
+supported authentication path.

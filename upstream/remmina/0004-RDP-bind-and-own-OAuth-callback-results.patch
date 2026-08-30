@@ -1,4 +1,4 @@
-From cb7cb20f278f05204f3c4af2e4ca431d861f7839 Mon Sep 17 00:00:00 2001
+From 7310296d67bf5f333ed7361b9af021e1fc6ad1c3 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 4/5] RDP: bind and own OAuth callback results
@@ -27,9 +27,9 @@ only loaded when it is an https URI on login.microsoftonline.com or
 login.microsoftonline.us. The "delete-event" handler returns a gboolean
 as GTK expects.
 
-Tested with FreeRDP 3.31.0. The APIs used are present in FreeRDP
-3.30.0; FreeRDP 3.31.0 or newer is only required for complete
-sovereign-cloud support when SSO-MIB is enabled.
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
 
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.

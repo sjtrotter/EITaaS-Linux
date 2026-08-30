@@ -16,7 +16,7 @@ spacing are used throughout. "Desktop.rdpw" is a sample file name.
 │                                                          │
 │ ✓ Bundled remote desktop client                          │
 │   Ready. The eitaas-remmina launcher and its private     │
-│   client are installed (Remmina 1.4.43, FreeRDP 3.31.0). │
+│   client are installed (Remmina 1.4.43, FreeRDP 3.30.0). │
 │ ✓ Desktop session                                        │
 │   Ready. A graphical session is available (wayland).     │
 │ ✗ Smart-card service                                 [⧉] │
@@ -27,8 +27,6 @@ spacing are used throughout. "Desktop.rdpw" is a sample file name.
 │   Not checked. pcsc_scan is not installed. Install the   │
 │   pcsc-tools package.                                    │
 │ ✓ Card middleware (OpenSC)                               │
-│ ! Identity broker                                        │
-│   Needs attention. No identity broker is registered.     │
 │ ! Diagnostic tools                                       │
 └──────────────────────────────────────────────────────────┘
 ```

@@ -69,7 +69,6 @@ class RemminaBundleSummary:
     client_path: str | None
     remmina_version: str
     freerdp_version: str
-    sso_mib: bool | None
 
 
 @dataclass(frozen=True)
@@ -81,7 +80,6 @@ class DoctorReport:
     pcsc_socket: bool
     tools: dict[str, bool]
     remmina: RemminaBundleSummary
-    identity_broker: bool
     ready: bool
     smartcard: SmartcardReport | None = None
     latest_session_log: str | None = None
@@ -214,14 +212,12 @@ class Application:
             data = doctor.report()
             smartcard_result = self.smartcard_status()
             bundle = data["remmina"]
-            sso_mib = bundle["sso_mib"]
             summary = RemminaBundleSummary(
                 launcher=bool(bundle["launcher"]),
                 client=bool(bundle["client"]),
                 client_path=str(bundle["client_path"]) if bundle["client_path"] else None,
                 remmina_version=str(bundle["remmina_version"]),
                 freerdp_version=str(bundle["freerdp_version"]),
-                sso_mib=None if sso_mib is None else bool(sso_mib),
             )
             return Result(
                 DoctorReport(
@@ -232,7 +228,6 @@ class Application:
                     pcsc_socket=bool(data["pcsc_socket"]),
                     tools={str(key): bool(value) for key, value in data["tools"].items()},
                     remmina=summary,
-                    identity_broker=bool(data["identity_broker"]),
                     ready=bool(
                         doctor.healthy(data)
                         and smartcard_result.ok

@@ -17,7 +17,7 @@ smart-card redirection. Two deliverables:
   used by `eitaas profile` and the GUI; `connect` without an argument uses its default.
 - `src/eitaas_gui/` — GTK 4/Libadwaita helper `eitaas-gui` ("EITaaS Connect"), shipped by the optional
   `eitaas-linux-gui` package; imports `eitaas.api` only. `viewmodel.py` is toolkit-free and tested without GTK.
-- `packaging/remmina/` — the product client: an isolated one-shot Remmina 1.4.43 + FreeRDP 3.31.0
+- `packaging/remmina/` — the product client: an isolated one-shot Remmina 1.4.43 + FreeRDP 3.30.x
   bundle with downstream patches and `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth).
   `upstream/remmina/` holds the unbranded upstream-candidate exports of the same changes.
 
@@ -30,7 +30,7 @@ no connection-manager mode, no Flatpak/AppImage.
 - Certificate verification stays on. Never add a cert-bypass switch or suggest one.
 - Never capture, log, or persist a CAC PIN, OAuth callback, token, or real `.rdpw` content.
   Test fixtures are synthetic (`tests/fixtures/synthetic.rdpw`) — no tenant/workspace/gateway values.
-- Refuse FreeRDP's terminal URL/callback OAuth fallback; only identity-broker or embedded WebView
+- Refuse FreeRDP's terminal URL/callback OAuth fallback; only the embedded WebView
   (enforced in the Remmina patches, #51/#58; Python never builds FreeRDP arguments).
 - Python profiles: regular file, owned by the user, mode `0600`, ≤ 1 MiB, checked via `lstat`
   (`profile.validate_profile`; the subsequent read-by-path is a known small TOCTOU gap — do not widen it).
@@ -81,7 +81,8 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
   GTK calls on the main thread only; `g_object_ref` anything used across a nested main loop.
 - Commit subjects use the component prefix (`RDP: ...`), imperative mood, with a body explaining why.
 - No EITaaS branding, private paths, core-dump policy, or product-specific lifecycle in upstream patches.
-- Describe FreeRDP 3.31.0 as *tested*, and as *required* only for sovereign-cloud SSO-MIB.
+- Describe FreeRDP >= 3.16 as *required* (`GatewayAvdScope`/`GatewayAvdAccessAadFormat` APIs) and the
+  pinned 3.30.x line as *tested*; make no SSO-MIB claims (the bundle builds `WITH_SSO_MIB=OFF`).
 - Regenerate patch files with `git format-patch` from real commits; never hand-edit a diff.
 - Verify the series applies onto the pinned base with `git am` and builds `remmina-plugin-rdp`
   with `WITH_RDP_AUTH_AAD=ON` and `OFF` (CI job `remmina-upstream-series`; base and branch head are
@@ -95,7 +96,7 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
 4. Gate issues #49–#64 (security/reliability/upstream/packaging) close only after: equivalent downstream + upstream change,
    behavioral tests, sanitizer run where applicable, developer attestation, and hardware validation
    where the criteria require it. Never tick a checkbox on behalf of the developer.
-5. Do not push to the GitLab fork or open upstream merge requests; commit locally and report SHAs.
+5. You may push branches to the GitLab fork; never open GitLab merge requests — the owner does. Report SHAs.
 6. Orchestrate non-trivial work: the lead agent plans and delegates well-bounded tasks to the
    appropriate tier of subagent **and to Codex harnesses** (`codex exec`, `codex exec review`) —
    Codex for independent implementation/review passes and second opinions; Claude subagents for
@@ -109,5 +110,5 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
 - Pinned Remmina source for downstream work: `Remmina-030946c8…` (see `sources.json`); build recipe in
   `packaging/remmina/eitaas-remmina.spec` / `debian/rules` / `arch/PKGBUILD`.
 - Local build trees may exist under `.build/` (ignored, machine-local); if present, `.build/remmina-poc/prefix`
-  holds an installed FreeRDP 3.31.0 for plugin builds.
+  holds an installed FreeRDP for plugin builds (check its version against `sources.json`).
 - Support matrix and gates: `docs/supported-platforms.md`. Release: `docs/release-checklist.md`.

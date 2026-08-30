@@ -49,9 +49,9 @@ in `packaging/remmina/`.
 
 `DoctorReport.remmina` (`RemminaBundleSummary`) describes the installed bundle:
 launcher on `PATH`, private client binary and its path, pinned Remmina and
-FreeRDP versions from the installed `sources.json` (or `"unknown"`), and
-whether the FreeRDP client library links SSO-MIB (`None` when no library could
-be inspected). `DoctorReport.identity_broker` is unchanged.
+FreeRDP versions from the installed `sources.json` (or `"unknown"`). There is
+no SSO-MIB or identity-broker field: the bundle is built without the broker
+route, and the API describes only the embedded WebView path.
 
 ## Profile store
 
@@ -112,7 +112,7 @@ progress events are delivered to the toolkit with `GLib.idle_add`. The launch
 worker owns the `threading.Event`; Cancel sets it, and window shutdown sets it
 and joins the worker with a 7 s grace period before the process exits.
 
-The child owns its identity-broker or embedded-WebView authentication
+The child owns its embedded-WebView authentication
 interaction and does not inherit terminal streams. Callback URLs,
 authorization codes, and tokens must not reach presentation code, process
 arguments, or logs.

@@ -22,9 +22,7 @@ class ApplicationAPITests(unittest.TestCase):
                 "client_path": None,
                 "remmina_version": "unknown",
                 "freerdp_version": "unknown",
-                "sso_mib": None,
             },
-            "identity_broker": False,
         }
         status.return_value = {
             "reader": {"available": True, "ok": True, "summary": "command completed"}
@@ -35,7 +33,8 @@ class ApplicationAPITests(unittest.TestCase):
         self.assertFalse(result.value.ready)
         self.assertTrue(result.value.remmina.launcher)
         self.assertFalse(result.value.remmina.client)
-        self.assertIsNone(result.value.remmina.sso_mib)
+        self.assertFalse(hasattr(result.value.remmina, "sso_mib"))
+        self.assertFalse(hasattr(result.value, "identity_broker"))
 
     @patch("eitaas.api.smartcard.status")
     def test_smartcard_async_runs_on_worker(self, status):

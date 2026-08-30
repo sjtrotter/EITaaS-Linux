@@ -88,7 +88,7 @@ class HelperWindowSmokeTests(unittest.TestCase):
         for name in names:
             self.window.stack.set_visible_child_name(name)
             self.assertEqual(self.window.stack.get_visible_child_name(), name)
-        self.assertEqual(len(self.window.readiness_rows), 7)
+        self.assertEqual(len(self.window.readiness_rows), 6)
         self.assertFalse(self.window.connect_button.get_sensitive(), "no profile yet")
         self.assertTrue(self.window.recheck.get_sensitive())
 

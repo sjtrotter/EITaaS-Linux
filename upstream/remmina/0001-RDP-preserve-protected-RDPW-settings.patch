@@ -1,4 +1,4 @@
-From fb4db9ea7e6b7026ddfd7a410b0abfa8a0ce0f43 Mon Sep 17 00:00:00 2001
+From 15f44629c168ec2ace89b8d2d0b9f2aca311c754 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 1/5] RDP: preserve protected RDPW settings
@@ -22,9 +22,9 @@ rdpSettings. Lines starting with "/" are rejected because FreeRDP treats
 them as embedded command-line arguments. The plugin-level parse happens
 once, in remmina_rdp_main(), rather than for every queued input event.
 
-Tested with FreeRDP 3.31.0. The APIs used are present in FreeRDP
-3.30.0; FreeRDP 3.31.0 or newer is only required for complete
-sovereign-cloud support when SSO-MIB is enabled.
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
 
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.

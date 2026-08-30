@@ -5,19 +5,18 @@ All packaging formats must consume the pinned source and ordered patch data in
 are recorded in `docs/adr/0001-remmina-packaging-strategy.md`.
 
 This package combines a private Remmina 1.4.43 build with private FreeRDP
-3.31.0 libraries under a distribution-native private prefix
+3.30.0 libraries under a distribution-native private prefix
 (`/usr/libexec/eitaas-remmina` on Fedora and `/usr/lib/eitaas-remmina` on
 Debian-family systems). It does not replace the distribution packages.
 
-FreeRDP 3.31.0 is pinned for two distinct reasons. First, it is the exact ABI
-and feature baseline used for the successful GovCloud and CAC hardware tests.
-Second, unlike 3.30.0, its SSO-MIB token path derives the authority from the
-configured AAD endpoint and tenant instead of fixing it to commercial Azure
-`common`; 3.31.0 or newer is therefore required for the sovereign-cloud
-identity-broker route. The browser/CAC Remmina patches themselves use APIs
-already present in 3.30.0, so upstream proposals must describe 3.31 as the
-full sovereign-cloud and tested-bundle requirement, not as an artificial
-compile-time minimum.
+The downstream patches require the FreeRDP 3.16 settings API
+(`FreeRDP_GatewayAvdScope` and `FreeRDP_GatewayAvdAccessAadFormat`, added in
+3.16.0; the other AVD/AAD settings they use are older). The bundle pins the
+FreeRDP release recorded in `sources.json`, currently the 3.30.x line that
+Fedora ships, and that exact Remmina/FreeRDP pair is what the hardware gates
+are run against; treat "tested with 3.30.x" as a validation statement, not a
+compile-time minimum. The bundle does not link SSO-MIB: the only supported
+sign-in path is the embedded WebKitGTK CAC WebView (see below).
 
 The downstream changes preserve the original protected RDPW profile through
 FreeRDP's parser, select ARM/AAD transport, honor smart-card redirection, and
@@ -155,34 +154,18 @@ tool killed by a signal remain fatal. The full reason-code table is in the top-l
 | `pin-cancelled (user|window-closed|transaction-cleared)` | warning | PIN dialog dismissed |
 | `oneshot-quit (application=)` | debug | The one-shot client is quitting after a cancelled discovery |
 
-## SSO-MIB per distribution
+## Authentication path and build flags
 
-The three recipes deliberately differ on one build flag, and the difference is
-asserted by `tests/test_remmina_packaging.py` so it cannot drift silently.
-
-| Recipe | FreeRDP and Remmina flag | Identity-broker route |
-| --- | --- | --- |
-| `eitaas-remmina.spec` (Fedora RPM) | `-DWITH_SSO_MIB=ON` | compiled in |
-| `debian/rules` (Ubuntu 24.04, Debian 13) | `-DWITH_SSO_MIB=OFF` | not compiled in |
-| `arch/PKGBUILD` (Arch) | `-DWITH_SSO_MIB=OFF` | not compiled in |
-
-The RPM is the exact bundle used for the recorded Azure Government, PIV, and
-CAC-redirection hardware gates on Fedora 44, and it is *built with* the
-Microsoft Identity Broker path compiled in; the spec therefore also carries
-`BuildRequires: sso-mib-devel`. Those gates were passed through the embedded
-WebKitGTK CAC WebView. No hardware result for the identity-broker route itself
-is recorded, on Fedora or anywhere else. The DEB and Arch packages are build-
-and lifecycle-tested candidates that have not passed the hardware gates at all,
-and neither recipe declares an `sso-mib` build or runtime dependency, so the
-WebView is the only non-terminal path compiled into them.
-
-The consequence is that today the identity-broker route is compiled in only on
-the RPM, and is unvalidated even there. All three recipes build the RDP plugin
-with `-DWITH_RDP_AUTH_AAD=ON`, so the embedded WebView CAC path is present in
-every package. Turning either `OFF` into `ON` is a support-matrix change, not a
-packaging tweak: it would compile an unvalidated broker route into a platform
-that has no hardware results at all, so it belongs with the corresponding
-update to `docs/supported-platforms.md`.
+All three recipes build FreeRDP and Remmina with `-DWITH_SSO_MIB=OFF`,
+`-DWITH_AAD=ON`/`-DWITH_RDP_AUTH_AAD=ON`, and `-DWITH_PCSC=ON`, and none of
+them declares an `sso-mib` build or runtime dependency; the flags are asserted
+by `tests/test_remmina_packaging.py`. The Microsoft Identity Broker route was
+never hardware-validated on a sovereign cloud and only exists on Intune-
+enrolled devices, so it was dropped (#77). The embedded WebKitGTK CAC WebView
+is therefore the only non-terminal authentication path compiled into every
+package; the terminal URL/callback fallback remains refused. Turning SSO-MIB
+back on is a support-matrix change that needs a hardware result and a matching
+update to `docs/supported-platforms.md`, not a packaging tweak.
 
 ## Licensing and corresponding source
 

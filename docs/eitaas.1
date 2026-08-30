@@ -78,9 +78,9 @@ FreeRDP's native profile parser.
 Never publish real RDP/RDPW files or authentication callback URLs. See the
 installed SECURITY.md documentation for reporting guidance.
 .PP
-Authentication uses either the Microsoft Identity Broker (when the bundle was
-built with SSO-MIB) or the embedded CAC WebView; the terminal URL/callback
-fallback is refused inside the bundled client.
+Authentication uses the embedded CAC WebView; the bundle is built without
+SSO-MIB, and the terminal URL/callback fallback is refused inside the bundled
+client.
 .SH DOCTOR
 .B eitaas doctor
 reports whether
@@ -91,9 +91,8 @@ or
 .IR /usr/lib/eitaas-remmina ,
 the pinned Remmina and FreeRDP versions from the installed
 .I sources.json
-manifest (or "unknown"), whether the installed FreeRDP client library links
-SSO-MIB, identity-broker registration on the session bus, the PC/SC socket,
-and the presence of smart-card tools. Readiness requires the launcher, the
+manifest (or "unknown"), the PC/SC socket, and the presence of smart-card
+tools. Readiness requires the launcher, the
 private client, and healthy smart-card checks. The report also names the
 newest session log written by
 .B eitaas connect

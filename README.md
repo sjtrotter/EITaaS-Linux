@@ -103,7 +103,7 @@ GTK 4/Libadwaita window with three pages:
 
 - **Readiness** shows the `eitaas doctor` result as plain-language rows
   (bundled client, desktop session, smart-card service, reader, card
-  middleware, identity broker, diagnostic tools) with a Re-check button.
+  middleware, diagnostic tools) with a Re-check button.
 - **Profile** walks through the export in six numbered steps: pick the web
   client for your cloud (Azure US Government by default, or Azure commercial)
   and press "Open web client" to open it in your browser; sign in with your
@@ -198,8 +198,10 @@ Remmina packages are neither required nor used, so distribution FreeRDP
 versions (for example FreeRDP 2 on Ubuntu 22.04) no longer determine support;
 see `docs/supported-platforms.md` for the packaging and hardware status.
 
-Authentication uses the Microsoft Identity Broker (only where the bundle was
-built with SSO-MIB, currently the Fedora RPM) or the embedded CAC WebView.
+Authentication uses the embedded CAC WebView; the bundle is built without
+SSO-MIB, so no Microsoft Identity Broker is used or probed (#77). The Remmina
+patches require the FreeRDP 3.16 settings API and are tested with the pinned
+FreeRDP 3.30.x line.
 Endpoint allowlisting, the RDPW native-settings allowlist, and refusal of
 FreeRDP's terminal URL/callback fallback are enforced inside the bundled client
 by the Remmina patches (see #51 and #58), not by the Python tool. Do not capture
@@ -212,8 +214,7 @@ profile.
 
 The `doctor` command reports whether `eitaas-remmina` is on `PATH`, whether
 the private client binary is installed, the pinned Remmina/FreeRDP versions
-from the installed `sources.json`, whether the bundle links SSO-MIB, and the
-identity-broker, PC/SC, and smart-card tool status.
+from the installed `sources.json`, and the PC/SC and smart-card tool status.
 
 ## Smart-card permissions
 

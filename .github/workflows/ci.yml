@@ -245,7 +245,7 @@ jobs:
 
   remmina-upstream-series:
     # Applies upstream/remmina/*.patch with `git am` onto the recorded Remmina
-    # master base and builds remmina-plugin-rdp against FreeRDP 3.31.0 with
+    # master base and builds remmina-plugin-rdp against the pinned FreeRDP with
     # WebKit AAD support enabled and disabled. This is a compile check, not a
     # package build, so it uses every core; the `--parallel 1` in the spec and
     # debian/rules is a packaging-reproducibility rule that does not apply here.

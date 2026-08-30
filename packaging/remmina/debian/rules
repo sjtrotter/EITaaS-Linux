@@ -2,7 +2,7 @@
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 PREFIX = /usr/lib/eitaas-remmina
-FREERDP = FreeRDP-3.31.0
+FREERDP = FreeRDP-3.30.0
 REMMINA = Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031
 PACKAGE_ROOT = $(CURDIR)/debian/eitaas-remmina
 PRIVATE_ROOT = $(CURDIR)/debian/private-root
