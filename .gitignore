@@ -40,6 +40,7 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
+.build/
 build/
 dist/
 *.egg-info/

@@ -7,7 +7,7 @@
 
 ## Context
 
-The working client applies four patches to Remmina 1.4.43. We would prefer a
+The working client applies six downstream patches to Remmina 1.4.43. We would prefer a
 small EITaaS extension over maintaining a downstream Remmina build, but that is
 only useful if the extension can reuse Remmina's existing RDP implementation.
 
@@ -38,6 +38,17 @@ EITaaS-Linux is the setup/diagnostic wrapper plus an isolated, one-shot Remmina
 user-supplied protected GovCloud `.rdpw` profile directly and exits when that
 connection or its authentication flow ends. It does not replace, decorate, or
 extend the distribution Remmina installation.
+
+The 3.31.0 pin is a validated product baseline, not a claim that every patch
+requires that version to compile. The relevant `.rdpw` and AVD settings APIs
+are present in FreeRDP 3.30.0. However, 3.30.0's SSO-MIB implementation fixes
+the authority to commercial Azure `common`, whereas 3.31.0 derives the
+authority from `FreeRDP_GatewayAzureActiveDirectory` and the selected tenant.
+FreeRDP 3.31.0 or newer is therefore required for complete sovereign-cloud
+support when the identity-broker route is used. The browser fallback used on a
+machine without an identity broker does not exercise or validate that route.
+Pinning the exact 3.31.0 pair also preserves the ABI and feature combination
+covered by EITaaS hardware tests across distributions.
 
 Do not build or distribute a separately named EITaaS protocol plugin, a
 replacement system RDP plugin, or an independent FreeRDP frontend. Those are
@@ -145,6 +156,7 @@ attached.
 - [Remmina RDP file importer at the reviewed master commit](https://gitlab.com/Remmina/Remmina/-/blob/c620366ed85def5c3de2549eec7fcbef577281d8/plugins/rdp/rdp_file.c)
 - [Remmina plugin-development documentation](https://gitlab.com/Remmina/Remmina/-/wikis/Development/Plugin-Development)
 - [FreeRDP 3.31.0 settings keys](https://github.com/FreeRDP/FreeRDP/blob/3.31.0/include/freerdp/settings_keys.h)
+- [FreeRDP 3.30.0 to 3.31.0 comparison](https://github.com/FreeRDP/FreeRDP/compare/3.30.0...3.31.0)
 - [WebKitGTK authentication request API](https://webkitgtk.org/reference/webkit2gtk/stable/class.AuthenticationRequest.html)
 - [Remmina contribution guide](https://gitlab.com/Remmina/Remmina/-/blob/master/CONTRIBUTING.md)
 - [Fedora `remmina-plugins-rdp` package](https://packages.fedoraproject.org/pkgs/remmina/remmina-plugins-rdp/)

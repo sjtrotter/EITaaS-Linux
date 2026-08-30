@@ -1,11 +1,17 @@
-From: EITaaS-Linux contributors <noreply@example.invalid>
-Subject: [PATCH] Validate and use profile-selected AVD OAuth settings
-License: GPL-2.0-or-later
-Copyright: 2026 Stephen Trotter
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 05:58:38 -0500
+Subject: [PATCH 3/3] RDP: honor configured AVD scope and redirect format
 
+---
+ plugins/rdp/rdp_web_auth.c | 42 ++++++++++++++++++++++++++++++++++----
+ 1 file changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
+index 53cd19af3..e1e50a388 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
-@@ -82,6 +82,36 @@
+@@ -78,6 +78,36 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
  #define GET_TOKEN_URI(gp) \
  	(gchar*) g_object_get_data(G_OBJECT(gp), "token-uri")
  
@@ -42,7 +48,7 @@ Copyright: 2026 Stephen Trotter
  static char* extract_authorization_code(char* url)
  {
  	WINPR_ASSERT(url);
-@@ -318,7 +348,8 @@
+@@ -296,7 +326,8 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	char* auth_uri = NULL;
  	size_t auth_uri_len = 0;
  	char* auth_hints = NULL;
@@ -52,7 +58,7 @@ Copyright: 2026 Stephen Trotter
  
  	assert(token);
  
-@@ -336,18 +367,21 @@
+@@ -314,18 +345,21 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  		tenantid =
  		    freerdp_settings_get_string(instance->context->settings, FreeRDP_GatewayAvdAadtenantid);
  	}

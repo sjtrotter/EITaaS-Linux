@@ -6,6 +6,15 @@
 #include <gtk/gtk.h>
 #include <string.h>
 
+#define PKCS11_TOOL "/usr/bin/p11tool"
+#define PKCS11_TIMEOUT_SECONDS 15
+#define PKCS11_MAX_OUTPUT (256 * 1024)
+#define PKCS11_MAX_URI 4096
+#define PKCS11_MAX_LABEL 256
+#define PKCS11_MAX_TOKENS 16
+#define PKCS11_MAX_CERTIFICATES 64
+#define CERTAUTH_HOST_PREFIX "certauth."
+
 typedef struct {
 	gchar *label;
 	gchar *certificate_uri;
@@ -16,8 +25,225 @@ typedef struct {
 	WebKitAuthenticationRequest *request;
 	GtkWidget *dialog;
 	GPtrArray *certificates;
+	GCancellable *cancellable;
+	gchar *error_message;
+	guint timeout_source;
 	gboolean abandoned;
+	gboolean completed;
+	gboolean timed_out;
 } EitaasCertificateDiscovery;
+
+typedef struct {
+	gchar *certificate_uri;
+	gchar *private_key_uri;
+} EitaasCertificateLoadInput;
+
+typedef struct {
+	GtkWidget *dialog;
+	GTlsCertificate *certificate;
+	gchar *error_message;
+	guint timeout_source;
+	gboolean abandoned;
+	gboolean completed;
+	gboolean timed_out;
+} EitaasCertificateLoad;
+
+typedef struct {
+	gchar *host;
+	gchar *certificate_uri;
+	gint64 expires_at;
+	gboolean pin_submitted;
+} EitaasCertificateAuthState;
+
+typedef struct {
+	GtkWindow *held;
+	GtkWindow *window;
+	gulong destroy_handler;
+} EitaasAuthToplevel;
+
+static gint discovery_active = 0;
+
+static void certificate_auth_state_free(gpointer data)
+{
+	EitaasCertificateAuthState *state = data;
+	if (!state)
+		return;
+	g_free(state->host);
+	g_free(state->certificate_uri);
+	g_free(state);
+}
+
+static void certificate_auth_state_clear(WebKitWebView *web_view)
+{
+	g_object_set_data(G_OBJECT(web_view), "rdp-certificate-transaction", NULL);
+}
+
+static void auth_toplevel_destroyed(GtkWidget *widget, gpointer user_data)
+{
+	(void)widget;
+	EitaasAuthToplevel *toplevel = user_data;
+	toplevel->window = NULL;
+	toplevel->destroy_handler = 0;
+}
+
+/*
+ * Keep the WebView toplevel alive across the nested main loops run by the
+ * certificate dialogs. The strong reference guarantees the object outlives
+ * every gtk_dialog_run(); the destroy handler clears the usable pointer so a
+ * window closed during a nested loop is never reused as a transient parent.
+ */
+static void auth_toplevel_hold(EitaasAuthToplevel *toplevel, gpointer window)
+{
+	toplevel->held = g_object_ref(GTK_WINDOW(window));
+	toplevel->window = toplevel->held;
+	toplevel->destroy_handler = g_signal_connect(toplevel->held, "destroy",
+	                                             G_CALLBACK(auth_toplevel_destroyed), toplevel);
+}
+
+static void auth_toplevel_release(EitaasAuthToplevel *toplevel)
+{
+	if (toplevel->destroy_handler)
+		g_signal_handler_disconnect(toplevel->held, toplevel->destroy_handler);
+	g_clear_object(&toplevel->held);
+	toplevel->window = NULL;
+}
+
+static void show_error(EitaasAuthToplevel *toplevel, const gchar *message)
+{
+	GtkWidget *dialog = gtk_message_dialog_new(toplevel->window, GTK_DIALOG_MODAL,
+	                                           GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", message);
+	gtk_dialog_run(GTK_DIALOG(dialog));
+	gtk_widget_destroy(dialog);
+}
+
+static void certificate_load_input_free(gpointer data)
+{
+	EitaasCertificateLoadInput *input = data;
+	if (!input)
+		return;
+	g_free(input->certificate_uri);
+	g_free(input->private_key_uri);
+	g_free(input);
+}
+
+static void certificate_load_free(EitaasCertificateLoad *load)
+{
+	if (!load)
+		return;
+	if (load->timeout_source)
+		g_source_remove(load->timeout_source);
+	g_clear_object(&load->certificate);
+	g_free(load->error_message);
+	g_free(load);
+}
+
+static gboolean certificate_load_timeout(gpointer user_data)
+{
+	EitaasCertificateLoad *load = user_data;
+	load->timeout_source = 0;
+	load->timed_out = TRUE;
+	if (load->dialog)
+		gtk_dialog_response(GTK_DIALOG(load->dialog), GTK_RESPONSE_REJECT);
+	return G_SOURCE_REMOVE;
+}
+
+static void certificate_load_thread(GTask *task, gpointer source, gpointer task_data,
+	                                GCancellable *cancellable)
+{
+	(void)source;
+	(void)cancellable;
+	EitaasCertificateLoadInput *input = task_data;
+	GError *error = NULL;
+	GTlsCertificate *certificate = g_tls_certificate_new_from_pkcs11_uris(
+		input->certificate_uri, input->private_key_uri, &error);
+	if (certificate)
+		g_task_return_pointer(task, certificate, g_object_unref);
+	else if (error)
+		g_task_return_error(task, error);
+	else
+		g_task_return_new_error(task, G_IO_ERROR, G_IO_ERROR_FAILED,
+		                        "The selected smart-card certificate could not be loaded");
+}
+
+/*
+ * Runs on the GTK thread once the loader thread finishes. When the dialog was
+ * abandoned (cancelled or timed out) the load owns nothing but itself, so it
+ * is released here without touching the dialog, the toplevel, or the request.
+ */
+static void certificate_load_done(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+	(void)source;
+	EitaasCertificateLoad *load = user_data;
+	GError *error = NULL;
+	load->certificate = g_task_propagate_pointer(G_TASK(result), &error);
+	load->completed = TRUE;
+	if (error)
+		load->error_message = g_strdup(error->message);
+	g_clear_error(&error);
+	if (load->abandoned) {
+		certificate_load_free(load);
+		return;
+	}
+	gtk_dialog_response(GTK_DIALOG(load->dialog),
+	                    load->certificate ? GTK_RESPONSE_ACCEPT : GTK_RESPONSE_REJECT);
+}
+
+/*
+ * Load the selected certificate away from the GTK thread while a cancellable
+ * progress dialog runs. Returns a new reference or NULL; every NULL return
+ * has already shown its error (unless the user cancelled) and leaves exactly
+ * one challenge cancellation to the caller.
+ */
+static GTlsCertificate *load_certificate_async(EitaasAuthToplevel *toplevel,
+	                                           const EitaasPkcs11Certificate *choice)
+{
+	EitaasCertificateLoad *load = g_new0(EitaasCertificateLoad, 1);
+	load->dialog = gtk_dialog_new_with_buttons(
+		"Loading smart-card certificate", toplevel->window, GTK_DIALOG_MODAL,
+		"Cancel", GTK_RESPONSE_CANCEL, NULL);
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	GtkWidget *spinner = gtk_spinner_new();
+	gtk_spinner_start(GTK_SPINNER(spinner));
+	gtk_box_pack_start(GTK_BOX(box), spinner, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(box), gtk_label_new("Loading selected certificate…"),
+	                   FALSE, FALSE, 0);
+	gtk_container_set_border_width(GTK_CONTAINER(box), 12);
+	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(load->dialog))), box);
+	gtk_widget_show_all(load->dialog);
+
+	EitaasCertificateLoadInput *input = g_new0(EitaasCertificateLoadInput, 1);
+	input->certificate_uri = g_strdup(choice->certificate_uri);
+	input->private_key_uri = g_strdup(choice->private_key_uri);
+	GTask *task = g_task_new(NULL, NULL, certificate_load_done, load);
+	g_task_set_task_data(task, input, certificate_load_input_free);
+	g_task_run_in_thread(task, certificate_load_thread);
+	g_object_unref(task);
+	load->timeout_source = g_timeout_add_seconds(PKCS11_TIMEOUT_SECONDS,
+	                                             certificate_load_timeout, load);
+
+	gint response = gtk_dialog_run(GTK_DIALOG(load->dialog));
+	gtk_widget_destroy(load->dialog);
+	load->dialog = NULL;
+	if (response != GTK_RESPONSE_ACCEPT || !load->certificate || !toplevel->window) {
+		/*
+		 * Mark the load abandoned before running another nested loop: the
+		 * completion callback may fire inside show_error() and must then
+		 * only free the load instead of responding to the destroyed dialog.
+		 */
+		gboolean abandoned = !load->completed;
+		load->abandoned = abandoned;
+		const gchar *message = load->timed_out
+				       ? "Loading the smart-card certificate timed out" : load->error_message;
+		if (message && toplevel->window)
+			show_error(toplevel, message);
+		if (!abandoned)
+			certificate_load_free(load);
+		return NULL;
+	}
+	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
+	certificate_load_free(load);
+	return certificate;
+}
 
 static void certificate_free(gpointer data)
 {
@@ -30,22 +256,48 @@ static void certificate_free(gpointer data)
 	g_free(cert);
 }
 
-static GPtrArray *command_urls(gchar **argv)
+static GPtrArray *command_urls(const gchar *const *argv, GCancellable *cancellable,
+	                          GError **error)
 {
-	gchar *output = NULL;
-	gint status = 0;
-	GError *error = NULL;
 	GPtrArray *urls = g_ptr_array_new_with_free_func(g_free);
-	if (g_spawn_sync(NULL, argv, NULL, G_SPAWN_STDERR_TO_DEV_NULL, NULL, NULL,
-	                 &output, NULL, &status, &error) && status == 0 && output) {
-		gchar **lines = g_strsplit(output, "\n", -1);
-		for (gchar **line = lines; line && *line; line++)
+	GSubprocess *process = g_subprocess_newv(argv,
+	    G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error);
+	if (!process)
+		return urls;
+	GInputStream *stream = g_subprocess_get_stdout_pipe(process);
+	GByteArray *output = g_byte_array_sized_new(4096);
+	guint8 buffer[4096];
+	while (output->len <= PKCS11_MAX_OUTPUT) {
+		gssize count = g_input_stream_read(stream, buffer, sizeof(buffer), cancellable, error);
+		if (count <= 0)
+			break;
+		if ((gsize)count > PKCS11_MAX_OUTPUT - output->len) {
+			g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+			                    "PKCS11 discovery output exceeded its limit");
+			break;
+		}
+		g_byte_array_append(output, buffer, (guint)count);
+	}
+	if (error && *error)
+		g_subprocess_force_exit(process);
+	if ((!error || !*error) && !g_subprocess_wait_check(process, cancellable, error))
+		g_subprocess_force_exit(process);
+	if (!error || !*error) {
+		g_byte_array_append(output, (const guint8 *)"", 1);
+		gchar **lines = g_strsplit((const gchar *)output->data, "\n", -1);
+		for (gchar **line = lines; line && *line; line++) {
+			if (strlen(*line) > PKCS11_MAX_URI) {
+				g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+				                    "PKCS11 URI exceeded its limit");
+				break;
+			}
 			if (g_str_has_prefix(*line, "pkcs11:"))
 				g_ptr_array_add(urls, g_strdup(*line));
+		}
 		g_strfreev(lines);
 	}
-	g_clear_error(&error);
-	g_free(output);
+	g_byte_array_unref(output);
+	g_object_unref(process);
 	return urls;
 }
 
@@ -97,16 +349,28 @@ static gchar *private_key_selector(const gchar *certificate_uri)
 	return g_string_free(result, FALSE);
 }
 
-static GPtrArray *enumerate_certificates(void)
+static GPtrArray *enumerate_certificates(GCancellable *cancellable, GError **error)
 {
 	GPtrArray *result = g_ptr_array_new_with_free_func(certificate_free);
-	gchar *token_args[] = { "/usr/bin/p11tool", "--list-token-urls", NULL };
-	GPtrArray *tokens = command_urls(token_args);
-	for (guint i = 0; i < tokens->len; i++) {
-		gchar *cert_args[] = { "/usr/bin/p11tool", "--list-certs", "--only-urls",
+	if (!g_file_test(PKCS11_TOOL, G_FILE_TEST_IS_EXECUTABLE)) {
+		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+		                    "The configured PKCS11 discovery tool is unavailable");
+		return result;
+	}
+	const gchar *token_args[] = { PKCS11_TOOL, "--list-token-urls", NULL };
+	GPtrArray *tokens = command_urls(token_args, cancellable, error);
+	if ((!error || !*error) && tokens->len > PKCS11_MAX_TOKENS)
+		g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+		                    "PKCS11 token count exceeded its limit");
+	for (guint i = 0; (!error || !*error) && i < tokens->len && i < PKCS11_MAX_TOKENS; i++) {
+		const gchar *cert_args[] = { PKCS11_TOOL, "--list-certs", "--only-urls",
 		                       g_ptr_array_index(tokens, i), NULL };
-		GPtrArray *certs = command_urls(cert_args);
-		for (guint j = 0; j < certs->len; j++) {
+		GPtrArray *certs = command_urls(cert_args, cancellable, error);
+		if ((!error || !*error) && certs->len > PKCS11_MAX_CERTIFICATES - result->len)
+			g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+			                    "PKCS11 certificate count exceeded its limit");
+		for (guint j = 0; (!error || !*error) && j < certs->len &&
+		                  result->len < PKCS11_MAX_CERTIFICATES; j++) {
 			const gchar *uri = g_ptr_array_index(certs, j);
 			gchar *id = uri_attribute(uri, "id");
 			if (!id || !*id) {
@@ -115,7 +379,8 @@ static GPtrArray *enumerate_certificates(void)
 			}
 			g_free(id);
 			gchar *encoded = uri_attribute(uri, "object");
-			gchar *label = encoded ? g_uri_unescape_string(encoded, NULL) : NULL;
+			gchar *label = encoded && strlen(encoded) <= PKCS11_MAX_LABEL * 3
+			                 ? g_uri_unescape_string(encoded, NULL) : NULL;
 			g_free(encoded);
 			if (!label)
 				label = g_strdup("Smart-card authentication certificate");
@@ -142,7 +407,21 @@ static void discovery_free(EitaasCertificateDiscovery *discovery)
 	g_clear_object(&discovery->request);
 	if (discovery->certificates)
 		g_ptr_array_unref(discovery->certificates);
+	if (discovery->timeout_source)
+		g_source_remove(discovery->timeout_source);
+	g_clear_object(&discovery->cancellable);
+	g_free(discovery->error_message);
+	g_atomic_int_set(&discovery_active, 0);
 	g_free(discovery);
+}
+
+static gboolean discovery_timeout(gpointer user_data)
+{
+	EitaasCertificateDiscovery *discovery = user_data;
+	discovery->timeout_source = 0;
+	discovery->timed_out = TRUE;
+	g_cancellable_cancel(discovery->cancellable);
+	return G_SOURCE_REMOVE;
 }
 
 static void quit_oneshot_application(void)
@@ -159,8 +438,14 @@ static void enumerate_certificates_thread(GTask *task, gpointer source_object,
 {
 	(void)source_object;
 	(void)task_data;
-	(void)cancellable;
-	g_task_return_pointer(task, enumerate_certificates(), (GDestroyNotify)g_ptr_array_unref);
+	GError *error = NULL;
+	GPtrArray *certificates = enumerate_certificates(cancellable, &error);
+	if (error) {
+		g_ptr_array_unref(certificates);
+		g_task_return_error(task, error);
+	} else {
+		g_task_return_pointer(task, certificates, (GDestroyNotify)g_ptr_array_unref);
+	}
 }
 
 static void enumerate_certificates_done(GObject *source_object, GAsyncResult *result,
@@ -168,21 +453,34 @@ static void enumerate_certificates_done(GObject *source_object, GAsyncResult *re
 {
 	(void)source_object;
 	EitaasCertificateDiscovery *discovery = user_data;
-	discovery->certificates = g_task_propagate_pointer(G_TASK(result), NULL);
+	GError *error = NULL;
+	discovery->certificates = g_task_propagate_pointer(G_TASK(result), &error);
+	discovery->completed = TRUE;
+	if (error)
+		discovery->error_message = g_strdup(discovery->timed_out
+		    ? "Smart-card certificate discovery timed out" : error->message);
 	if (discovery->abandoned) {
+		g_clear_error(&error);
 		discovery_free(discovery);
 		return;
 	}
-	gtk_dialog_response(GTK_DIALOG(discovery->dialog), GTK_RESPONSE_ACCEPT);
+	gtk_dialog_response(GTK_DIALOG(discovery->dialog),
+	                    error ? GTK_RESPONSE_REJECT : GTK_RESPONSE_ACCEPT);
+	g_clear_error(&error);
 }
 
-static GPtrArray *discover_certificates(GtkWindow *parent,
+static GPtrArray *discover_certificates(EitaasAuthToplevel *toplevel,
 	                                   WebKitAuthenticationRequest *request)
 {
+	if (!g_atomic_int_compare_and_exchange(&discovery_active, 0, 1)) {
+		webkit_authentication_request_cancel(request);
+		return NULL;
+	}
 	EitaasCertificateDiscovery *discovery = g_new0(EitaasCertificateDiscovery, 1);
 	discovery->request = g_object_ref(request);
+	discovery->cancellable = g_cancellable_new();
 	discovery->dialog = gtk_dialog_new_with_buttons(
-		"Reading smart card", parent, GTK_DIALOG_MODAL,
+		"Reading smart card", toplevel->window, GTK_DIALOG_MODAL,
 		"Cancel", GTK_RESPONSE_CANCEL, NULL);
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 	GtkWidget *spinner = gtk_spinner_new();
@@ -195,17 +493,27 @@ static GPtrArray *discover_certificates(GtkWindow *parent,
 		gtk_dialog_get_content_area(GTK_DIALOG(discovery->dialog))), box);
 	gtk_widget_show_all(discovery->dialog);
 
-	GTask *task = g_task_new(NULL, NULL, enumerate_certificates_done, discovery);
+	GTask *task = g_task_new(NULL, discovery->cancellable, enumerate_certificates_done, discovery);
 	g_task_run_in_thread(task, enumerate_certificates_thread);
 	g_object_unref(task);
+	discovery->timeout_source = g_timeout_add_seconds(PKCS11_TIMEOUT_SECONDS,
+	                                                 discovery_timeout, discovery);
 
 	gint response = gtk_dialog_run(GTK_DIALOG(discovery->dialog));
 	gtk_widget_destroy(discovery->dialog);
 	discovery->dialog = NULL;
-	if (response != GTK_RESPONSE_ACCEPT) {
-		discovery->abandoned = TRUE;
+	if (response != GTK_RESPONSE_ACCEPT || !toplevel->window) {
+		if (discovery->completed && discovery->error_message && toplevel->window)
+			show_error(toplevel, discovery->error_message);
+		if (discovery->completed)
+			discovery_free(discovery);
+		else {
+			discovery->abandoned = TRUE;
+			g_cancellable_cancel(discovery->cancellable);
+		}
 		webkit_authentication_request_cancel(request);
-		gtk_window_close(parent);
+		if (toplevel->window)
+			gtk_window_close(toplevel->window);
 		quit_oneshot_application();
 		return NULL;
 	}
@@ -216,24 +524,83 @@ static GPtrArray *discover_certificates(GtkWindow *parent,
 	return certificates;
 }
 
+/*
+ * Entra ID issues the client-certificate challenge either from the verified
+ * authority itself or from its dedicated CERTAUTH_HOST_PREFIX subdomain. Only
+ * those two exact names are trusted; no suffix or substring matching. Hosts
+ * with a trailing dot or in a different (IDNA/Unicode) form are not
+ * normalised and therefore fail closed.
+ */
+static gboolean host_is_authority_or_certauth(const gchar *host, const gchar *authority)
+{
+	if (g_ascii_strcasecmp(host, authority) == 0)
+		return TRUE;
+	gchar *certauth = g_strconcat(CERTAUTH_HOST_PREFIX, authority, NULL);
+	gboolean match = g_ascii_strcasecmp(host, certauth) == 0;
+	g_free(certauth);
+	return match;
+}
+
+static const gchar *trusted_request_host(WebKitWebView *web_view,
+	                                    WebKitAuthenticationRequest *request)
+{
+	if (webkit_authentication_request_is_for_proxy(request))
+		return NULL;
+	const gchar *authority = g_object_get_data(G_OBJECT(web_view), "rdp-authentication-host");
+	const gchar *host = webkit_authentication_request_get_host(request);
+	WebKitSecurityOrigin *origin = webkit_authentication_request_get_security_origin(request);
+	const gchar *protocol = origin ? webkit_security_origin_get_protocol(origin) : NULL;
+	const gchar *origin_host = origin ? webkit_security_origin_get_host(origin) : NULL;
+	guint port = origin ? webkit_security_origin_get_port(origin) : 0;
+	gboolean valid = authority && host && origin_host && protocol &&
+	                 g_ascii_strcasecmp(protocol, "https") == 0 &&
+	                 g_ascii_strcasecmp(origin_host, host) == 0 &&
+	                 host_is_authority_or_certauth(host, authority) &&
+	                 (port == 0 || port == 443);
+	if (origin)
+		webkit_security_origin_unref(origin);
+	return valid ? host : NULL;
+}
+
 gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 	WebKitAuthenticationRequest *request, gpointer parent_data)
 {
-	(void)web_view;
 	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
-	GtkWindow *parent = GTK_WINDOW(parent_data);
+	if (scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED &&
+		scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED)
+		return FALSE;
+	EitaasAuthToplevel toplevel = { 0 };
+	auth_toplevel_hold(&toplevel, parent_data);
 	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED) {
-		GPtrArray *certs = discover_certificates(parent, request);
-		if (!certs)
-			return TRUE;
-		if (certs->len == 0) {
-			g_ptr_array_unref(certs);
+		certificate_auth_state_clear(web_view);
+		const gchar *request_host = trusted_request_host(web_view, request);
+		if (!request_host) {
 			webkit_authentication_request_cancel(request);
+			auth_toplevel_release(&toplevel);
 			return TRUE;
 		}
+		GPtrArray *certs = discover_certificates(&toplevel, request);
+		if (!certs) {
+			auth_toplevel_release(&toplevel);
+			return TRUE;
+		}
+		if (certs->len == 0) {
+			gchar *message = g_strdup_printf(
+				"No usable smart-card authentication certificates were found for %s",
+				request_host);
+			show_error(&toplevel, message);
+			g_free(message);
+			g_ptr_array_unref(certs);
+			webkit_authentication_request_cancel(request);
+			auth_toplevel_release(&toplevel);
+			return TRUE;
+		}
+		gchar *dialog_title = g_strdup_printf(
+			"Select smart-card authentication certificate for %s", request_host);
 		GtkWidget *dialog = gtk_dialog_new_with_buttons(
-			"Select smart-card authentication certificate", parent, GTK_DIALOG_MODAL,
+			dialog_title, toplevel.window, GTK_DIALOG_MODAL,
 			"Cancel", GTK_RESPONSE_CANCEL, "Continue", GTK_RESPONSE_ACCEPT, NULL);
+		g_free(dialog_title);
 		GtkWidget *combo = gtk_combo_box_text_new();
 		for (guint i = 0; i < certs->len; i++)
 			gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo),
@@ -243,12 +610,18 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 		gtk_widget_show_all(dialog);
 		gint response = gtk_dialog_run(GTK_DIALOG(dialog));
 		gint selected = gtk_combo_box_get_active(GTK_COMBO_BOX(combo));
+		if (!toplevel.window)
+			response = GTK_RESPONSE_CANCEL;
 		if (response == GTK_RESPONSE_ACCEPT && selected >= 0 && (guint)selected < certs->len) {
 			EitaasPkcs11Certificate *choice = g_ptr_array_index(certs, selected);
-			GError *error = NULL;
-			GTlsCertificate *cert = g_tls_certificate_new_from_pkcs11_uris(
-				choice->certificate_uri, choice->private_key_uri, &error);
+			GTlsCertificate *cert = load_certificate_async(&toplevel, choice);
 			if (cert) {
+				EitaasCertificateAuthState *state = g_new0(EitaasCertificateAuthState, 1);
+				state->host = g_strdup(request_host);
+				state->certificate_uri = g_strdup(choice->certificate_uri);
+				state->expires_at = g_get_monotonic_time() + (2 * G_TIME_SPAN_MINUTE);
+				g_object_set_data_full(G_OBJECT(web_view), "rdp-certificate-transaction",
+				                       state, certificate_auth_state_free);
 				WebKitCredential *credential = webkit_credential_new_for_certificate(
 					cert, WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
 				webkit_authentication_request_authenticate(request, credential);
@@ -257,34 +630,51 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 			} else {
 				webkit_authentication_request_cancel(request);
 			}
-			g_clear_error(&error);
 		} else {
 			webkit_authentication_request_cancel(request);
 		}
 		gtk_widget_destroy(dialog);
 		g_ptr_array_unref(certs);
+		auth_toplevel_release(&toplevel);
 		return TRUE;
 	}
-	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED) {
-		GtkWidget *dialog = gtk_dialog_new_with_buttons(
-			"Smart-card PIN", parent, GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL,
-			"Continue", GTK_RESPONSE_ACCEPT, NULL);
-		GtkWidget *entry = gtk_entry_new();
-		gtk_entry_set_visibility(GTK_ENTRY(entry), FALSE);
-		gtk_entry_set_input_purpose(GTK_ENTRY(entry), GTK_INPUT_PURPOSE_PIN);
-		gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
-		gtk_widget_show_all(dialog);
-		if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-			WebKitCredential *credential = webkit_credential_new_for_certificate_pin(
-				gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
-			webkit_authentication_request_authenticate(request, credential);
-			webkit_credential_free(credential);
-			gtk_entry_set_text(GTK_ENTRY(entry), "");
-		} else {
-			webkit_authentication_request_cancel(request);
-		}
-		gtk_widget_destroy(dialog);
+	const gchar *request_host = trusted_request_host(web_view, request);
+	EitaasCertificateAuthState *state = g_object_get_data(
+		G_OBJECT(web_view), "rdp-certificate-transaction");
+	gboolean retrying = webkit_authentication_request_is_retry(request);
+	if (!request_host || !state || !state->certificate_uri ||
+	    g_get_monotonic_time() >= state->expires_at ||
+	    g_ascii_strcasecmp(request_host, state->host) != 0 ||
+	    (state->pin_submitted && !retrying)) {
+		certificate_auth_state_clear(web_view);
+		webkit_authentication_request_cancel(request);
+		auth_toplevel_release(&toplevel);
 		return TRUE;
 	}
-	return FALSE;
+	gchar *dialog_title = g_strdup_printf("Smart-card PIN for %s", request_host);
+	GtkWidget *dialog = gtk_dialog_new_with_buttons(
+		dialog_title, toplevel.window, GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL,
+		"Continue", GTK_RESPONSE_ACCEPT, NULL);
+	g_free(dialog_title);
+	GtkWidget *entry = gtk_entry_new();
+	gtk_entry_set_visibility(GTK_ENTRY(entry), FALSE);
+	gtk_entry_set_input_purpose(GTK_ENTRY(entry), GTK_INPUT_PURPOSE_PIN);
+	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
+	gtk_widget_show_all(dialog);
+	gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+	state = g_object_get_data(G_OBJECT(web_view), "rdp-certificate-transaction");
+	if (response == GTK_RESPONSE_ACCEPT && toplevel.window && state) {
+		WebKitCredential *credential = webkit_credential_new_for_certificate_pin(
+			gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
+		webkit_authentication_request_authenticate(request, credential);
+		webkit_credential_free(credential);
+		state->pin_submitted = TRUE;
+	} else {
+		webkit_authentication_request_cancel(request);
+		certificate_auth_state_clear(web_view);
+	}
+	gtk_entry_set_text(GTK_ENTRY(entry), "");
+	gtk_widget_destroy(dialog);
+	auth_toplevel_release(&toplevel);
+	return TRUE;
 }
