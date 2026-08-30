@@ -58,6 +58,13 @@ corresponding-source checksum from `sources.json`, forces one compile job, and
 writes the package to `dist/`. Arch remains candidate-only pending its hardware
 matrix.
 
+Release and reproducibility builds use the repository date in `arch/SNAPSHOT`.
+GitHub-hosted Azure runners cannot currently retrieve dated repositories from
+either Arch archive endpoint, so CI uses Arch's current official repositories
+only to validate that the package builds and passes its install, upgrade,
+linkage, and removal lifecycle. A passing CI job is therefore a compatibility
+check, not proof that the recorded release environment was reproduced.
+
 After installation, launch only through:
 
 ```console

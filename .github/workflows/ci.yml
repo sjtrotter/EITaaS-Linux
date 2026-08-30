@@ -207,12 +207,11 @@ jobs:
     container: archlinux:base
     steps:
       - uses: actions/checkout@v4
-      - name: Select recorded Arch repository snapshot
+      - name: Report Arch validation scope
         run: |
           snapshot=$(cat packaging/remmina/arch/SNAPSHOT)
-          # The primary archive host returns 404 from some GitHub-hosted Azure
-          # runners. Use Arch's documented dedicated archive mirror instead.
-          printf 'Server = https://umea.archive.pkgbuild.com/repos/%s/$repo/os/$arch\n' "$snapshot" > /etc/pacman.d/mirrorlist
+          echo "Release/reproducibility snapshot: $snapshot"
+          echo "GitHub CI uses current official repositories for compatibility validation."
       - name: Install build dependencies
         run: >-
           pacman -Syyu --noconfirm --needed base-devel cmake curl gettext git
