@@ -120,6 +120,14 @@ GTK 4/Libadwaita window with three pages:
   phase with a Cancel button while the client runs, and shows redacted errors
   in place.
 
+The first run opens on Readiness. Once the checks have passed and a profile is
+imported, later starts open directly on the Connect page while the checks
+re-run in the background (recorded as a small timestamp-and-hash marker under
+`$XDG_STATE_HOME/eitaas-gui/`, mode 0600). If a check that passed before now
+fails, a dialog names it; dismissing the dialog switches to the Readiness
+page. Connect is disabled only when the launcher or its client binary is
+missing, never on warnings.
+
 Double-clicking a `.rdpw` file in the file manager (MIME type
 `application/x-eitaas-rdpw`) opens the Profile page with an "Import
 FILE into your private profile store?" banner. Nothing is imported or

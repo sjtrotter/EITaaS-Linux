@@ -1,5 +1,5 @@
-# Translation template for EITaaS Connect (eitaas-gui).
-# Copyright (C) YEAR EITaaS-Linux contributors
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the eitaas-gui package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
@@ -7,8 +7,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: eitaas-gui 0.1.0\n"
-"Report-Msgid-Bugs-To: https://github.com/sjtrotter/EITaaS-Linux/issues\n"
-"POT-Creation-Date: 2026-08-30 13:05-0500\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-30 14:21-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,35 +17,35 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/eitaas_gui/viewmodel.py:44
+#: src/eitaas_gui/viewmodel.py:46
 msgid "Open the Azure Virtual Desktop web client (button on the right)."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:45
+#: src/eitaas_gui/viewmodel.py:47
 msgid ""
 "Sign in with your organization account in the browser. The browser may ask "
 "for your smart card (PIV) certificate and PIN."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:47
+#: src/eitaas_gui/viewmodel.py:49
 msgid "Click the settings cog in the top right corner."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:48
+#: src/eitaas_gui/viewmodel.py:50
 msgid "Choose “Download the rdp file”."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:49
+#: src/eitaas_gui/viewmodel.py:51
 msgid ""
 "Click your desktop (for example “Desktop”). A file named like Desktop.rdpw "
 "is saved to your Downloads folder."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:51
+#: src/eitaas_gui/viewmodel.py:53
 msgid "Come back here, press “I downloaded the RDP file”, and pick that file."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:54
+#: src/eitaas_gui/viewmodel.py:56
 msgid ""
 "The .rdpw file is a signed description of your workspace that the remote "
 "desktop client uses to reach the Azure Virtual Desktop gateway. It contains "
@@ -54,453 +54,495 @@ msgid ""
 "this computer."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:60
+#: src/eitaas_gui/viewmodel.py:62
 msgid "Azure US Government"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:61
+#: src/eitaas_gui/viewmodel.py:63
 msgid "Azure commercial"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:93
+#: src/eitaas_gui/viewmodel.py:95
 msgid "Ready"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:94
+#: src/eitaas_gui/viewmodel.py:96
 msgid "Needs attention"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:95
+#: src/eitaas_gui/viewmodel.py:97
 msgid "Not ready"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:96
+#: src/eitaas_gui/viewmodel.py:98
 msgid "Not checked"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:110
+#: src/eitaas_gui/viewmodel.py:112
 #, python-brace-format
 msgid "Remmina {remmina}, FreeRDP {freerdp}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:116 src/eitaas_gui/viewmodel.py:128
+#: src/eitaas_gui/viewmodel.py:118 src/eitaas_gui/viewmodel.py:130
 msgid "Bundled remote desktop client"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:118
+#: src/eitaas_gui/viewmodel.py:120
 #, python-brace-format
 msgid ""
 "The eitaas-remmina launcher and its private client are installed "
 "({versions})."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:123
+#: src/eitaas_gui/viewmodel.py:125
 msgid ""
 "The eitaas-remmina launcher is present but its private client binary is "
 "missing."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:125
+#: src/eitaas_gui/viewmodel.py:127
 msgid "The eitaas-remmina launcher is not installed."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:131
+#: src/eitaas_gui/viewmodel.py:133
 #, python-brace-format
 msgid "Install the {package} package for your distribution."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:140 src/eitaas_gui/viewmodel.py:147
-#: src/eitaas_gui/viewmodel.py:154
+#: src/eitaas_gui/viewmodel.py:142 src/eitaas_gui/viewmodel.py:149
+#: src/eitaas_gui/viewmodel.py:156
 msgid "Smart-card service"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:142
+#: src/eitaas_gui/viewmodel.py:144
 msgid "The PC/SC daemon socket is available (pcscd.socket)."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:149
+#: src/eitaas_gui/viewmodel.py:151
 msgid ""
 "systemctl is not available, so the pcscd service state could not be checked."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:150
+#: src/eitaas_gui/viewmodel.py:152
 msgid "Install pcscd and start its socket."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:156
+#: src/eitaas_gui/viewmodel.py:158
 msgid "The pcscd socket is not active, so the reader cannot be used."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:157
+#: src/eitaas_gui/viewmodel.py:159
 msgid "Start the service (needs administrator rights) with:"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:167 src/eitaas_gui/viewmodel.py:175
-#: src/eitaas_gui/viewmodel.py:181
+#: src/eitaas_gui/viewmodel.py:169 src/eitaas_gui/viewmodel.py:177
+#: src/eitaas_gui/viewmodel.py:183
 msgid "Smart-card reader"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:169
+#: src/eitaas_gui/viewmodel.py:171
 msgid "pcsc_scan is not installed, so no reader check could run."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:170 src/eitaas_gui/viewmodel.py:196
+#: src/eitaas_gui/viewmodel.py:172 src/eitaas_gui/viewmodel.py:198
 #, python-brace-format
 msgid "Install the {package} package."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:177
+#: src/eitaas_gui/viewmodel.py:179
 msgid ""
 "A reader was enumerated (pcsc_scan -r). This does not prove a card is "
 "inserted."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:183
+#: src/eitaas_gui/viewmodel.py:185
 #, python-brace-format
 msgid "No reader was enumerated ({summary})."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:184
+#: src/eitaas_gui/viewmodel.py:186
 msgid ""
 "Plug in the reader, then re-check. If it stays missing, start the smart-card "
 "service."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:193 src/eitaas_gui/viewmodel.py:201
-#: src/eitaas_gui/viewmodel.py:208
+#: src/eitaas_gui/viewmodel.py:195 src/eitaas_gui/viewmodel.py:203
+#: src/eitaas_gui/viewmodel.py:210
 msgid "Card middleware (OpenSC)"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:195
+#: src/eitaas_gui/viewmodel.py:197
 msgid "pkcs11-tool is not installed, so the middleware check could not run."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:203
+#: src/eitaas_gui/viewmodel.py:205
 msgid ""
 "OpenSC can list card slots (pkcs11-tool --list-slots). Insert your card "
 "before connecting; the client prompts for the PIN."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:210
+#: src/eitaas_gui/viewmodel.py:212
 #, python-brace-format
 msgid "OpenSC could not list card slots ({summary})."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:211
+#: src/eitaas_gui/viewmodel.py:213
 msgid ""
 "Check that the reader is connected and the smart-card service is running."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:219 src/eitaas_gui/viewmodel.py:225
+#: src/eitaas_gui/viewmodel.py:221 src/eitaas_gui/viewmodel.py:227
 msgid "Desktop session"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:221
+#: src/eitaas_gui/viewmodel.py:223
 #, python-brace-format
 msgid "A graphical session is available ({kind})."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:227
+#: src/eitaas_gui/viewmodel.py:229
 msgid "No display was detected, so the remote desktop window cannot open."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:228
+#: src/eitaas_gui/viewmodel.py:230
 msgid "Run EITaaS Connect from a graphical desktop session."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:237 src/eitaas_gui/viewmodel.py:244
+#: src/eitaas_gui/viewmodel.py:239 src/eitaas_gui/viewmodel.py:246
 msgid "Diagnostic tools"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:239
+#: src/eitaas_gui/viewmodel.py:241
 msgid "All optional diagnostic tools are installed."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:246
+#: src/eitaas_gui/viewmodel.py:248
 #, python-brace-format
 msgid "Missing: {tools}. They are optional for connecting."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:247
+#: src/eitaas_gui/viewmodel.py:249
 #, python-brace-format
 msgid "Install: {packages}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:254
+#: src/eitaas_gui/viewmodel.py:256
 msgid "The readiness check has not run yet."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:255
+#: src/eitaas_gui/viewmodel.py:257
 msgid "Readiness check"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:255
+#: src/eitaas_gui/viewmodel.py:257
 msgid "Press Re-check."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:273
+#: src/eitaas_gui/viewmodel.py:354
+msgid "Readiness has changed"
+msgstr ""
+
+#: src/eitaas_gui/viewmodel.py:356
+#, python-brace-format
+msgid ""
+"A check that passed last time is now failing: {items}. Close this message to "
+"review the details on the Readiness page."
+msgstr ""
+
+#: src/eitaas_gui/viewmodel.py:364
 msgid "Readiness has not been checked."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:276
+#: src/eitaas_gui/viewmodel.py:367
 msgid "All required checks passed."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:277
+#: src/eitaas_gui/viewmodel.py:368
 #, python-brace-format
 msgid "Needs attention: {items}."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:290
+#: src/eitaas_gui/viewmodel.py:381
 #, python-brace-format
 msgid "{cloud} · {size} bytes · mode {mode} · imported {date}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:300
+#: src/eitaas_gui/viewmodel.py:391
 #, python-brace-format
 msgid "Import a profile on the Profile page first. {summary}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:301
+#: src/eitaas_gui/viewmodel.py:392
 #, python-brace-format
 msgid ""
 "Connect opens {name} in the bundled remote desktop client. Sign-in, "
 "certificate selection, and the PIN prompt happen in that window. {summary}"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:308
+#: src/eitaas_gui/viewmodel.py:399
 msgid "Could not start the connection"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:309
+#: src/eitaas_gui/viewmodel.py:400
 msgid "Could not import the profile"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:310
+#: src/eitaas_gui/viewmodel.py:401
 msgid "Could not update the profile list"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:311
+#: src/eitaas_gui/viewmodel.py:402
 msgid "Could not run the readiness check"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:317
+#: src/eitaas_gui/viewmodel.py:408
 msgid "Something went wrong"
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:327
+#: src/eitaas_gui/viewmodel.py:418
 msgid "Connection cancelled."
 msgstr ""
 
-#: src/eitaas_gui/viewmodel.py:330
+#: src/eitaas_gui/viewmodel.py:421
 #, python-brace-format
 msgid "The remote desktop client exited with status {code}."
 msgstr ""
 
-#: src/eitaas_gui/app.py:58
+#: src/eitaas_gui/viewmodel.py:432
+msgid ""
+"The remote desktop client exited normally but reported smart-card warnings."
+msgstr ""
+
+#: src/eitaas_gui/viewmodel.py:434
+msgid "Last diagnostic lines:"
+msgstr ""
+
+#: src/eitaas_gui/viewmodel.py:437
+msgid "The client reported no smart-card diagnostic lines."
+msgstr ""
+
+#: src/eitaas_gui/viewmodel.py:439
+#, python-brace-format
+msgid "Diagnostic log: {path}"
+msgstr ""
+
+#: src/eitaas_gui/app.py:64
 msgid "EITaaS Connect"
 msgstr ""
 
-#: src/eitaas_gui/app.py:88
+#: src/eitaas_gui/app.py:94
 msgid "Readiness"
 msgstr ""
 
-#: src/eitaas_gui/app.py:91
+#: src/eitaas_gui/app.py:97
 msgid "Profile"
 msgstr ""
 
-#: src/eitaas_gui/app.py:94 src/eitaas_gui/app.py:171 src/eitaas_gui/app.py:173
-#: src/eitaas_gui/app.py:177
+#: src/eitaas_gui/app.py:100 src/eitaas_gui/app.py:177
+#: src/eitaas_gui/app.py:179 src/eitaas_gui/app.py:183
 msgid "Connect"
 msgstr ""
 
-#: src/eitaas_gui/app.py:100
+#: src/eitaas_gui/app.py:106
 msgid "System readiness"
 msgstr ""
 
-#: src/eitaas_gui/app.py:101
+#: src/eitaas_gui/app.py:107
 msgid ""
 "Each line states what was checked and what to do if it failed. Nothing is "
 "changed on your system; commands are shown for you to run."
 msgstr ""
 
-#: src/eitaas_gui/app.py:104
+#: src/eitaas_gui/app.py:110
 msgid "Re-check"
 msgstr ""
 
-#: src/eitaas_gui/app.py:106
+#: src/eitaas_gui/app.py:112
 msgid "Re-check readiness"
 msgstr ""
 
-#: src/eitaas_gui/app.py:115
+#: src/eitaas_gui/app.py:121
 msgid "Import"
 msgstr ""
 
-#: src/eitaas_gui/app.py:117
+#: src/eitaas_gui/app.py:123
 msgid "Profile opened from the file manager"
 msgstr ""
 
-#: src/eitaas_gui/app.py:120
+#: src/eitaas_gui/app.py:126
 msgid "Get your desktop profile"
 msgstr ""
 
-#: src/eitaas_gui/app.py:121
+#: src/eitaas_gui/app.py:127
 msgid "Follow these steps once; the file is then kept for you below."
 msgstr ""
 
-#: src/eitaas_gui/app.py:123
+#: src/eitaas_gui/app.py:129
 msgid "Web client"
 msgstr ""
 
-#: src/eitaas_gui/app.py:123
+#: src/eitaas_gui/app.py:129
 msgid "Which cloud your organization uses"
 msgstr ""
 
-#: src/eitaas_gui/app.py:127
+#: src/eitaas_gui/app.py:133
 msgid "Web client cloud"
 msgstr ""
 
-#: src/eitaas_gui/app.py:131
+#: src/eitaas_gui/app.py:137
 #, python-brace-format
 msgid "Step {number}"
 msgstr ""
 
-#: src/eitaas_gui/app.py:132
+#: src/eitaas_gui/app.py:138
 #, python-brace-format
 msgid "Step {number} of {total}"
 msgstr ""
 
-#: src/eitaas_gui/app.py:135
+#: src/eitaas_gui/app.py:141
 msgid "Open web client"
 msgstr ""
 
-#: src/eitaas_gui/app.py:138
+#: src/eitaas_gui/app.py:144
 msgid "Open the Azure Virtual Desktop web client in your browser"
 msgstr ""
 
-#: src/eitaas_gui/app.py:142
+#: src/eitaas_gui/app.py:148
 msgid "Why do I need this file?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:147
+#: src/eitaas_gui/app.py:153
 msgid "I downloaded the RDP file"
 msgstr ""
 
-#: src/eitaas_gui/app.py:151
+#: src/eitaas_gui/app.py:157
 msgid "Choose the downloaded .rdpw file to import"
 msgstr ""
 
-#: src/eitaas_gui/app.py:156
+#: src/eitaas_gui/app.py:162
 msgid "Imported profiles"
 msgstr ""
 
-#: src/eitaas_gui/app.py:157
+#: src/eitaas_gui/app.py:163
 msgid ""
 "Stored privately under your user data directory (mode 0600). The selected "
 "profile is what Connect opens."
 msgstr ""
 
-#: src/eitaas_gui/app.py:178
+#: src/eitaas_gui/app.py:184
 msgid "Starts the bundled remote desktop client with the selected profile."
 msgstr ""
 
-#: src/eitaas_gui/app.py:186
+#: src/eitaas_gui/app.py:192
 msgid "Connection phase"
 msgstr ""
 
-#: src/eitaas_gui/app.py:188
+#: src/eitaas_gui/app.py:194
 msgid "Cancel"
 msgstr ""
 
-#: src/eitaas_gui/app.py:189
+#: src/eitaas_gui/app.py:195
 msgid "Cancel the connection"
 msgstr ""
 
-#: src/eitaas_gui/app.py:197
+#: src/eitaas_gui/app.py:203
 msgid "Connection error"
 msgstr ""
 
-#: src/eitaas_gui/app.py:220
+#: src/eitaas_gui/app.py:205 src/eitaas_gui/app.py:208
+msgid "Copy diagnostic log"
+msgstr ""
+
+#: src/eitaas_gui/app.py:209
+msgid ""
+"Copies the redacted log of the last connection attempt to the clipboard."
+msgstr ""
+
+#: src/eitaas_gui/app.py:233
 msgid "Close"
 msgstr ""
 
-#: src/eitaas_gui/app.py:246
+#: src/eitaas_gui/app.py:269
+msgid "Show readiness"
+msgstr ""
+
+#: src/eitaas_gui/app.py:291
 msgid "Copied to clipboard"
 msgstr ""
 
-#: src/eitaas_gui/app.py:267
+#: src/eitaas_gui/app.py:312
 msgid "No profile imported yet"
 msgstr ""
 
-#: src/eitaas_gui/app.py:268
+#: src/eitaas_gui/app.py:313
 msgid "Use the button above after exporting one."
 msgstr ""
 
-#: src/eitaas_gui/app.py:283
+#: src/eitaas_gui/app.py:338
 #, python-brace-format
 msgid "Import {name} into your private profile store?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:294
+#: src/eitaas_gui/app.py:349
 msgid "Choose the downloaded .rdpw profile"
 msgstr ""
 
-#: src/eitaas_gui/app.py:296
+#: src/eitaas_gui/app.py:351
 msgid "Remote desktop profiles (*.rdpw)"
 msgstr ""
 
-#: src/eitaas_gui/app.py:319
+#: src/eitaas_gui/app.py:374
 #, python-brace-format
 msgid "Could not open the browser: {reason}"
 msgstr ""
 
-#: src/eitaas_gui/app.py:339
+#: src/eitaas_gui/app.py:394
 #, python-brace-format
 msgid "Imported {name}; it is now the default."
 msgstr ""
 
-#: src/eitaas_gui/app.py:347
+#: src/eitaas_gui/app.py:402
 #, python-brace-format
 msgid "Remove {name}?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:348
+#: src/eitaas_gui/app.py:403
 msgid "The imported file is deleted from your private profile store."
 msgstr ""
 
-#: src/eitaas_gui/app.py:350
+#: src/eitaas_gui/app.py:405
 msgid "Keep"
 msgstr ""
 
-#: src/eitaas_gui/app.py:351 src/eitaas_gui/widgets.py:92
+#: src/eitaas_gui/app.py:406 src/eitaas_gui/widgets.py:92
 msgid "Remove"
 msgstr ""
 
-#: src/eitaas_gui/app.py:389
+#: src/eitaas_gui/app.py:446
 msgid "Starting"
 msgstr ""
 
-#: src/eitaas_gui/app.py:411
+#: src/eitaas_gui/app.py:468
 msgid "Stopping the remote desktop client"
 msgstr ""
 
-#: src/eitaas_gui/app.py:442
+#: src/eitaas_gui/app.py:519
 msgid "Disconnect and quit?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:443
+#: src/eitaas_gui/app.py:520
 msgid "The remote desktop client is still running."
 msgstr ""
 
-#: src/eitaas_gui/app.py:445
+#: src/eitaas_gui/app.py:522
 msgid "Keep working"
 msgstr ""
 
-#: src/eitaas_gui/app.py:446
+#: src/eitaas_gui/app.py:523
 msgid "Disconnect and quit"
 msgstr ""
 
-#: src/eitaas_gui/app.py:522
+#: src/eitaas_gui/app.py:599
 #, python-brace-format
 msgid "Only the first of {count} files is offered for import."
 msgstr ""

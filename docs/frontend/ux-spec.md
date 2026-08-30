@@ -36,6 +36,20 @@ windows and from a bottom switcher bar below 550 sp:
 3. **Connect** — a status page with the Connect button, the running state,
    and any launch error.
 
+### Startup page selection
+
+On first run — no recorded readiness pass, or no default profile — the window
+opens on Readiness and the flow stays Readiness → Profile → Connect. When a
+previous run recorded a readiness pass (see the marker under "Privacy and
+local state") and a default profile exists, the window opens directly on
+Connect. Either way the doctor check runs on every start, in the background,
+with no blocking splash; a pass rewrites the marker. If a check that passed
+last time now hard-fails (a regression), the marker is cleared and — when the
+Readiness page is not already visible — an alert dialog names the failing
+checks; dismissing it in any way (button, Escape, or close) switches to the
+Readiness page. The dialog uses a normal `Adw.AlertDialog` with an async
+response handler; it never blocks the main loop.
+
 Certificates remain CLI-only (`eitaas certificates`); the helper has no
 certificate view.
 
@@ -92,8 +106,10 @@ alone. **Re-check** reruns `doctor_async` and is disabled while it runs.
 
 ## Connection lifecycle
 
-Connect is enabled only when the readiness report shows the `eitaas-remmina`
-launcher and a default profile exists. Pressing it runs `Application.launch`
+Connect is disabled only on hard failures: the readiness report must show the
+`eitaas-remmina` launcher and its private client binary, and a default profile
+must exist. Warnings — missing diagnostic tools, or a smart-card check failure
+the client can surface itself — never disable the button. Pressing it runs `Application.launch`
 with `ConnectionRequest()` (the stored default) on a worker thread. The button
 is replaced by a spinner, a phase label, and **Cancel**; the phase label shows
 "Starting" and then the `launch` progress messages for the `validating`,
@@ -120,6 +136,15 @@ core supplies one. Import and profile-store failures use an alert dialog with
 the same title and body. Child output, launcher arguments, and full paths never
 appear.
 
+## Deliberate decisions
+
+The smart-card PIN dialog lives in the bundled Remmina client, not in this
+helper. Its PIN entry submits only through the explicit confirmation button;
+pressing Enter does not confirm the dialog. This is the owner's deliberate
+choice (issue #85) to avoid accidental submission of a partially typed PIN —
+each wrong attempt counts against the card's retry limit — and it is
+explicitly out of scope to add Enter-to-confirm behaviour.
+
 ## Accessibility requirements
 
 - Every control is reachable and operable by keyboard. Accelerators: Ctrl+R
@@ -142,6 +167,14 @@ appear.
   (directory `0700`, files `0600`).
 - `$XDG_CONFIG_HOME/eitaas/profiles.ini` holds only `[profiles] default = NAME`
   (mode `0600`).
+- `$XDG_STATE_HOME/eitaas-gui/last-readiness-pass.json` (directory `0700`,
+  file `0600`) records the last readiness pass: an ISO-8601 timestamp and a
+  SHA-256 hash of the readiness row states — never profile data, paths, or
+  check output. It decides the startup page, is rewritten on every pass, and
+  is cleared on a regression. The hash is recorded for inspection only;
+  regressions are detected from the fresh check results, never by comparing
+  hashes. Unknown states (a missing diagnostic tool) count as a pass, like
+  warnings.
 - User-visible strings are wrapped in gettext; no translations ship yet.
 - No other state, history, or recent-file entry is written. Profiles, profile
   values, child output, and callbacks never reach notifications, logs, or
