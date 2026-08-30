@@ -76,7 +76,12 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
    behavioral tests, sanitizer run where applicable, developer attestation, and hardware validation
    where the criteria require it. Never tick a checkbox on behalf of the developer.
 5. Do not push to the GitLab fork or open upstream merge requests; commit locally and report SHAs.
-6. Do not commit `.build/`, `dist/`, real profiles, keys, captures, or agent state
+6. Orchestrate, don't monopolize: the lead agent plans and delegates well-bounded work to the
+   appropriate tier of subagent **and to Codex harnesses** (`codex exec`, `codex exec review`) —
+   use both where they fit (Codex for independent implementation/review passes and second
+   opinions; Claude subagents for worktree-isolated fixes and fresh-context adversarial review).
+   Subagents may delegate further. Every delegated change still lands as a reviewed PR.
+7. Do not commit `.build/`, `dist/`, real profiles, keys, captures, or agent state
    (`.claude/`, `.codex/`, `.agents/`, `AGENTS.local.md`, `CLAUDE.local.md`) — see `.gitignore`.
 
 ## Useful paths
