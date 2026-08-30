@@ -820,10 +820,6 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
             self.assertIn(flag, job)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RemminaSpecCheckTests(unittest.TestCase):
     def test_recipe_check_literals_exist_in_final_downstream_sources(self):
         """Every string a recipe's build-time check greps out of the built plugin must
@@ -994,3 +990,7 @@ class SmartcardDiagnosticsTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertIn("smartcard-auth", path.read_text())
         self.assertIn("G_MESSAGES_DEBUG=remmina eitaas-remmina", (PROJECT_ROOT / "README.md").read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()
