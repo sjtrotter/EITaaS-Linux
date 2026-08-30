@@ -179,13 +179,13 @@ jobs:
       - name: Build binary and native source packages
         run: scripts/build-remmina-deb.sh
       - name: Verify Debian policy metadata
-        run: lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license dist/eitaas-remmina_1.4.43+eitaas0.8_amd64.changes
+        run: lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license dist/eitaas-remmina_1.4.43+eitaas0.9_amd64.changes
       - name: Test install, upgrade, dependencies, and removal
-        run: scripts/test-remmina-deb-lifecycle.sh dist/eitaas-remmina_1.4.43+eitaas0.8_amd64.deb
+        run: scripts/test-remmina-deb-lifecycle.sh dist/eitaas-remmina_1.4.43+eitaas0.9_amd64.deb
       - name: Verify corresponding source contents
         run: |
           target=$(mktemp -d)
-          dpkg-source --extract dist/eitaas-remmina_1.4.43+eitaas0.8.dsc "$target/source"
+          dpkg-source --extract dist/eitaas-remmina_1.4.43+eitaas0.9.dsc "$target/source"
           test -f "$target/source/FreeRDP-3.31.0/LICENSE"
           test -f "$target/source/Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031/COPYING"
           test -f "$target/source/patches/0004-use-profile-avd-scope.patch"

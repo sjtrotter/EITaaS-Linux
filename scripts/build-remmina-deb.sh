@@ -3,7 +3,7 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 build_root=${EITAAS_REMMINA_DEB_BUILD_ROOT:-"$project_root/.build/eitaas-remmina-deb"}
-source_root="$build_root/eitaas-remmina-1.4.43+eitaas0.8"
+source_root="$build_root/eitaas-remmina-1.4.43+eitaas0.9"
 
 mkdir -p "$build_root/cache" "$project_root/dist"
 rm -rf "$source_root"
