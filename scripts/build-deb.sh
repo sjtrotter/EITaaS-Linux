@@ -1,30 +1,35 @@
 #!/bin/sh
+# Build the combined eitaas-linux DEB and its native source package. The
+# source tree carries the repository sources plus both verified upstream
+# archives with the ordered patch series from packaging/remmina/sources.json
+# already applied, so the source package is complete corresponding source.
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-build_root=$(mktemp -d)
-trap 'rm -rf "$build_root"' EXIT HUP INT TERM
+build_root=${EITAAS_BUILD_ROOT:-"$project_root/.build/eitaas-bundle"}
+cache="$build_root/cache"
 source_archive=${1:-}
-version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$project_root/pyproject.toml")
-source_dir="$build_root/eitaas-linux-$version"
-orig_archive="$build_root/eitaas-linux_$version.orig.tar.gz"
 
+# debian/changelog is the single source of truth for the Debian version.
+# Debian file names carry no epoch, so drop one if the changelog gains it.
+version=$(dpkg-parsechangelog -l "$project_root/packaging/debian/changelog" -S Version)
+version=${version#*:}
+source_root="$build_root/eitaas-linux-$version"
+
+mkdir -p "$cache" "$project_root/dist"
+rm -rf "$source_root"
 if [ -n "$source_archive" ]; then
-    cp "$source_archive" "$orig_archive"
+    "$project_root/scripts/prepare-bundle-source.py" --project-root "$project_root" \
+        tree --cache "$cache" --output "$source_root" --debian \
+        --source-archive "$source_archive"
 else
-    mkdir -p "$source_dir"
-    git -c safe.directory="$project_root" -C "$project_root" archive HEAD | tar -x -C "$source_dir"
-    tar -czf "$orig_archive" -C "$build_root" "eitaas-linux-$version"
+    "$project_root/scripts/prepare-bundle-source.py" --project-root "$project_root" \
+        tree --cache "$cache" --output "$source_root" --debian
 fi
-if [ ! -d "$source_dir" ]; then
-    tar -xzf "$orig_archive" -C "$build_root"
-fi
-cp -a "$source_dir/packaging/debian" "$source_dir/debian"
-cd "$source_dir"
-dpkg-buildpackage --build=source --no-sign
-dpkg-buildpackage --build=binary --no-sign
-mkdir -p "$project_root/dist"
+
+cd "$source_root"
+dpkg-buildpackage --build=source,binary --unsigned-source --unsigned-changes --jobs=1
 find "$build_root" -maxdepth 1 -type f \( \
-    -name '*.deb' -o -name '*.dsc' -o -name '*.debian.tar.*' -o \
-    -name '*.orig.tar.*' -o -name '*.buildinfo' -o -name '*.changes' \
+    -name '*.deb' -o -name '*.ddeb' -o -name '*.dsc' -o -name '*.tar.xz' -o \
+    -name '*.buildinfo' -o -name '*.changes' \
 \) -exec cp {} "$project_root/dist/" \;

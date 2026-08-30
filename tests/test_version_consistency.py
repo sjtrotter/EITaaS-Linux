@@ -18,13 +18,13 @@ class VersionConsistencyTests(unittest.TestCase):
         )
 
     def test_all_version_declarations_match(self):
-        result = self.run_checker("--tag", "v0.1.0")
+        result = self.run_checker("--tag", "v0.2.0")
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_mismatched_release_tag_is_rejected(self):
-        result = self.run_checker("--tag", "v0.1.1")
+        result = self.run_checker("--tag", "v0.2.1")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("release tag=0.1.1", result.stderr)
+        self.assertIn("release tag=0.2.1", result.stderr)
 
 
 if __name__ == "__main__":

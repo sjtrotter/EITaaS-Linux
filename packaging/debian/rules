@@ -1,14 +1,126 @@
 #!/usr/bin/make -f
 
-# Two binary packages share one pybuild build. Pin the destination to
-# debian/tmp and let the *.install files split it. pybuild stages files under
-# usr/lib/python3.X/dist-packages (the *.install globs use python3*); dh_python3
-# then moves them to usr/lib/python3/dist-packages in every package that ships
-# Python files, so both packages receive ${python3:Depends}.
-export PYBUILD_DESTDIR=debian/tmp
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# One binary package: pybuild installs straight into it and the private
+# Remmina/FreeRDP prefix is added by the cmake overrides below.
+export PYBUILD_DESTDIR = debian/eitaas-linux
+
+MANIFEST = packaging/remmina/sources.json
+READ_MANIFEST = python3 -c 'import json,sys;m=json.load(open("$(MANIFEST)"))["sources"];print(m[sys.argv[1]][sys.argv[2]])'
+# packaging/remmina/sources.json is the only place the pins are written down.
+FREERDP := FreeRDP-$(shell $(READ_MANIFEST) freerdp version)
+REMMINA := Remmina-$(shell $(READ_MANIFEST) remmina commit)
+PREFIX = /usr/lib/eitaas-remmina
+PACKAGE_ROOT = $(CURDIR)/debian/eitaas-linux
+PRIVATE_ROOT = $(CURDIR)/debian/private-root
+DOC_DIR = $(PACKAGE_ROOT)/usr/share/doc/eitaas-linux
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
+override_dh_auto_configure:
+	dh_auto_configure
+	cmake -S $(FREERDP) -B freerdp-build -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
+		-DCHANNEL_URBDRC=OFF \
+		-DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF \
+		-DWITH_SERVER=OFF -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF \
+		-DWITH_DOCUMENTATION=OFF -DWITH_FUSE=OFF -DWITH_CUPS=OFF \
+		-DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
+		-DWITH_ALSA=OFF -DWITH_PULSE=OFF -DWITH_JPEG=OFF -DWITH_GSM=OFF \
+		-DWITH_LAME=OFF -DWITH_OPENH264=OFF
+
+override_dh_auto_build:
+	dh_auto_build
+	cmake --build freerdp-build --parallel 1
+	DESTDIR=$(PRIVATE_ROOT) cmake --install freerdp-build
+	cmake -S $(REMMINA) -B remmina-build -G Ninja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) \
+		-DCMAKE_PREFIX_PATH=$(PRIVATE_ROOT)$(PREFIX) \
+		-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+		-DCMAKE_INSTALL_RPATH='$$ORIGIN/../lib:$$ORIGIN/..' \
+		-DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
+		-DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
+		-DWITH_CUPS=OFF -DWITH_AVAHI=OFF \
+		-DWITH_LIBVNCSERVER=OFF -DWITH_SPICE=OFF -DWITH_NEWS=OFF \
+		-DWITH_STATS=OFF -DWITH_TIP=OFF -DWITH_MANPAGES=OFF \
+		-DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF -DWITH_GVNC=OFF \
+		-DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF \
+		-DWITH_XDMCP=OFF -DWITH_NX=OFF -DWITH_PYTHONLIBS=OFF
+	cmake --build remmina-build --parallel 1
+
 override_dh_auto_test:
 	PYTHONPATH=$(CURDIR)/src python3 -m unittest discover -s tests -v
+	test -x remmina-build/src/remmina
+	test -f remmina-build/plugins/rdp/remmina-plugin-rdp.so
+	grep -a -q 'Protected RDPW profile contains invalid or disallowed settings' \
+		remmina-build/plugins/rdp/remmina-plugin-rdp.so
+	grep -a -q 'Select smart-card authentication certificate' \
+		remmina-build/plugins/rdp/remmina-plugin-rdp.so
+	desktop-file-validate data/org.eitaas.Helper.desktop
+
+override_dh_auto_install:
+	dh_auto_install
+	DESTDIR=$(PACKAGE_ROOT) cmake --install freerdp-build
+	DESTDIR=$(PACKAGE_ROOT) cmake --install remmina-build
+	rm -rf $(PACKAGE_ROOT)$(PREFIX)/include $(PACKAGE_ROOT)$(PREFIX)/lib/cmake \
+		$(PACKAGE_ROOT)$(PREFIX)/lib/pkgconfig $(PACKAGE_ROOT)$(PREFIX)/share/man
+	rm -f $(PACKAGE_ROOT)$(PREFIX)/lib/*.so
+	install -Dpm0755 packaging/remmina/eitaas-remmina \
+		$(PACKAGE_ROOT)/usr/bin/eitaas-remmina
+	install -Dpm0644 docs/eitaas.1 \
+		$(PACKAGE_ROOT)/usr/share/man/man1/eitaas.1
+	install -Dpm0644 docs/eitaas-gui.1 \
+		$(PACKAGE_ROOT)/usr/share/man/man1/eitaas-gui.1
+	install -Dpm0644 completions/eitaas.bash \
+		$(PACKAGE_ROOT)/usr/share/bash-completion/completions/eitaas
+	install -Dpm0644 completions/_eitaas \
+		$(PACKAGE_ROOT)/usr/share/zsh/vendor-completions/_eitaas
+	install -Dpm0644 data/org.eitaas.Helper.desktop \
+		$(PACKAGE_ROOT)/usr/share/applications/org.eitaas.Helper.desktop
+	install -Dpm0644 data/org.eitaas.Helper.metainfo.xml \
+		$(PACKAGE_ROOT)/usr/share/metainfo/org.eitaas.Helper.metainfo.xml
+	install -Dpm0644 data/eitaas-rdpw.xml \
+		$(PACKAGE_ROOT)/usr/share/mime/packages/eitaas-rdpw.xml
+	install -Dpm0644 data/icons/hicolor/scalable/apps/org.eitaas.Helper.svg \
+		$(PACKAGE_ROOT)/usr/share/icons/hicolor/scalable/apps/org.eitaas.Helper.svg
+	install -Dpm0644 data/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg \
+		$(PACKAGE_ROOT)/usr/share/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg
+
+override_dh_installdocs:
+	dh_installdocs
+	install -Dpm0644 NOTICE $(DOC_DIR)/NOTICE
+	install -Dpm0644 SECURITY.md $(DOC_DIR)/SECURITY.md
+	install -Dpm0644 SUPPORT.md $(DOC_DIR)/SUPPORT.md
+	install -Dpm0644 $(MANIFEST) $(DOC_DIR)/sources.json
+	install -Dpm0644 packaging/remmina/THIRD_PARTY_NOTICES.md \
+		$(DOC_DIR)/THIRD_PARTY_NOTICES.md
+	install -Dpm0644 LICENSE $(DOC_DIR)/licenses/EITaaS-LICENSE
+	install -Dpm0644 $(FREERDP)/LICENSE $(DOC_DIR)/licenses/FreeRDP-LICENSE
+	install -Dpm0644 $(FREERDP)/winpr/libwinpr/sysinfo/cpufeatures/NOTICE \
+		$(DOC_DIR)/licenses/FreeRDP-cpufeatures-NOTICE
+	install -Dpm0644 $(REMMINA)/COPYING $(DOC_DIR)/licenses/Remmina-COPYING
+	install -Dpm0644 $(REMMINA)/LICENSE $(DOC_DIR)/licenses/Remmina-LICENSE
+	install -Dpm0644 $(REMMINA)/LICENSE.OpenSSL \
+		$(DOC_DIR)/licenses/Remmina-LICENSE.OpenSSL
+
+# dh_compress gzips anything over 4 KiB below /usr/share/doc; the
+# corresponding-source license texts must stay readable in place, and their
+# file names are asserted by scripts/test-deb-lifecycle.sh. dh_compress
+# matches -X against package-relative paths, so the pattern carries no
+# leading slash.
+override_dh_compress:
+	dh_compress -Xusr/share/doc/eitaas-linux/licenses
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(PACKAGE_ROOT)$(PREFIX)/lib
+
+override_dh_makeshlibs:
+	true
+
+override_dh_auto_clean:
+	rm -rf freerdp-build remmina-build debian/private-root
+	dh_auto_clean

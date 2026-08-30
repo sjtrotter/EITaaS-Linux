@@ -1,3 +1,13 @@
+eitaas-linux (0.2.0) unstable; urgency=medium
+
+  * Ship one binary package containing the bundled Remmina/FreeRDP client, the
+    eitaas-remmina launcher, the eitaas command-line helper, and the EITaaS
+    Connect GTK 4 helper.
+  * Break, replace, and provide the former eitaas-remmina and eitaas-linux-gui
+    packages so existing installations upgrade cleanly.
+
+ -- EITaaS-Linux contributors <sjtrotter@users.noreply.github.com>  Sun, 30 Aug 2026 16:00:00 +0000
+
 eitaas-linux (0.1.0-1) unstable; urgency=medium
 
   * Initial package.

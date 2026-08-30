@@ -9,16 +9,35 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# The bundle inputs (pinned manifest, ordered patch series, CAC integration
+# sources, launcher, notices) live here; every packaging format consumes them.
 PACKAGE_DIR = PROJECT_ROOT / "packaging" / "remmina"
 UPSTREAM_DIR = PROJECT_ROOT / "upstream" / "remmina"
-SPEC = (PACKAGE_DIR / "eitaas-remmina.spec").read_text()
+# Issue #80: one recipe per distribution builds one binary package.
+SPEC = (PROJECT_ROOT / "packaging" / "rpm" / "eitaas-linux.spec").read_text()
+RULES = (PROJECT_ROOT / "packaging" / "debian" / "rules").read_text()
+CONTROL = (PROJECT_ROOT / "packaging" / "debian" / "control").read_text()
+PKGBUILD = (PROJECT_ROOT / "packaging" / "arch" / "PKGBUILD").read_text()
+RECIPES = {
+    "packaging/rpm/eitaas-linux.spec": SPEC,
+    "packaging/debian/rules": RULES,
+    "packaging/arch/PKGBUILD": PKGBUILD,
+}
 MANIFEST = json.loads((PACKAGE_DIR / "sources.json").read_text())
-CHANGELOG = (PACKAGE_DIR / "debian" / "changelog").read_text()
+CHANGELOG = (PROJECT_ROOT / "packaging" / "debian" / "changelog").read_text()
 WORKFLOW = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+PYPROJECT = (PROJECT_ROOT / "pyproject.toml").read_text()
+
+
+def project_version():
+    """Return the version in pyproject.toml, the single package version stream."""
+    match = re.search(r'(?m)^version = "([^"]+)"$', PYPROJECT)
+    assert match, "unparsable pyproject version"
+    return match.group(1)
 
 
 def debian_version():
-    """Return the version of the newest packaging/remmina/debian/changelog entry."""
+    """Return the version of the newest packaging/debian/changelog entry."""
     match = re.match(r"^\S+ \(([^)]+)\)", CHANGELOG)
     assert match, "unparsable Debian changelog header"
     return match.group(1)
@@ -33,20 +52,44 @@ def executable_lines(text):
 
 class RemminaPackagingComplianceTests(unittest.TestCase):
     def test_native_debian_recipe_uses_private_prefix_and_embedded_auth(self):
-        rules = (PACKAGE_DIR / "debian" / "rules").read_text()
-        self.assertIn("PREFIX = /usr/lib/eitaas-remmina", rules)
-        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", rules)
-        self.assertIn("-DWITH_PCSC=ON", rules)
-        self.assertIn("-DWITH_SSO_MIB=OFF", rules)
-        self.assertIn("--parallel 1", rules)
-        self.assertIn("override_dh_installdocs:", rules)
+        self.assertIn("PREFIX = /usr/lib/eitaas-remmina", RULES)
+        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", RULES)
+        self.assertIn("-DWITH_PCSC=ON", RULES)
+        self.assertIn("-DWITH_SSO_MIB=OFF", RULES)
+        self.assertIn("--parallel 1", RULES)
+        self.assertIn("override_dh_installdocs:", RULES)
 
-    def test_debian_source_preparation_reads_shared_manifest(self):
-        preparer = (PROJECT_ROOT / "scripts" / "prepare-remmina-deb-source.py").read_text()
-        self.assertIn('package_dir / "sources.json"', preparer)
+    def test_bundle_source_preparation_reads_shared_manifest(self):
+        preparer = (PROJECT_ROOT / "scripts" / "prepare-bundle-source.py").read_text()
+        self.assertIn('"sources.json"', preparer)
         self.assertIn('manifest["patches"]', preparer)
         self.assertIn('metadata["sha256"]', preparer)
         self.assertIn('remmina_dir / "data" / "reports"', preparer)
+        # Both formats that assemble a source tree share the one preparer.
+        for script in ("build-deb.sh", "build-arch.sh", "build-rpm.sh"):
+            with self.subTest(script=script):
+                builder = (PROJECT_ROOT / "scripts" / script).read_text()
+                self.assertIn("prepare-bundle-source.py", builder)
+
+    def test_split_package_recipes_and_builders_are_gone(self):
+        # One spec, one debian/ tree, one PKGBUILD, one builder per format.
+        for relative in (
+            "packaging/remmina/eitaas-remmina.spec",
+            "packaging/remmina/debian",
+            "packaging/remmina/arch",
+            "packaging/debian/eitaas-linux-gui.install",
+            "scripts/build-remmina-deb.sh",
+            "scripts/build-remmina-arch.sh",
+            "scripts/prepare-remmina-deb-source.py",
+            "scripts/test-remmina-deb-lifecycle.sh",
+            "scripts/test-remmina-arch-lifecycle.sh",
+        ):
+            with self.subTest(path=relative):
+                self.assertFalse((PROJECT_ROOT / relative).exists())
+        self.assertEqual(
+            sorted(p.name for p in (PROJECT_ROOT / "packaging" / "rpm").glob("*.spec")),
+            ["eitaas-linux.spec"],
+        )
 
     def test_launcher_supports_rpm_and_debian_private_prefixes(self):
         launcher = (PACKAGE_DIR / "eitaas-remmina").read_text()
@@ -54,32 +97,37 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn("/usr/lib/eitaas-remmina/bin/remmina", launcher)
 
     def test_native_arch_recipe_uses_private_prefix_and_embedded_auth(self):
-        pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
-        self.assertIn("_prefix='/usr/lib/eitaas-remmina'", pkgbuild)
-        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", pkgbuild)
-        self.assertIn("-DWITH_PCSC=ON", pkgbuild)
-        self.assertIn("-DWITH_SSO_MIB=OFF", pkgbuild)
-        self.assertIn("--parallel 1", pkgbuild)
-        self.assertNotIn("https://github.com/FreeRDP", pkgbuild)
+        self.assertIn("_prefix='/usr/lib/eitaas-remmina'", PKGBUILD)
+        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", PKGBUILD)
+        self.assertIn("-DWITH_PCSC=ON", PKGBUILD)
+        self.assertIn("-DWITH_SSO_MIB=OFF", PKGBUILD)
+        self.assertIn("--parallel 1", PKGBUILD)
+        # The corresponding-source tarball is complete; nothing is downloaded
+        # while the package builds.
+        self.assertNotIn("https://github.com/FreeRDP", PKGBUILD)
+        self.assertNotIn("https://gitlab.com/Remmina", PKGBUILD)
 
-    def test_arch_builder_derives_version_and_checksum_from_shared_manifest(self):
-        builder = (PROJECT_ROOT / "scripts" / "build-remmina-arch.sh").read_text()
-        self.assertIn('package_dir/sources.json', builder)
-        self.assertIn('prepare-remmina-deb-source.py', builder)
+    def test_rpm_recipe_uses_private_prefix_and_embedded_auth(self):
+        self.assertIn(
+            "%global private_prefix %{_libexecdir}/eitaas-remmina", SPEC
+        )
+        self.assertIn("-DWITH_RDP_AUTH_AAD=ON", SPEC)
+        self.assertIn("-DWITH_PCSC=ON", SPEC)
+        self.assertIn("--parallel 1", SPEC)
+
+    def test_arch_builder_derives_checksum_from_the_assembled_source(self):
+        builder = (PROJECT_ROOT / "scripts" / "build-arch.sh").read_text()
+        self.assertIn("prepare-bundle-source.py", builder)
         self.assertIn('sha256sum "$archive"', builder)
+        self.assertIn("@SHA256@", builder)
+        self.assertIn("sha256sums=('@SHA256@')", PKGBUILD)
 
     def test_sso_mib_is_disabled_in_every_recipe(self):
         # The identity-broker (SSO-MIB) route is not part of the product (#77):
         # the validated path is the embedded WebKitGTK CAC WebView, so every
         # recipe builds FreeRDP and Remmina with the broker compiled out and
         # declares no sso-mib build or runtime dependency.
-        rules = (PACKAGE_DIR / "debian" / "rules").read_text()
-        pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
-        for name, recipe in (
-            ("eitaas-remmina.spec", SPEC),
-            ("debian/rules", rules),
-            ("arch/PKGBUILD", pkgbuild),
-        ):
+        for name, recipe in RECIPES.items():
             with self.subTest(recipe=name):
                 # Both the FreeRDP and the Remmina configure lines opt out.
                 self.assertEqual(recipe.count("-DWITH_SSO_MIB=OFF"), 2)
@@ -107,70 +155,292 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
                 self.assertNotIn("3.31.0 is", text)
                 self.assertNotIn("3.31.0 or newer", text)
 
-    def test_recorded_downstream_revisions_agree_with_the_shared_manifest(self):
-        package_version = MANIFEST["package_version"]
+    def test_single_version_stream_is_derived_from_pyproject(self):
+        """Issue #80: one package version stream, taken from pyproject.toml.
 
-        # RPM: Version is the pinned upstream Remmina version and Release is
-        # the downstream revision.
+        The pinned Remmina and FreeRDP versions belong to sources.json and the
+        notices; they are not part of the package version any more.
+        """
+        version = project_version()
+        self.assertRegex(
+            SPEC, rf"(?m)^Version:\s+{re.escape(version)}$"
+        )
         release = re.search(r"(?m)^Release:\s+(\S+?)%\{\?dist\}$", SPEC)
         self.assertIsNotNone(release)
-        release = release.group(1)
-        self.assertRegex(release, r"^\d+\.\d+$")
-        self.assertIn(f"- {package_version}-{release}\n", SPEC.split("%changelog", 1)[1])
+        self.assertRegex(release.group(1), r"^[1-9]\d*$")
+        self.assertIn(f"- {version}-{release.group(1)}\n", SPEC.split("%changelog", 1)[1])
 
-        # Debian native package: <upstream version>+eitaas<downstream revision>.
-        self.assertEqual(debian_version(), f"{package_version}+eitaas{release}")
+        # The Debian package is native: <project version>, no revision.
+        self.assertEqual(debian_version(), version)
+        self.assertIn(
+            "3.0 (native)",
+            (PROJECT_ROOT / "packaging" / "debian" / "source" / "format").read_text(),
+        )
 
-        # Arch: pkgver is substituted from the manifest by
-        # scripts/build-remmina-arch.sh, and pkgrel is Arch's own packaging
-        # revision, which no manifest field records; only check it is a plain
-        # positive integer.
-        pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
-        self.assertIn("pkgver=@PKGVER@", pkgbuild)
-        self.assertNotIn(f"pkgver={package_version}", pkgbuild)
-        pkgrel = re.search(r"(?m)^pkgrel=(\S+)$", pkgbuild)
+        self.assertIn(f"pkgver={version}\n", PKGBUILD)
+        pkgrel = re.search(r"(?m)^pkgrel=(\S+)$", PKGBUILD)
         self.assertIsNotNone(pkgrel)
         self.assertRegex(pkgrel.group(1), r"^[1-9]\d*$")
 
-    def test_debian_build_and_ci_derive_versions_instead_of_hard_coding_them(self):
-        builder = (PROJECT_ROOT / "scripts" / "build-remmina-deb.sh").read_text()
-        lifecycle = (PROJECT_ROOT / "scripts" / "test-remmina-deb-lifecycle.sh").read_text()
+        # The bundled Remmina version never becomes the package version.
+        self.assertNotEqual(MANIFEST["package_version"], version)
+        self.assertNotIn(f"Version:        {MANIFEST['package_version']}", SPEC)
+        self.assertNotIn(f"pkgver={MANIFEST['package_version']}", PKGBUILD)
+
+    def test_one_binary_package_named_eitaas_linux_per_distribution(self):
+        self.assertRegex(SPEC, r"(?m)^Name:\s+eitaas-linux$")
+        self.assertEqual(len(re.findall(r"(?m)^Name:\s", SPEC)), 1)
+        self.assertNotIn("%package", SPEC)
+        self.assertEqual(
+            re.findall(r"(?m)^Package:\s*(\S+)$", CONTROL), ["eitaas-linux"]
+        )
+        self.assertIn("pkgname=eitaas-linux\n", PKGBUILD)
+        self.assertNotIn("pkgbase=", PKGBUILD)
+
+    def test_upgrade_path_from_the_split_packages_is_declared(self):
+        version = project_version()
+        superseded = ("eitaas-remmina", "eitaas-linux-gui")
+
+        # RPM: every Provides sits at or above its Obsoletes bound so the
+        # package can never obsolete itself.
+        obsoletes = dict(re.findall(r"(?m)^Obsoletes:\s+(\S+) < (\S+)$", SPEC))
+        provides = dict(re.findall(r"(?m)^Provides:\s+(\S+) = (\S+)$", SPEC))
+        self.assertEqual(sorted(obsoletes), sorted(superseded))
+        for name in superseded:
+            with self.subTest(package=name):
+                self.assertEqual(provides[name], obsoletes[name])
+        self.assertEqual(obsoletes["eitaas-linux-gui"], "%{version}-%{release}")
+        self.assertEqual(obsoletes["eitaas-remmina"], "%{remmina_version}-1")
+
+        # DEB: Breaks + Replaces + Provides retire both names on upgrade.
+        for field in ("Provides", "Breaks", "Replaces"):
+            with self.subTest(field=field):
+                declared = re.search(rf"(?m)^{field}: (.+)$", CONTROL)
+                self.assertIsNotNone(declared)
+                names = [
+                    re.sub(r"\(.*\)", "", name).strip()
+                    for name in declared.group(1).split(",")
+                ]
+                self.assertEqual(sorted(names), sorted(superseded))
+        # The Provides carries this package's version so a versioned
+        # dependency on either retired name still resolves.
+        self.assertIn(
+            "Provides: eitaas-remmina (= ${binary:Version}), "
+            "eitaas-linux-gui (= ${binary:Version})",
+            CONTROL,
+        )
+
+        # Arch: conflicts + replaces + provides.
+        for field in ("provides", "conflicts", "replaces"):
+            with self.subTest(field=field):
+                declared = re.search(rf"(?m)^{field}=\((.+)\)$", PKGBUILD)
+                self.assertIsNotNone(declared)
+                self.assertEqual(
+                    sorted(declared.group(1).replace("'", "").split()),
+                    sorted(superseded),
+                )
+
+        # The lifecycle tests exercise the upgrade where the tooling allows it,
+        # against the EVRs the retired packages really last shipped, so a
+        # narrowed Obsoletes/Breaks bound fails the test instead of silently
+        # stranding an installed system.
+        deb = (PROJECT_ROOT / "scripts" / "test-deb-lifecycle.sh").read_text()
+        rpm = (PROJECT_ROOT / "scripts" / "test-rpm-lifecycle.sh").read_text()
+        for script, body in (("test-deb-lifecycle.sh", deb), ("test-rpm-lifecycle.sh", rpm)):
+            with self.subTest(script=script):
+                self.assertIn("is still installed after the upgrade", body)
+                for name in ("eitaas-linux", *superseded):
+                    self.assertIn(f"stub {name}", body)
+        self.assertIn("LAST_EITAAS_LINUX=0.1.0-1", deb)
+        self.assertIn("LAST_EITAAS_REMMINA=1.4.43+eitaas0.15", deb)
+        self.assertIn("stub eitaas-linux 0.1.0 7", rpm)
+        self.assertIn("stub eitaas-remmina 1.4.43 0.15", rpm)
+        self.assertIn("stub eitaas-linux-gui 0.1.0 7", rpm)
+        self.assertIn(str(version), CHANGELOG)
+
+    def test_runtime_dependencies_are_consolidated_without_internal_recommends(self):
+        """One Requires/Depends/depends set per distribution, no weak links.
+
+        The GUI, the CLI, and the bundled client are one package now, so no
+        recipe may depend on -- or recommend -- another package this project
+        ships.
+        """
+        expectations = (
+            (
+                "packaging/rpm/eitaas-linux.spec",
+                re.findall(r"(?m)^Requires:\s+(\S+)$", SPEC),
+                ("python3-gobject", "gtk4", "libadwaita", "pcsc-lite",
+                 "gnutls-utils", "opensc", "python3"),
+            ),
+            (
+                "packaging/debian/control",
+                [
+                    name.strip()
+                    for name in re.search(
+                        r"(?s)\nDepends:\n(.+?)\nSuggests:", CONTROL
+                    ).group(1).replace("\n", "").split(",")
+                ],
+                ("python3-gi", "gir1.2-gtk-4.0", "gir1.2-adw-1", "libpcsclite1",
+                 "gnutls-bin", "opensc", "pcscd"),
+            ),
+            (
+                "packaging/arch/PKGBUILD",
+                re.search(
+                    r"(?s)^depends=\((.+?)\)$", PKGBUILD, re.MULTILINE
+                ).group(1).replace("'", "").split(),
+                ("python-gobject", "gtk4", "libadwaita", "pcsclite",
+                 "gnutls", "opensc", "python"),
+            ),
+        )
+        for name, declared, required in expectations:
+            with self.subTest(recipe=name):
+                self.assertTrue(declared)
+                for dependency in required:
+                    self.assertIn(dependency, declared)
+                # No dependency on a package this project ships.
+                for ours in ("eitaas-remmina", "eitaas-linux-gui", "eitaas-linux"):
+                    self.assertNotIn(ours, declared)
+        self.assertNotIn("Recommends:", SPEC)
+        self.assertNotIn("Recommends:", CONTROL)
+        self.assertNotIn("optdepends=", PKGBUILD)
+
+    def test_usb_redirection_is_compiled_out_of_every_recipe(self):
+        """The product redirects smart cards over PC/SC, never USB devices.
+
+        FreeRDP enables its urbdrc channel whenever libusb happens to be
+        installed, so leaving the channel to chance made the shipped content
+        depend on the builder's host. Every recipe disables it explicitly and
+        no recipe or package job depends on libusb, which also makes the RPM,
+        DEB, and Arch payloads identical.
+        """
+        for name, recipe in RECIPES.items():
+            with self.subTest(recipe=name):
+                self.assertIn("-DCHANNEL_URBDRC=OFF", recipe)
+                self.assertIn("-DWITH_PCSC=ON", recipe)
+                self.assertNotIn("libusb", recipe)
+        for name, path in (
+            ("packaging/debian/control", CONTROL),
+            ("packaging/remmina/README.md", (PACKAGE_DIR / "README.md").read_text()),
+        ):
+            with self.subTest(document=name):
+                self.assertNotIn("libusb", path)
+        # remmina-upstream-series builds a stock FreeRDP for a plugin compile
+        # check and is out of scope; the package jobs precede it in the file.
+        package_jobs = WORKFLOW.split("  remmina-upstream-series:", 1)[0]
+        self.assertNotIn("libusb", package_jobs)
+
+    def test_remmina_configure_flags_match_across_recipes(self):
+        """One Remmina feature set, so the three payloads cannot drift apart."""
+        flags = (
+            "-DWITH_FREERDP3=ON", "-DWITH_RDP_AUTH_AAD=ON", "-DWITH_SSO_MIB=OFF",
+            "-DWITH_GCRYPT=OFF", "-DWITH_VTE=OFF", "-DHAVE_LIBAPPINDICATOR=OFF",
+            "-DWITH_CUPS=OFF", "-DWITH_AVAHI=OFF", "-DWITH_LIBVNCSERVER=OFF",
+            "-DWITH_SPICE=OFF", "-DWITH_NEWS=OFF", "-DWITH_STATS=OFF",
+            "-DWITH_TIP=OFF", "-DWITH_MANPAGES=OFF", "-DWITH_ICON_CACHE=OFF",
+            "-DWITH_WWW=OFF", "-DWITH_GVNC=OFF", "-DWITH_X2GO=OFF",
+            "-DWITH_KF5WALLET=OFF", "-DWITH_ST=OFF", "-DWITH_XDMCP=OFF",
+            "-DWITH_NX=OFF", "-DWITH_PYTHONLIBS=OFF",
+        )
+        for name, recipe in RECIPES.items():
+            for flag in flags:
+                with self.subTest(recipe=name, flag=flag):
+                    self.assertIn(flag, recipe)
+
+    def test_every_recipe_ships_the_whole_product(self):
+        """One package carries the private client, the CLI, and the GUI."""
+        for name, recipe in RECIPES.items():
+            with self.subTest(recipe=name):
+                self.assertIn("eitaas-remmina", recipe)
+                self.assertIn("org.eitaas.Helper.desktop", recipe)
+                self.assertIn("org.eitaas.Helper.metainfo.xml", recipe)
+                self.assertIn("eitaas-rdpw.xml", recipe)
+                self.assertIn("org.eitaas.Helper-symbolic.svg", recipe)
+                self.assertIn("docs/eitaas.1", recipe)
+                self.assertIn("docs/eitaas-gui.1", recipe)
+                self.assertIn("completions/eitaas.bash", recipe)
+                self.assertIn("completions/_eitaas", recipe)
+                self.assertIn("THIRD_PARTY_NOTICES.md", recipe)
+                self.assertIn("sources.json", recipe)
+
+    def test_build_scripts_and_ci_derive_versions_instead_of_hard_coding_them(self):
+        builder = (PROJECT_ROOT / "scripts" / "build-deb.sh").read_text()
+        lifecycle = (PROJECT_ROOT / "scripts" / "test-deb-lifecycle.sh").read_text()
+        rpm_lifecycle = (PROJECT_ROOT / "scripts" / "test-rpm-lifecycle.sh").read_text()
+        arch_builder = (PROJECT_ROOT / "scripts" / "build-arch.sh").read_text()
 
         self.assertIn("dpkg-parsechangelog", builder)
-        self.assertIn('source_root="$build_root/eitaas-remmina-$version"', builder)
+        self.assertIn('source_root="$build_root/eitaas-linux-$version"', builder)
         self.assertIn("dpkg-parsechangelog", WORKFLOW)
         self.assertIn("DEB_VERSION", WORKFLOW)
         # Debian artifact file names carry no epoch; both consumers strip one.
         self.assertIn("version=${version#*:}", builder)
         self.assertIn("DEB_VERSION=${deb_version#*:}", WORKFLOW)
-        # The lifecycle downgrade target is derived from the package under test.
-        self.assertIn('prior_version="$expected_version~0"', lifecycle)
+        # The lifecycle scripts pin the retired packages' real last-shipped
+        # EVRs on purpose (asserted separately), so they are exempt from the
+        # bundled-Remmina-version rule below but not from the other pins.
+        exempt = {
+            "scripts/test-deb-lifecycle.sh",
+            "scripts/test-rpm-lifecycle.sh",
+        }
+        # The RPM and Arch builders read the project version from pyproject.
+        for name, script in (
+            ("scripts/build-rpm.sh", (PROJECT_ROOT / "scripts" / "build-rpm.sh").read_text()),
+            ("scripts/build-arch.sh", arch_builder),
+        ):
+            with self.subTest(script=name):
+                self.assertIn('"$project_root/pyproject.toml"', script)
+                self.assertIn("version = ", script)
 
         pinned = {
-            "debian version": debian_version(),
-            "package version": MANIFEST["package_version"],
+            "project version": project_version(),
+            "bundled remmina version": MANIFEST["package_version"],
             "freerdp version": MANIFEST["sources"]["freerdp"]["version"],
             "remmina commit": MANIFEST["sources"]["remmina"]["commit"],
         }
         consumers = {
-            "scripts/build-remmina-deb.sh": executable_lines(builder),
-            "scripts/test-remmina-deb-lifecycle.sh": executable_lines(lifecycle),
+            "scripts/build-deb.sh": executable_lines(builder),
+            "scripts/build-arch.sh": executable_lines(arch_builder),
+            "scripts/build-rpm.sh": executable_lines(
+                (PROJECT_ROOT / "scripts" / "build-rpm.sh").read_text()
+            ),
+            "scripts/test-deb-lifecycle.sh": executable_lines(lifecycle),
+            "scripts/test-rpm-lifecycle.sh": executable_lines(rpm_lifecycle),
+            "scripts/test-arch-lifecycle.sh": executable_lines(
+                (PROJECT_ROOT / "scripts" / "test-arch-lifecycle.sh").read_text()
+            ),
             ".github/workflows/ci.yml": executable_lines(WORKFLOW),
+            "packaging/debian/rules": executable_lines(RULES),
         }
         for label, value in pinned.items():
-            for name, text in consumers.items():
+            for name, consumer in consumers.items():
+                if label == "bundled remmina version" and name in exempt:
+                    continue
                 with self.subTest(pinned=label, consumer=name):
-                    self.assertNotIn(value, text)
-
+                    self.assertNotIn(value, consumer)
     def test_pinned_manifest_matches_rpm_spec(self):
         freerdp = MANIFEST["sources"]["freerdp"]
         remmina = MANIFEST["sources"]["remmina"]
         self.assertIn(f"%global freerdp_version {freerdp['version']}", SPEC)
+        self.assertIn(f"%global remmina_version {MANIFEST['package_version']}", SPEC)
         self.assertIn(f"%global remmina_commit {remmina['commit']}", SPEC)
-        self.assertRegex(SPEC, rf"(?m)^Version:\s+{re.escape(MANIFEST['package_version'])}$")
+        self.assertIn(f"Source1:        {freerdp['url']}".replace(
+            freerdp["version"], "%{freerdp_version}"), SPEC)
+        self.assertIn("Remmina-%{remmina_commit}.tar.gz", SPEC)
 
-        declared_patches = re.findall(r"^Patch\d+:\s+(\S+)", SPEC, re.MULTILINE)
-        self.assertEqual(declared_patches, MANIFEST["patches"])
+    def test_no_recipe_repeats_the_ordered_patch_series(self):
+        """sources.json owns the series; each recipe reads it or is fed by it."""
+        for name, recipe in RECIPES.items():
+            with self.subTest(recipe=name):
+                for patch in MANIFEST["patches"]:
+                    self.assertNotIn(patch, recipe)
+        self.assertNotIn("Patch0:", SPEC)
+        # The RPM applies the manifest's series in %prep.
+        prep = SPEC.split("%prep", 1)[1].split("%build", 1)[0]
+        self.assertIn('["patches"]', prep)
+        self.assertIn('patch --fuzz=0 -p1 -d "$remmina"', prep)
+        # DEB and Arch consume a source tree the preparer already patched.
+        preparer = (PROJECT_ROOT / "scripts" / "prepare-bundle-source.py").read_text()
+        self.assertIn('["patch", "--fuzz=0", "-p1", "-d", str(remmina_dir)]', preparer)
 
     def test_manifest_has_https_sources_and_sha256_digests(self):
         for name, source in MANIFEST["sources"].items():
@@ -397,18 +667,23 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_spec_declares_every_local_source_and_patch(self):
-        declared = set(re.findall(r"^(?:Source|Patch)\d+:\s+(\S+)", SPEC, re.MULTILINE))
-        expected = {
-            "eitaas_cac_auth.c",
-            "eitaas_cac_auth.h",
-            "eitaas-remmina",
-            "EITaaS-LICENSE",
-            "THIRD_PARTY_NOTICES.md",
-            "sources.json",
-            *(path.name for path in PACKAGE_DIR.glob("*.patch")),
-        }
-        self.assertLessEqual(expected, declared)
+    def test_spec_declares_the_repository_and_both_upstream_archives(self):
+        declared = re.findall(r"^Source\d+:\s+(\S+)", SPEC, re.MULTILINE)
+        self.assertEqual(len(declared), 3)
+        self.assertTrue(all(url.startswith("https://") for url in declared), declared)
+        self.assertIn("EITaaS-Linux/archive", declared[0])
+        self.assertIn("FreeRDP", declared[1])
+        self.assertIn("Remmina", declared[2])
+
+    def test_spec_consumes_every_downstream_input_from_the_repository_source(self):
+        # The repository tarball is Source0, so the CAC integration, launcher,
+        # notices, and manifest are referenced by path instead of as SourceN.
+        cac_sources = ("eitaas_cac_" "auth.c", "eitaas_cac_" "auth.h")
+        for filename in (*cac_sources, "eitaas-remmina", "THIRD_PARTY_NOTICES.md"):
+            with self.subTest(filename=filename):
+                self.assertIn(f"packaging/remmina/{filename}", SPEC)
+        self.assertIn("%global manifest packaging/remmina/sources.json", SPEC)
+        self.assertIn("install -Dpm 0644 LICENSE ", SPEC)
 
     def test_binary_package_installs_all_required_notices(self):
         installed_names = {
@@ -460,10 +735,10 @@ class ArmGatewayTimeoutTests(unittest.TestCase):
             if line.startswith("+") and not line.startswith("+++")
         ]
 
-    def test_patch_is_registered_in_manifest_and_spec(self):
-        self.assertIn(self.DOWNSTREAM, MANIFEST["patches"])
-        self.assertIn(f"Patch6:         {self.DOWNSTREAM}", SPEC)
-        self.assertIn('patch --fuzz=0 -p1 -d "$remmina" < %{PATCH6}', SPEC)
+    def test_patch_is_registered_in_the_manifest_series(self):
+        # sources.json is the only registry; every recipe applies that series.
+        self.assertEqual(MANIFEST["patches"][-1], self.DOWNSTREAM)
+        self.assertTrue((PACKAGE_DIR / self.DOWNSTREAM).is_file())
 
     def test_profile_timeout_reaches_both_tcp_timeouts(self):
         # Remmina applied the profile "timeout" only to FreeRDP_TcpAckTimeout;
@@ -608,17 +883,23 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
             self.assertIn(flag, job)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RemminaSpecCheckTests(unittest.TestCase):
-    def test_rpm_check_literals_exist_in_final_downstream_sources(self):
-        """Every string %check greps out of the built plugin must be introduced by the
-        final patch series or the downstream sources, or the RPM cannot build."""
-        check_section = SPEC.split("%check", 1)[1]
-        literals = re.findall(r"grep -a -q '([^']+)'", check_section)
-        self.assertTrue(literals, "expected %check grep literals")
+    def test_recipe_check_literals_exist_in_final_downstream_sources(self):
+        """Every string a recipe's build-time check greps out of the built plugin must
+        be introduced by the final patch series or the downstream sources, or the
+        package cannot build."""
+        literals = []
+        for name, recipe in (
+            ("packaging/rpm/eitaas-linux.spec", SPEC.split("%check", 1)[1]),
+            ("packaging/debian/rules", RULES),
+            ("packaging/arch/PKGBUILD", PKGBUILD),
+        ):
+            found = re.findall(r"grep -a -q '([^']+)'", recipe)
+            self.assertTrue(found, f"expected build-check grep literals in {name}")
+            literals.extend(found)
+        # The same two plugin strings are verified by every format.
+        self.assertEqual(len(set(literals)), 2, sorted(set(literals)))
+        self.assertEqual(len(literals), 6, literals)
         added_lines = []
         for filename in MANIFEST["patches"]:
             for line in (PACKAGE_DIR / filename).read_text(errors="replace").splitlines():
@@ -772,3 +1053,7 @@ class SmartcardDiagnosticsTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertIn("smartcard-auth", path.read_text())
         self.assertIn("G_MESSAGES_DEBUG=remmina eitaas-remmina", (PROJECT_ROOT / "README.md").read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()

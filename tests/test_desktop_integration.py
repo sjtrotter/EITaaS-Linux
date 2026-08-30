@@ -74,10 +74,16 @@ class MetainfoTests(unittest.TestCase):
         self.assertEqual(self.root.findtext("provides/binary"), "eitaas-gui")
         self.assertEqual(self.root.findtext("provides/mediatype"), MIME_TYPE)
 
-    def test_release_matches_package_version(self):
+    def test_newest_release_matches_package_version(self):
         releases = self.root.findall("releases/release")
-        self.assertEqual(len(releases), 1)
+        self.assertTrue(releases)
         self.assertEqual(releases[0].get("version"), eitaas.__version__)
+        # AppStream lists releases newest first.
+        versions = [
+            tuple(int(part) for part in release.get("version").split("."))
+            for release in releases
+        ]
+        self.assertEqual(versions, sorted(versions, reverse=True))
 
     def test_name_and_summary_carry_no_third_party_marks(self):
         for field in ("name", "summary"):

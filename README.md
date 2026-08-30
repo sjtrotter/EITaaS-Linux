@@ -60,10 +60,28 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    The manual alternative still works: `chmod 600 Desktop.rdpw` and pass the
    explicit path to `eitaas connect Desktop.rdpw`.
 
-3. Install this project and distribution-provided dependencies once packaging
-   for your distribution is available. Upstream packaging definitions are
-   provided for Debian/Ubuntu, Fedora, and Arch Linux; these are not official
-   distribution or AUR packages.
+3. Install the single `eitaas-linux` package for your distribution. It carries
+   the bundled one-shot Remmina/FreeRDP client, the `eitaas` command-line
+   helper, and the EITaaS Connect graphical helper, so one command installs
+   everything:
+
+   ```bash
+   # Fedora
+   sudo dnf install ./eitaas-linux-<version>.x86_64.rpm
+
+   # Debian / Ubuntu
+   sudo apt install ./eitaas-linux_<version>_amd64.deb
+
+   # Arch Linux
+   sudo pacman -U ./eitaas-linux-<version>-x86_64.pkg.tar.zst
+   ```
+
+   Upgrading from the earlier split packages needs no extra step: the new
+   package obsoletes/replaces `eitaas-remmina` and `eitaas-linux-gui`. Build
+   the artifacts yourself with `scripts/build-rpm.sh`, `scripts/build-deb.sh`,
+   or `scripts/build-arch.sh`. These are not official distribution or AUR
+   packages.
+
 4. Diagnose the system:
 
    ```bash
@@ -97,8 +115,7 @@ password.
 
 ## Graphical helper
 
-The optional `eitaas-linux-gui` package (the same name on Debian/Ubuntu,
-Fedora, and Arch) installs **EITaaS Connect** (`eitaas-gui`), a
+The `eitaas-linux` package installs **EITaaS Connect** (`eitaas-gui`), a
 GTK 4/Libadwaita window with three pages:
 
 - **Readiness** shows the `eitaas doctor` result as plain-language rows

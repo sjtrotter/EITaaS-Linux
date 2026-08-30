@@ -1,4 +1,24 @@
 # Loaded by CI with `rpmlint -r packaging/rpm/eitaas-linux.rpmlintrc`.
+
 # The GUI imports libadwaita through GObject introspection; Fedora has no
 # typelib() provides, so the explicit Requires is intentional.
 addFilter(r"explicit-lib-dependency libadwaita")
+
+# Product and file names, not misspellings.
+addFilter(r"spelling-error .* (json|remmina|Remmina|rdpw|pyproject)")
+
+# Remmina's own GPL-2 texts are shipped verbatim as corresponding-source
+# notices; their FSF postal address is upstream's to correct, not ours.
+addFilter(r"incorrect-fsf-address /usr/share/licenses/eitaas-linux/Remmina-")
+
+# Remmina's translations live inside the private prefix
+# (%{_libexecdir}/eitaas-remmina/share/locale), which %find_lang does not
+# handle and which no other package may claim; the whole prefix is owned by
+# this package as one tree.
+addFilter(r"file-not-in-%lang /usr/libexec/eitaas-remmina/share/locale/")
+
+# The bundled FreeRDP and WinPR are upstream code built unmodified apart from
+# the recorded patch series; their OpenSSL cipher-list and resolver calls are
+# upstream behaviour and are not reachable through a policy switch here.
+addFilter(r"crypto-policy-non-compliance-openssl /usr/libexec/eitaas-remmina/")
+addFilter(r"binary-or-shlib-calls-gethostbyname /usr/libexec/eitaas-remmina/")
