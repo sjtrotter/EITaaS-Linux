@@ -1,5 +1,7 @@
 eitaas-linux (0.1.0-1) unstable; urgency=medium
 
   * Initial package.
+  * Add the eitaas-linux-gui binary package with the optional GTK 4 /
+    Libadwaita helper, desktop entry, RDPW MIME type, and icons.
 
  -- EITaaS-Linux contributors <sjtrotter@users.noreply.github.com>  Sat, 29 Aug 2026 00:00:00 +0000

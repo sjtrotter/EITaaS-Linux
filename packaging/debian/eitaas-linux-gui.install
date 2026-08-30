@@ -1,0 +1,8 @@
+usr/lib/python3*/dist-packages/eitaas_gui/
+usr/bin/eitaas-gui
+data/org.eitaas.Helper.desktop usr/share/applications
+data/org.eitaas.Helper.metainfo.xml usr/share/metainfo
+data/eitaas-rdpw.xml usr/share/mime/packages
+data/icons/hicolor/scalable/apps/org.eitaas.Helper.svg usr/share/icons/hicolor/scalable/apps
+data/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg usr/share/icons/hicolor/symbolic/apps
+docs/eitaas-gui.1 usr/share/man/man1

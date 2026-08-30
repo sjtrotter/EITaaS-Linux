@@ -9,10 +9,14 @@ upstream Remmina/FreeRDP submission; treat that as policy.
 Community Linux tooling for Azure Virtual Desktop (US Government cloud) with CAC
 smart-card redirection. Two deliverables:
 
-- `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|smartcard|certificates`).
+- `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|profile|smartcard|certificates`).
   `api.py` is the presentation-neutral facade; frontends never import platform modules directly.
   `connect` only validates the profile and runs `eitaas-remmina PROFILE` (`Application.launch`);
   Python holds no RDP/OAuth policy — that lives in the Remmina patches.
+  `profiles.py` is the private profile store (`$XDG_DATA_HOME/eitaas-remmina/profiles/`, names only)
+  used by `eitaas profile` and the GUI; `connect` without an argument uses its default.
+- `src/eitaas_gui/` — GTK 4/Libadwaita helper `eitaas-gui` ("EITaaS Connect"), shipped by the optional
+  `eitaas-linux-gui` package; imports `eitaas.api` only. `viewmodel.py` is toolkit-free and tested without GTK.
 - `packaging/remmina/` — the product client: an isolated one-shot Remmina 1.4.43 + FreeRDP 3.31.0
   bundle with downstream patches and `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth).
   `upstream/remmina/` holds the unbranded upstream-candidate exports of the same changes.

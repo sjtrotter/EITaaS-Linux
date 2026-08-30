@@ -1,168 +1,148 @@
-# Shared frontend experience specification
+# EITaaS Connect experience specification
 
-This specification governs both the GTK and Qt applications. The goal is a
-familiar remote-workspace experience, not a visual clone of Windows App.
-EITaaS-Linux must always be visibly identified as independent community
-software.
+This specification describes the GTK 4/Libadwaita helper `eitaas-gui`
+(application id `org.eitaas.Helper`), the graphical frontend of EITaaS-Linux.
+It states what the shipped code does; controls that are not implemented are
+not described. The helper is not a connection manager (ADR-0002): it checks
+readiness, imports one exported profile at a time, and starts the bundled
+one-shot `eitaas-remmina` client.
 
 ## Product identity
 
-Use the name **EITaaS-Linux** and the subtitle **Community AVD connection
-helper** in onboarding and About surfaces. The About view must link to `NOTICE`
-and state that the application is not an official Microsoft or United States
-Government client.
+The window title and product name are **EITaaS Connect**; the subtitle in
+`design-tokens.json` is **Community AVD connection helper**. The desktop entry
+(`data/org.eitaas.Helper.desktop`) uses the generic name "Remote desktop setup
+helper". Documentation and `NOTICE` state that the software is independent
+community work, not an official Microsoft or United States Government client.
 
-The project icon should combine an abstract remote display and a generic card
-chip. It must not use Microsoft/Windows marks, military seals, government
-agency emblems, CAC artwork, or modified copies of existing product icons.
+The project icon (`org.eitaas.Helper`) combines an abstract remote display and
+a generic card chip. It must not use Microsoft/Windows marks, military seals,
+government agency emblems, smart card (PIV) artwork, or modified copies of existing product
+icons.
 
-Prefer native system typography, controls, spacing, colors, and window chrome.
-The shared tokens in `design-tokens.json` describe semantic intent and minimum
-dimensions; each toolkit maps them to its native theme.
+The helper uses native Libadwaita controls, typography, spacing, and window
+chrome, and follows the system light/dark preference. `design-tokens.json`
+records semantic intent and minimum dimensions only.
 
 ## Information architecture
 
-The primary navigation contains three destinations:
+An `Adw.ViewStack` holds three pages, switched from the header bar on wide
+windows and from a bottom switcher bar below 550 sp:
 
-1. **Desktops** — protected profiles and connection actions.
-2. **System Check** — bundled client, session, smart-card, and trust readiness.
-3. **Settings** — connection defaults, privacy, appearance, and About.
+1. **Readiness** — `eitaas doctor` rendered as plain-language rows with a
+   Re-check button.
+2. **Profile** — export steps, the import button, the import banner, and the
+   list of imported profiles.
+3. **Connect** — a status page with the Connect button, the running state,
+   and any launch error.
 
-On narrow windows these become a single content view with back navigation. On
-wide windows they may use a sidebar. Certificate inspection lives under System
-Check; trust modification must not be placed in the ordinary connection flow.
-
-## Desktop resource cards
-
-A resource card is inspired by the broadly familiar remote-desktop pattern:
-thumbnail/icon, user-chosen display label, status, and primary Connect action.
-It must not reproduce Windows App card art or exact styling.
-
-A card may show:
-
-- Profile display name (basename or user-defined alias only).
-- Last-used time, stored locally only after opt-in.
-- Readiness: Ready, Needs attention, or Checking.
-
-A card must never show a username, tenant, host-pool identifier, routing token,
-full local path, authentication URL, or raw profile string value.
-
-## First run
-
-The first-run view explains three facts before offering an action:
-
-- The software is an independent community client helper.
-- A profile must be manually exported from the authorized AVD web client.
-- The tool will validate but not upload or modify the selected profile.
-
-Primary action: **Choose desktop profile**. Secondary action: **Run system
-check**. Do not request elevated privileges during onboarding.
+Certificates remain CLI-only (`eitaas certificates`); the helper has no
+certificate view.
 
 ## Profile import
 
-Use the desktop file chooser or portal. Accept `.rdp` and `.rdpw`; all other
-extensions are rejected by the core. The application then shows a sanitized
-summary containing the filename, size, permissions, and safe integer settings.
+The Profile page shows a **Web client** chooser (Azure US Government by
+default, or Azure commercial; these two public web-client URLs are the only
+ones the helper opens, via `Gtk.UriLauncher`) and six numbered steps as list
+rows: open the web client (button on step 1), sign in with the organization
+account (the browser may ask for the smart card (PIV) certificate and PIN),
+click the settings cog, choose "Download the rdp file", click the desktop
+(saves e.g. `Desktop.rdpw` to Downloads), then press **I downloaded the RDP
+file**, which opens `Gtk.FileDialog` filtered to `*.rdpw`, starting in the
+Downloads directory. A "Why do I need this file?" expander explains that the
+`.rdpw` is a signed, password-free description of the workspace, is personal,
+and is moved out of Downloads so other users cannot read it.
 
-If permissions are too broad, show:
+Import calls `Application.import_profile`, which *moves* the chosen file
+(rename, or copy + fsync + unlink across filesystems; symlinks and files owned
+by another user are refused) into `$XDG_DATA_HOME/eitaas-remmina/profiles/`
+(directory mode `0700`, file mode `0600`), keeps the basename (adding `-2`,
+`-3`, … on collision), re-validates it, and makes it the default. The step text
+explains that the file is moved out of Downloads so it is not left readable by
+other accounts. A toast confirms "Imported NAME; it is now the default."
 
-> This profile can be read by other local accounts. Restrict it to your account
-> before connecting.
+The **Imported profiles** list shows one row per stored file: basename, cloud
+label, size, mode, and import date (exactly the `StoredProfileSummary` fields).
+A radio button labelled "Use NAME for Connect" selects the default; **Remove**
+opens a confirmation dialog (Keep / Remove) and then deletes the stored file.
+The helper never reads profile contents beyond what `inspect_profile` returns
+and never shows a full path.
 
-Offer **Fix permissions** only after the shared core gains a narrowly scoped,
-tested operation. Until then, display the exact `chmod 600` recovery command
-without running it automatically.
+`eitaas-gui FILE.rdpw`, the desktop entry's `%f`, and double-clicking a file of
+MIME type `application/x-eitaas-rdpw` open the Profile page with the banner
+"Import FILE into your private profile store?" and an **Import** button. There
+is no automatic import and no automatic connect; the person presses Import,
+then Connect.
 
-Profiles are not copied into application storage by default. **Remember this
-profile** is an explicit opt-in and must explain the storage location and
-removal action.
+## Readiness
 
-## Readiness and system check
+Rows appear in a stable order: bundled remote desktop client, desktop session,
+smart-card service, smart-card reader, card middleware (OpenSC), identity
+broker, diagnostic tools. Each row is an `Adw.ActionRow` with a state icon, the
+state word, one sentence saying what was checked and what it proves, and,
+where applicable, a hint naming the package to install or the command to run.
+A command (for example `systemctl enable --now pcscd.socket`) is shown as text
+with a Copy button; the helper never runs it.
 
-Show four high-level groups in a stable order:
-
-1. Bundled remote desktop client (`eitaas-remmina` launcher and private client).
-2. Desktop session.
-3. Smart-card service, reader, and middleware.
-4. Certificate information.
-
-Each row uses an icon plus text; never communicate state through color alone.
-States are Checking, Ready, Needs attention, Unavailable, and Not checked.
-Failures include one safe explanation and one recovery action. Do not offer a
-generic Ignore or Connect anyway action for certificate failures.
-
-## Connection options
-
-The connection sheet has no options. Smart-card passthrough, clipboard
-handling, and every other RDP setting come from the exported profile as
-imported by the bundled client; the frontend passes only the profile path. It
-may state that clipboard sharing follows the profile. No option may disable
-server-certificate verification.
+States map to `DoctorReport` values: **Ready** (`ok`), **Needs attention**
+(`warn`), **Not ready** (`fail`), and **Not checked** (`unknown`, used before
+the first run, when a tool is missing, or when `doctor` itself fails). State is
+conveyed by icon, text, and the accessible label together, never by colour
+alone. **Re-check** reruns `doctor_async` and is disabled while it runs.
 
 ## Connection lifecycle
 
-Connection states are Validating, Starting, Cancelling, Cancelled, and Failed;
-they map to the `launch` progress phases. The core cannot verify
-authentication or session establishment, so no Authenticating or Connected
-state is shown; elapsed time does not prove Connected.
+Connect is enabled only when the readiness report shows the `eitaas-remmina`
+launcher and a default profile exists. Pressing it runs `Application.launch`
+with `ConnectionRequest()` (the stored default) on a worker thread. The button
+is replaced by a spinner, a phase label, and **Cancel**; the phase label shows
+"Starting" and then the `launch` progress messages for the `validating`,
+`starting`, and `cancelling` phases. Cancel sets the cancellation event and
+shows "Stopping the remote desktop client".
 
-The progress view displays a concise phase and Cancel. Closing the application
-while the bundled client is active prompts **Disconnect and quit** or **Keep
-working**. The frontend sets the core cancellation event and waits for cleanup.
+The core cannot observe authentication or session establishment, so there is
+no Authenticating or Connected state. Sign-in, certificate selection, and the
+PIN prompt happen in the Remmina window. When the child exits, a toast reports
+"Connection cancelled." or a non-zero exit status; a clean exit shows nothing.
+Import and profile rows are disabled while a connection is running.
 
-Authentication remains owned by the bundled client's identity-broker or
-embedded-WebView path. The frontend must not scrape browser developer tools,
-embed a token in process arguments, collect callback URLs, or mirror child
-output into a GUI log. When the bundled client is not installed, connection is
-disabled and diagnostics identify the missing package.
+Closing the window while the client runs asks **Disconnect and quit** /
+**Keep working** (default Keep working). Quit sets the cancellation event and
+joins the worker with a 7 s grace period.
 
 ## Failures and recovery
 
-An error view contains:
-
-- Human title derived from a stable application error code.
-- Redacted explanation.
-- At most two concrete recovery actions.
-- **Copy safe details**, which exports only the typed public result.
-
-It must never contain raw subprocess arguments or output. Support export starts
-with a preview and explicit save action; it is never uploaded automatically.
-
-## Certificate experience
-
-The initial certificate UI is inspection-only. It displays bundle filename,
-SHA-256, certificate subjects/issuers, fingerprints, and self-signed
-candidates. It must state that inspection does not establish trust.
-
-Future trust installation requires a separate review screen showing scope,
-objects to add, objects to leave untrusted, privilege requirement, and rollback
-plan. There is no one-click Trust all action.
+A failed launch is shown in place on the Connect page as a selectable card
+containing a human title derived from the error code (`launch_failed`,
+`profile_import_failed`, `profile_store_failed`, `doctor_failed`, otherwise
+"Something went wrong"), the redacted message, and the recovery text when the
+core supplies one. Import and profile-store failures use an alert dialog with
+the same title and body. Child output, launcher arguments, and full paths never
+appear.
 
 ## Accessibility requirements
 
-- Every control is reachable and operable by keyboard.
+- Every control is reachable and operable by keyboard. Accelerators: Ctrl+R
+  re-check, Ctrl+O import, Ctrl+Return connect, Ctrl+Q quit.
 - Focus order follows visual order and returns predictably after dialogs.
-- All icons have accessible names or are marked decorative.
-- Status uses icon, text, and accessible state—not color alone.
-- Text and essential graphics meet WCAG 2.2 AA contrast.
-- Layout remains usable at 200 percent text scaling and a 360 CSS-pixel
-  equivalent minimum width.
-- Respect reduced-motion and high-contrast preferences.
-- Progress indicators expose a textual phase; indeterminate animation is not
-  the only feedback.
-- Dynamic status changes use polite announcements and do not repeatedly steal
-  focus.
-
-GTK uses AT-SPI semantics provided by GTK/Libadwaita. Qt uses accessible names,
-descriptions, roles, and state through Qt Accessibility. Toolkit-native
-differences are expected as long as task order and meaning remain equivalent.
+- Every control and state icon carries an AT-SPI label (`widgets.accessible`);
+  the copy button's description is the command it copies.
+- Status uses icon, text, and accessible state, not colour alone.
+- Text and essential graphics meet WCAG 2.2 AA contrast through the system
+  theme.
+- The window has a 360 × 400 minimum size and remains usable at 200 percent
+  text scaling; the page switcher moves to the bottom bar on narrow windows.
+- Progress exposes a textual phase; the spinner is not the only feedback.
+- Results arrive through toasts and row updates; nothing steals focus while a
+  check is running.
 
 ## Privacy and local state
 
-Store preferences under the appropriate XDG config location and non-secret
-history under XDG state. Temporary working files belong in XDG runtime with
-mode `0600`. Never place profiles, profile values, child output, or callbacks in
-recent-file databases, notifications, telemetry, crash reports, or analytics.
-
-The application has no telemetry by default. If telemetry is ever proposed, it
-requires a separate threat/privacy review and explicit opt-in.
+- `$XDG_DATA_HOME/eitaas-remmina/profiles/` holds the imported `.rdpw` files
+  (directory `0700`, files `0600`).
+- `$XDG_CONFIG_HOME/eitaas/profiles.ini` holds only `[profiles] default = NAME`
+  (mode `0600`).
+- User-visible strings are wrapped in gettext; no translations ship yet.
+- No other state, history, or recent-file entry is written. Profiles, profile
+  values, child output, and callbacks never reach notifications, logs, or
+  crash reports. There is no telemetry.

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<component type="desktop-application">
+  <id>org.eitaas.Helper</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>EITaaS Connect</name>
+  <summary>Prepare and launch smart-card remote desktop sessions</summary>
+  <description>
+    <p>
+      EITaaS Connect is a small desktop helper for Azure Virtual Desktop sessions that use a
+      smart card (PIV). It checks that the bundled client, the desktop session, the smart-card
+      stack, and the identity broker are ready before you connect.
+    </p>
+    <p>
+      Import an exported .rdpw profile and it is moved into a private, per-user store with
+      restrictive permissions. Pressing Connect launches the bundled eitaas-remmina client for
+      that profile. Sign-in and PIN prompts happen inside the client, never in this helper.
+    </p>
+    <p>
+      EITaaS Connect is independent community software. It is not affiliated with, endorsed by,
+      or supported by Microsoft or the U.S. Government. It sends no telemetry.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.eitaas.Helper.desktop</launchable>
+  <url type="homepage">https://github.com/sjtrotter/EITaaS-Linux</url>
+  <url type="bugtracker">https://github.com/sjtrotter/EITaaS-Linux/issues</url>
+  <url type="vcs-browser">https://github.com/sjtrotter/EITaaS-Linux</url>
+  <developer id="org.eitaas">
+    <name>EITaaS-Linux contributors</name>
+  </developer>
+  <provides>
+    <binary>eitaas-gui</binary>
+    <mediatype>application/x-eitaas-rdpw</mediatype>
+  </provides>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-08-30">
+      <description>
+        <p>Initial release: readiness checks, .rdpw profile import, and one-click launch of the bundled client.</p>
+      </description>
+    </release>
+  </releases>
+</component>

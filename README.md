@@ -47,11 +47,18 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
 1. Sign in to the authorized Azure US Government web client supplied by your
    organization and manually export the desktop `.rdpw` profile. Microsoft does
    not document a supported public API for automating this export.
-2. Restrict it before use:
+2. Import it into the private profile store:
 
    ```bash
-   chmod 600 Desktop.rdpw
+   eitaas profile import Desktop.rdpw
    ```
+
+   This moves the file out of the download directory into
+   `$XDG_DATA_HOME/eitaas-remmina/profiles/`, restricts it to your user
+   (mode `0600`), and makes it the default profile for `eitaas connect`.
+   `eitaas profile list`, `select NAME`, and `remove NAME` manage the store.
+   The manual alternative still works: `chmod 600 Desktop.rdpw` and pass the
+   explicit path to `eitaas connect Desktop.rdpw`.
 
 3. Install this project and distribution-provided dependencies once packaging
    for your distribution is available. Upstream packaging definitions are
@@ -71,9 +78,11 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    eitaas-remmina Desktop.rdpw
    ```
 
-   `eitaas connect Desktop.rdpw` is a thin wrapper: it validates the profile
-   (ownership, mode `0600`, size, extension) and then runs
-   `eitaas-remmina Desktop.rdpw` with no other arguments.
+   `eitaas connect` with no argument uses the imported default profile and
+   fails closed when none has been imported. `eitaas connect Desktop.rdpw`
+   uses an explicit path instead. Either form is a thin wrapper: it validates
+   the profile (ownership, mode `0600`, size, extension) and then runs
+   `eitaas-remmina PROFILE.rdpw` with no other arguments.
 
 The EITaaS suite combines the `eitaas` setup/diagnostic tool with a pinned,
 privately installed Remmina and FreeRDP pair. It does not replace the system
@@ -85,6 +94,48 @@ source.
 Do not publish, attach, or commit the exported profile. Treat it as
 user/resource-specific connection material even when it does not contain a
 password.
+
+## Graphical helper
+
+The optional `eitaas-linux-gui` package (the same name on Debian/Ubuntu,
+Fedora, and Arch) installs **EITaaS Connect** (`eitaas-gui`), a
+GTK 4/Libadwaita window with three pages:
+
+- **Readiness** shows the `eitaas doctor` result as plain-language rows
+  (bundled client, desktop session, smart-card service, reader, card
+  middleware, identity broker, diagnostic tools) with a Re-check button.
+- **Profile** walks through the export in six numbered steps: pick the web
+  client for your cloud (Azure US Government by default, or Azure commercial)
+  and press "Open web client" to open it in your browser; sign in with your
+  organization account (the browser may ask for your smart card (PIV)
+  certificate and PIN); click the settings cog in the top right; choose
+  "Download the rdp file"; click your desktop, which saves a file such as
+  `Desktop.rdpw` to Downloads; then press "I downloaded the RDP file" and pick
+  it. The import is the same move-and-restrict as `eitaas profile import`. A
+  "Why do I need this file?" expander explains that the `.rdpw` is a signed,
+  password-free description of your workspace and why it is moved out of
+  Downloads. Imported profiles are listed with a selector for the one Connect
+  uses and a Remove action.
+- **Connect** starts `eitaas-remmina` with the selected profile, shows the
+  phase with a Cancel button while the client runs, and shows redacted errors
+  in place.
+
+Double-clicking a `.rdpw` file in the file manager (MIME type
+`application/x-eitaas-rdpw`) opens the Profile page with an "Import
+FILE into your private profile store?" banner. Nothing is imported or
+connected until you press Import and then Connect.
+
+The screenshots below were captured with a synthetic readiness report and
+the synthetic test fixture; they contain no real profile, host, or account.
+
+![EITaaS Connect readiness page](docs/images/helper-readiness.png)
+![EITaaS Connect profile page](docs/images/helper-profile.png)
+![EITaaS Connect connect page](docs/images/helper-connect.png)
+
+The helper keeps the ADR-0002 boundary: it is not a connection manager,
+sign-in and the smart card (PIV) PIN prompt happen in the Remmina window, and it runs no
+privileged commands. Fixes such as `systemctl enable --now pcscd.socket` are
+shown with a copy button for you to run yourself.
 
 ## Bundled client and desktop support
 
@@ -144,8 +195,8 @@ procedure is documented in `docs/release-signing.md`.
 
 ## Frontends
 
-The CLI, planned GTK 4/Libadwaita frontend, and planned Qt 6 frontend share one
-presentation-neutral application API. The shared interaction and accessibility
-specification is documented under `docs/frontend/`. The graphical design uses
-a familiar resource-card workflow with original EITaaS-Linux branding; it does
-not copy or impersonate Windows App.
+The CLI and the GTK 4/Libadwaita helper share one presentation-neutral
+application API (`docs/application-api.md`). The interaction and accessibility
+specification for the helper is documented under `docs/frontend/`. The
+graphical design uses original EITaaS-Linux branding; it does not copy or
+impersonate Windows App.

@@ -1,5 +1,12 @@
 #!/usr/bin/make -f
 
+# Two binary packages share one pybuild build. Pin the destination to
+# debian/tmp and let the *.install files split it. pybuild stages files under
+# usr/lib/python3.X/dist-packages (the *.install globs use python3*); dh_python3
+# then moves them to usr/lib/python3/dist-packages in every package that ships
+# Python files, so both packages receive ${python3:Depends}.
+export PYBUILD_DESTDIR=debian/tmp
+
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 

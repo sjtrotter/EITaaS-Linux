@@ -1,17 +1,20 @@
 # Maintainer: EITaaS-Linux contributors <sjtrotter@users.noreply.github.com>
 
-pkgname=eitaas-linux
+# Split package rather than optdepends: with plain optdepends the .desktop
+# entry and the .rdpw MIME association would be installed on CLI-only systems
+# and advertise a non-functional application. The GUI module, its console
+# script, desktop integration, and GTK dependencies live in eitaas-linux-gui.
+pkgbase=eitaas-linux
+pkgname=(eitaas-linux eitaas-linux-gui)
 pkgver=0.1.0
 pkgrel=1
 pkgdesc='Community Linux helper for EITaaS Azure Virtual Desktop'
 arch=('any')
 url='https://github.com/sjtrotter/EITaaS-Linux'
 license=('MIT')
-depends=('python' 'opensc' 'pcsclite' 'ccid' 'pcsc-tools')
-optdepends=('eitaas-remmina: bundled one-shot Remmina/FreeRDP client used by eitaas connect')
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 _commit='c4f07c13ef27965c2d3f2a543f18b50faf5de79e'
-source=("$pkgname-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
+source=("$pkgbase-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
 sha256sums=('4055095dab0cc2ecfd2dd16cd3582cd9c41a0c651049547b8389e526a579ed58')
 _source_dir="EITaaS-Linux-$_commit"
 
@@ -25,10 +28,18 @@ check() {
   PYTHONPATH=src python -m unittest discover -s tests -v
 }
 
-package() {
+package_eitaas-linux() {
+  pkgdesc='Community Linux helper for EITaaS Azure Virtual Desktop'
+  depends=('python' 'opensc' 'pcsclite' 'ccid' 'pcsc-tools')
+  optdepends=('eitaas-remmina: bundled one-shot Remmina/FreeRDP client used by eitaas connect'
+              'eitaas-linux-gui: GTK 4 graphical helper')
   cd "$_source_dir"
 
+  # The wheel carries both Python packages; the GUI module and its console
+  # script are shipped by package_eitaas-linux-gui(). The dist-info stays here.
   python -m installer --destdir="$pkgdir" dist/*.whl
+  rm -r "$pkgdir"/usr/lib/python*/site-packages/eitaas_gui
+  rm "$pkgdir/usr/bin/eitaas-gui"
   install -Dpm644 docs/eitaas.1 "$pkgdir/usr/share/man/man1/eitaas.1"
   install -Dpm644 completions/eitaas.bash \
     "$pkgdir/usr/share/bash-completion/completions/eitaas"
@@ -38,4 +49,35 @@ package() {
   install -Dpm644 NOTICE "$pkgdir/usr/share/doc/$pkgname/NOTICE"
   install -Dpm644 SECURITY.md "$pkgdir/usr/share/doc/$pkgname/SECURITY.md"
   install -Dpm644 SUPPORT.md "$pkgdir/usr/share/doc/$pkgname/SUPPORT.md"
+}
+
+package_eitaas-linux-gui() {
+  pkgdesc='Graphical readiness/profile/connect helper for EITaaS Azure Virtual Desktop'
+  depends=('eitaas-linux' 'python-gobject' 'gtk4' 'libadwaita')
+  optdepends=('eitaas-remmina: bundled one-shot Remmina/FreeRDP client used for connections')
+  cd "$_source_dir"
+
+  # Install the wheel into a staging tree and keep only the GUI module and its
+  # console script; the eitaas package and the dist-info belong to eitaas-linux.
+  local staging sitelib
+  staging=$(mktemp -d -p "$srcdir")
+  python -m installer --destdir="$staging" dist/*.whl
+  sitelib=$(cd "$staging" && echo usr/lib/python*/site-packages)
+  install -d "$pkgdir/$sitelib" "$pkgdir/usr/bin"
+  cp -a "$staging/$sitelib/eitaas_gui" "$pkgdir/$sitelib/"
+  cp -a "$staging/usr/bin/eitaas-gui" "$pkgdir/usr/bin/"
+  rm -r "$staging"
+
+  install -Dpm644 data/org.eitaas.Helper.desktop \
+    "$pkgdir/usr/share/applications/org.eitaas.Helper.desktop"
+  install -Dpm644 data/org.eitaas.Helper.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/org.eitaas.Helper.metainfo.xml"
+  install -Dpm644 data/eitaas-rdpw.xml \
+    "$pkgdir/usr/share/mime/packages/eitaas-rdpw.xml"
+  install -Dpm644 data/icons/hicolor/scalable/apps/org.eitaas.Helper.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.eitaas.Helper.svg"
+  install -Dpm644 data/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg"
+  install -Dpm644 docs/eitaas-gui.1 "$pkgdir/usr/share/man/man1/eitaas-gui.1"
+  install -Dpm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

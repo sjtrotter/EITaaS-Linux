@@ -18,8 +18,16 @@ classifiers = [
   "Programming Language :: Python :: 3",
 ]
 
+[project.optional-dependencies]
+# The helper GUI uses the distribution's PyGObject/GTK 4/Libadwaita packages
+# (python3-gi + gir1.2-gtk-4.0 + gir1.2-adw-1, python3-gobject + gtk4 +
+# libadwaita, python-gobject + gtk4 + libadwaita). This extra exists for
+# virtual-environment installs; ``eitaas`` itself never imports PyGObject.
+gui = ["PyGObject>=3.46"]
+
 [project.scripts]
 eitaas = "eitaas.cli:main"
+eitaas-gui = "eitaas_gui.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
