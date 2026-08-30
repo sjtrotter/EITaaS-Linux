@@ -9,6 +9,13 @@ typedef struct {
 	gchar *private_key_uri;
 } EitaasPkcs11Certificate;
 
+typedef struct {
+	WebKitAuthenticationRequest *request;
+	GtkWidget *dialog;
+	GPtrArray *certificates;
+	gboolean abandoned;
+} EitaasCertificateDiscovery;
+
 static void certificate_free(gpointer data)
 {
 	EitaasPkcs11Certificate *cert = data;
@@ -125,6 +132,87 @@ static GPtrArray *enumerate_certificates(void)
 	return result;
 }
 
+static void discovery_free(EitaasCertificateDiscovery *discovery)
+{
+	if (!discovery)
+		return;
+	g_clear_object(&discovery->request);
+	if (discovery->certificates)
+		g_ptr_array_unref(discovery->certificates);
+	g_free(discovery);
+}
+
+static void quit_oneshot_application(void)
+{
+	if (g_strcmp0(g_getenv("EITAAS_REMMINA_ONESHOT"), "1") != 0)
+		return;
+	GApplication *application = g_application_get_default();
+	if (application)
+		g_application_quit(application);
+}
+
+static void enumerate_certificates_thread(GTask *task, gpointer source_object,
+	                                      gpointer task_data, GCancellable *cancellable)
+{
+	(void)source_object;
+	(void)task_data;
+	(void)cancellable;
+	g_task_return_pointer(task, enumerate_certificates(), (GDestroyNotify)g_ptr_array_unref);
+}
+
+static void enumerate_certificates_done(GObject *source_object, GAsyncResult *result,
+	                                    gpointer user_data)
+{
+	(void)source_object;
+	EitaasCertificateDiscovery *discovery = user_data;
+	discovery->certificates = g_task_propagate_pointer(G_TASK(result), NULL);
+	if (discovery->abandoned) {
+		discovery_free(discovery);
+		return;
+	}
+	gtk_dialog_response(GTK_DIALOG(discovery->dialog), GTK_RESPONSE_ACCEPT);
+}
+
+static GPtrArray *discover_certificates(GtkWindow *parent,
+	                                   WebKitAuthenticationRequest *request)
+{
+	EitaasCertificateDiscovery *discovery = g_new0(EitaasCertificateDiscovery, 1);
+	discovery->request = g_object_ref(request);
+	discovery->dialog = gtk_dialog_new_with_buttons(
+		"Reading smart card", parent, GTK_DIALOG_MODAL,
+		"Cancel", GTK_RESPONSE_CANCEL, NULL);
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+	GtkWidget *spinner = gtk_spinner_new();
+	GtkWidget *label = gtk_label_new("Discovering authentication certificates…");
+	gtk_spinner_start(GTK_SPINNER(spinner));
+	gtk_box_pack_start(GTK_BOX(box), spinner, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 0);
+	gtk_container_set_border_width(GTK_CONTAINER(box), 12);
+	gtk_container_add(GTK_CONTAINER(
+		gtk_dialog_get_content_area(GTK_DIALOG(discovery->dialog))), box);
+	gtk_widget_show_all(discovery->dialog);
+
+	GTask *task = g_task_new(NULL, NULL, enumerate_certificates_done, discovery);
+	g_task_run_in_thread(task, enumerate_certificates_thread);
+	g_object_unref(task);
+
+	gint response = gtk_dialog_run(GTK_DIALOG(discovery->dialog));
+	gtk_widget_destroy(discovery->dialog);
+	discovery->dialog = NULL;
+	if (response != GTK_RESPONSE_ACCEPT) {
+		discovery->abandoned = TRUE;
+		webkit_authentication_request_cancel(request);
+		gtk_window_close(parent);
+		quit_oneshot_application();
+		return NULL;
+	}
+
+	GPtrArray *certificates = discovery->certificates;
+	discovery->certificates = NULL;
+	discovery_free(discovery);
+	return certificates;
+}
+
 gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 	WebKitAuthenticationRequest *request, gpointer parent_data)
 {
@@ -132,7 +220,9 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
 	GtkWindow *parent = GTK_WINDOW(parent_data);
 	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED) {
-		GPtrArray *certs = enumerate_certificates();
+		GPtrArray *certs = discover_certificates(parent, request);
+		if (!certs)
+			return TRUE;
 		if (certs->len == 0) {
 			g_ptr_array_unref(certs);
 			webkit_authentication_request_cancel(request);

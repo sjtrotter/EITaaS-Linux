@@ -8,7 +8,10 @@ The downstream changes preserve the original protected RDPW profile through
 FreeRDP's parser, select ARM/AAD transport, honor smart-card redirection, and
 handle WebKitGTK client-certificate and PIN challenges with PKCS #11-backed
 CAC credentials. Only authentication, identity, and PIV-labelled certificates
-are shown. Core dumps are disabled before opening the authentication view.
+are shown. Certificate discovery runs on a worker while a cancellable progress
+dialog keeps the GTK interface responsive. Cancelling discovery ends the
+containing AVD authentication attempt. Core dumps are disabled before opening
+the authentication view.
 
 Authentication cloud selection is automatic. Protected profiles whose gateway
 ends in `.wvd.azure.us` use the Azure Government authority and AVD scope;
@@ -30,6 +33,11 @@ After installation, launch only through:
 ```console
 eitaas-remmina "$HOME/Downloads/Desktop.rdpw"
 ```
+
+This command is a one-shot connection: cancelling CAC authentication closes
+the authentication flow and the isolated Remmina application instead of
+leaving its connection manager open. A future no-argument manager mode is
+tracked separately and will intentionally remain open between connections.
 
 The launcher uses an isolated configuration directory below
 `$XDG_STATE_HOME/eitaas-remmina` (or `~/.local/state/eitaas-remmina`) so user
