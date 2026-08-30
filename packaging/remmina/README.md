@@ -73,8 +73,8 @@ eitaas-remmina "$HOME/Downloads/Desktop.rdpw"
 
 This command is a one-shot connection: cancelling CAC authentication closes
 the authentication flow and the isolated Remmina application instead of
-leaving its connection manager open. A future no-argument manager mode is
-tracked separately and will intentionally remain open between connections.
+leaving its connection manager open. A no-argument connection-manager mode is
+intentionally not part of the EITaaS product.
 
 The launcher uses an isolated configuration directory below
 `$XDG_STATE_HOME/eitaas-remmina` (or `~/.local/state/eitaas-remmina`) so user
