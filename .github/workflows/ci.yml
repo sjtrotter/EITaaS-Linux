@@ -129,7 +129,7 @@ jobs:
       - run: >-
           pacman -Syu --noconfirm --needed base-devel git namcap
           python-build python-installer python-setuptools python-wheel
-          freerdp opensc pcsclite ccid pcsc-tools
+          opensc pcsclite ccid pcsc-tools
       - uses: actions/checkout@v4
       - name: Build package as an unprivileged user
         run: |

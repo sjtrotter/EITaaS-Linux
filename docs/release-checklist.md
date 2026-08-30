@@ -10,9 +10,9 @@ public test evidence.
 - Run `certutil -scinfo` inside the Windows session.
 - Test CAC removal and reinsertion, disconnect, and reconnect.
 - Test GNOME Wayland/XWayland, KDE Wayland/XWayland, and an X11 session.
-- Exercise X11, SDL, and native Wayland backends that are claimed as supported.
+- Exercise the bundled client under X11 and XWayland sessions that are claimed as supported.
 - Verify server certificate validation remains enabled.
-- Verify clipboard redirection is disabled by default.
+- Verify clipboard redirection follows the profile's `redirectclipboard` field.
 - Install, upgrade, and remove both DEB and RPM packages.
 - Confirm the release tag exactly matches the version in `pyproject.toml`.
 - Run `scripts/check-version-consistency.py --tag vX.Y.Z` before creating the tag.

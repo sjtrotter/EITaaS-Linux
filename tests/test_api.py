@@ -16,7 +16,14 @@ class ApplicationAPITests(unittest.TestCase):
             "wayland_display": True,
             "pcsc_socket": True,
             "tools": {},
-            "freerdp": [],
+            "remmina": {
+                "launcher": True,
+                "client": False,
+                "client_path": None,
+                "remmina_version": "unknown",
+                "freerdp_version": "unknown",
+                "sso_mib": None,
+            },
             "identity_broker": False,
         }
         status.return_value = {
@@ -26,6 +33,9 @@ class ApplicationAPITests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertTrue(result.value.smartcard.ready)
         self.assertFalse(result.value.ready)
+        self.assertTrue(result.value.remmina.launcher)
+        self.assertFalse(result.value.remmina.client)
+        self.assertIsNone(result.value.remmina.sso_mib)
 
     @patch("eitaas.api.smartcard.status")
     def test_smartcard_async_runs_on_worker(self, status):
@@ -73,12 +83,6 @@ class ApplicationAPITests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.value.profile.display_name, "example.rdpw")
         self.assertNotIn("/sensitive/location", str(report.value))
-
-    def test_identity_endpoint_requires_allowlisted_https(self):
-        with self.assertRaises(ValueError):
-            Application._validate_identity_endpoint(
-                "http://login.microsoftonline.us", {"login.microsoftonline.us"}
-            )
 
 
 if __name__ == "__main__":

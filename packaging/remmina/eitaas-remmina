@@ -14,8 +14,10 @@ case "$1" in
 esac
 
 profile=$(readlink -f -- "$1")
-config_root=${XDG_STATE_HOME:-"$HOME/.local/state"}/eitaas-remmina
-mkdir -p -m 700 "$config_root"
+state_home=${XDG_STATE_HOME:-"$HOME/.local/state"}
+config_root=$state_home/eitaas-remmina
+mkdir -p "$state_home"
+[ -d "$config_root" ] || mkdir -m 700 "$config_root"
 export XDG_CONFIG_HOME="$config_root"
 export EITAAS_REMMINA_ONESHOT=1
 

@@ -1,7 +1,7 @@
 """Stable, presentation-neutral application API.
 
 The CLI and graphical frontends consume this module. Presentation code should
-not import the platform modules directly or construct FreeRDP arguments.
+not import the platform modules directly or construct client arguments.
 
 All calls are synchronous unless documented otherwise. GUI callers should run
 blocking calls on a worker thread. Progress callbacks execute on that same
@@ -10,23 +10,20 @@ worker thread and must marshal updates onto the toolkit event loop.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import threading
 import urllib.parse
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable, Generic, Literal, TypeVar
+from typing import Callable, Generic, TypeVar
 
-from . import certificates, doctor, smartcard
+from . import certificates, doctor, remmina, smartcard
 from . import __version__
-from .freerdp import Client, select
-from .profile import detect_cloud, inspect_profile, validate_profile
+from .profile import inspect_profile, validate_profile
 from .redaction import redact
 
 T = TypeVar("T")
-Backend = Literal["auto", "x11", "sdl", "wayland"]
 ProgressCallback = Callable[["ProgressEvent"], None]
 _BACKGROUND_OPERATIONS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="eitaas-api")
 
@@ -60,14 +57,15 @@ class ProgressEvent:
 
 
 @dataclass(frozen=True)
-class FreeRDPClientSummary:
-    backend: str
-    version: str
-    aad: bool
-    pcsc: bool
-    sso_mib: bool
-    webview: bool
-    auth_mode: str
+class RemminaBundleSummary:
+    """State of the bundled one-shot ``eitaas-remmina`` client."""
+
+    launcher: bool
+    client: bool
+    client_path: str | None
+    remmina_version: str
+    freerdp_version: str
+    sso_mib: bool | None
 
 
 @dataclass(frozen=True)
@@ -78,7 +76,7 @@ class DoctorReport:
     wayland_display: bool
     pcsc_socket: bool
     tools: dict[str, bool]
-    freerdp: tuple[FreeRDPClientSummary, ...]
+    remmina: RemminaBundleSummary
     identity_broker: bool
     ready: bool
     smartcard: SmartcardReport | None = None
@@ -139,8 +137,6 @@ class CertificateFetchReport:
 @dataclass(frozen=True)
 class ConnectionRequest:
     profile: str
-    backend: Backend = "auto"
-    clipboard: bool = False
 
 
 @dataclass(frozen=True)
@@ -172,7 +168,7 @@ def to_public_dict(value: object) -> object:
 class Application:
     """Facade shared by CLI and graphical presentations.
 
-    Methods return redacted Result values. `connect` is blocking and should run
+    Methods return redacted Result values. `launch` is blocking and should run
     on a worker thread in a GUI. Set the supplied cancellation event to request
     termination; the child receives terminate, then kill after a short grace
     period. The callback is never given child output or command arguments.
@@ -185,17 +181,15 @@ class Application:
         try:
             data = doctor.report()
             smartcard_result = self.smartcard_status()
-            clients = tuple(
-                FreeRDPClientSummary(
-                    backend=str(item["backend"]),
-                    version=str(item["version"]),
-                    aad=bool(item["aad"]),
-                    pcsc=bool(item["pcsc"]),
-                    sso_mib=bool(item["sso_mib"]),
-                    webview=bool(item["webview"]),
-                    auth_mode=str(item["auth_mode"]),
-                )
-                for item in data["freerdp"]
+            bundle = data["remmina"]
+            sso_mib = bundle["sso_mib"]
+            summary = RemminaBundleSummary(
+                launcher=bool(bundle["launcher"]),
+                client=bool(bundle["client"]),
+                client_path=str(bundle["client_path"]) if bundle["client_path"] else None,
+                remmina_version=str(bundle["remmina_version"]),
+                freerdp_version=str(bundle["freerdp_version"]),
+                sso_mib=None if sso_mib is None else bool(sso_mib),
             )
             return Result(
                 DoctorReport(
@@ -205,7 +199,7 @@ class Application:
                     wayland_display=bool(data["wayland_display"]),
                     pcsc_socket=bool(data["pcsc_socket"]),
                     tools={str(key): bool(value) for key, value in data["tools"].items()},
-                    freerdp=clients,
+                    remmina=summary,
                     identity_broker=bool(data["identity_broker"]),
                     ready=bool(
                         doctor.healthy(data)
@@ -314,41 +308,39 @@ class Application:
             )
         )
 
-    def connect(
+    def launch(
         self,
         request: ConnectionRequest,
         on_progress: ProgressCallback | None = None,
         cancel: threading.Event | None = None,
     ) -> Result[ConnectionResult]:
+        """Validate the profile and run the bundled ``eitaas-remmina`` launcher.
+
+        The child receives exactly ``[launcher, profile]`` with no shell, no
+        environment changes, and all standard streams on ``DEVNULL``. Endpoint
+        allowlisting and the refusal of terminal OAuth are enforced inside the
+        bundled client (Remmina patches), not here.
+        """
         progress = on_progress or (lambda event: None)
         cancelled = cancel or threading.Event()
         try:
             progress(ProgressEvent("validating", "Validating connection profile"))
             profile = validate_profile(request.profile)
-            progress(ProgressEvent("selecting", "Selecting a compatible FreeRDP client"))
-            client = select(request.backend)
-            cloud = detect_cloud(profile)
-            command = self._connection_command(client, profile, request.clipboard, cloud)
+            launcher = remmina.find_launcher()
+            if launcher is None:
+                raise RuntimeError(f"{remmina.LAUNCHER} launcher is not installed")
             if cancelled.is_set():
                 return Result(ConnectionResult(130, cancelled=True))
-            progress(ProgressEvent("connecting", "FreeRDP connection started", cancellable=True))
-            child_environment = None
-            if client.path == "/usr/libexec/eitaas-freerdp/bin/sdl-freerdp":
-                # SDL3's Wayland/libdecor event pump races GTK3/WebKitGTK 4.1.
-                # Keep the isolated prototype on XWayland until upstream can
-                # safely run both event loops on native Wayland.
-                child_environment = os.environ.copy()
-                child_environment["SDL_VIDEODRIVER"] = "x11"
+            progress(ProgressEvent("starting", "Remote desktop client started", cancellable=True))
             process = subprocess.Popen(
-                command,
+                [launcher, str(profile)],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                env=child_environment,
             )
             while process.poll() is None:
                 if cancelled.wait(0.1):
-                    progress(ProgressEvent("cancelling", "Stopping FreeRDP connection"))
+                    progress(ProgressEvent("cancelling", "Stopping remote desktop client"))
                     process.terminate()
                     try:
                         process.wait(timeout=5)
@@ -358,45 +350,4 @@ class Application:
                     return Result(ConnectionResult(process.returncode or 130, cancelled=True))
             return Result(ConnectionResult(process.returncode or 0))
         except Exception as error:
-            return self._error("connection_failed", error, "Run eitaas doctor and correct failed checks.")
-
-    @staticmethod
-    def _connection_command(
-        client: Client, profile: Path, clipboard: bool, cloud: str
-    ) -> list[str]:
-        cloud_settings = {
-            "azure_government": (
-                "https://login.microsoftonline.us",
-                "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access",
-            ),
-            "azure_commercial": (
-                "https://login.microsoftonline.com",
-                "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default%20openid%20profile%20offline_access",
-            ),
-        }
-        if cloud not in cloud_settings:
-            raise ValueError("profile cloud is not supported")
-        authority, scope = cloud_settings[cloud]
-        callback = "https://login.microsoftonline.com/common/oauth2/nativeclient"
-        Application._validate_identity_endpoint(
-            authority, {"login.microsoftonline.us", "login.microsoftonline.com"}
-        )
-        Application._validate_identity_endpoint(callback, {"login.microsoftonline.com"})
-        return [
-            client.path,
-            str(profile),
-            "/gateway:type:arm",
-            "/sec:aad",
-            f"/azure:ad:{urllib.parse.urlsplit(authority).hostname},use-tenantid:on,"
-            f"avd-access:{callback},avd-scope:{scope}",
-            "/smartcard",
-            "+clipboard" if clipboard else "-clipboard",
-        ]
-
-    @staticmethod
-    def _validate_identity_endpoint(url: str, allowed_hosts: set[str]) -> None:
-        parsed = urllib.parse.urlsplit(url)
-        if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
-            raise ValueError("identity endpoint is not an approved HTTPS host")
-        if parsed.username or parsed.password:
-            raise ValueError("identity endpoint must not contain user information")
+            return self._error("launch_failed", error, "Run eitaas doctor and correct failed checks.")

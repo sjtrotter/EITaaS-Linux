@@ -12,7 +12,7 @@ _eitaas()
     fi
     case "${COMP_WORDS[1]}" in
         doctor) COMPREPLY=( $(compgen -W "--json" -- "$current") ) ;;
-        connect) COMPREPLY=( $(compgen -W "--backend=auto --backend=x11 --backend=sdl --backend=wayland --clipboard" -- "$current") ) ;;
+        connect) COMPREPLY=( $(compgen -f -- "$current") ) ;;
         smartcard) COMPREPLY=( $(compgen -W "status" -- "$current") ) ;;
         certificates) COMPREPLY=( $(compgen -W "fetch inspect" -- "$current") ) ;;
         inspect-profile)

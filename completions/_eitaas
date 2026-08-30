@@ -8,10 +8,6 @@ case $words[2] in
   doctor) _arguments '--json[emit JSON]' ;;
   inspect-profile) _arguments '1:profile:_files -g "*.rdp(w|)(.)"' '--json[emit JSON]' ;;
   smartcard) _arguments '1:command:(status)' '--json[emit JSON]' ;;
-  connect)
-    _arguments '1:profile:_files -g "*.rdp(w|)(.)"' \
-      '--backend=[select backend]:backend:(auto x11 sdl wayland)' \
-      '--clipboard[enable bidirectional clipboard]'
-    ;;
+  connect) _arguments '1:profile:_files -g "*.rdp(w|)(.)"' ;;
   certificates) _arguments '1:command:(fetch inspect)' ;;
 esac

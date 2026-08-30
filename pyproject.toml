@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "eitaas-linux"
 version = "0.1.0"
-description = "Community Linux diagnostics and FreeRDP launcher for EITaaS AVD"
+description = "Community Linux diagnostics and eitaas-remmina launcher for EITaaS AVD"
 readme = "README.md"
 requires-python = ">=3.10"
 # Keep the table form until Ubuntu 24.04's setuptools supports PEP 639's

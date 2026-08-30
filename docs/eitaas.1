@@ -14,38 +14,63 @@ eitaas \- diagnose and launch community AVD connections with smart-card redirect
 .br
 .B eitaas connect
 .I FILE
-.RI [ --backend=BACKEND ]
-.RI [ --clipboard ]
 .br
 .B eitaas certificates
 .RI { fetch | inspect }
 .SH DESCRIPTION
 EITaaS-Linux is an independent community helper for diagnosing and launching
-Azure Virtual Desktop connections through a compatible FreeRDP 3 client.
+Azure Virtual Desktop connections through the bundled one-shot
+.BR eitaas-remmina (1)
+client, an isolated Remmina and FreeRDP pair installed under a private prefix.
+.PP
+.B eitaas connect
+validates the profile (regular file, owned by the caller, mode 0600, at most
+1 MiB, .rdp or .rdpw extension) and then runs
+.B eitaas-remmina FILE
+with no other arguments, no shell, and no inherited standard streams. It does
+not construct RDP or authentication arguments; all connection policy is
+applied inside the bundled client.
 .PP
 It does not disable certificate verification, request a CAC PIN, or install
 polkit rules or certificate trust anchors during ordinary operation.
 .SH SECURITY
 Connection profiles must be regular files owned by the current user without
 group or other permissions. Use chmod 600 on a downloaded profile before use.
-Clipboard redirection is disabled unless
-.B --clipboard
-is specified.
+.PP
+Clipboard redirection has no switch in
+.BR eitaas .
+The bundled client follows the profile's
+.B redirectclipboard
+field through Remmina's RDPW importer; that field is not forwarded to FreeRDP's
+native profile parser.
 .PP
 Never publish real RDP/RDPW files or authentication callback URLs. See the
 installed SECURITY.md documentation for reporting guidance.
 .PP
-Connections require a live Microsoft Identity Broker or an SDL FreeRDP build
-with WebView support. Terminal URL and callback authentication is refused.
-.SH BACKENDS
-The automatic backend preference is XFreeRDP, SDL, then native Wayland after
-secure authentication capability is established. Every selected client must be
-FreeRDP 3 with AAD and PC/SC support.
+Authentication uses either the Microsoft Identity Broker (when the bundle was
+built with SSO-MIB) or the embedded CAC WebView; the terminal URL/callback
+fallback is refused inside the bundled client.
+.SH DOCTOR
+.B eitaas doctor
+reports whether
+.B eitaas-remmina
+is on PATH, whether the private client binary exists under
+.I /usr/libexec/eitaas-remmina
+or
+.IR /usr/lib/eitaas-remmina ,
+the pinned Remmina and FreeRDP versions from the installed
+.I sources.json
+manifest (or "unknown"), whether the installed FreeRDP client library links
+SSO-MIB, identity-broker registration on the session bus, the PC/SC socket,
+and the presence of smart-card tools. Readiness requires the launcher, the
+private client, and healthy smart-card checks.
 .SH EXIT STATUS
 Zero indicates success. One indicates completed diagnostics with unmet
 requirements. Two indicates invalid input or an operation error. A connection
-otherwise returns the FreeRDP child exit status.
+otherwise returns the exit status of the
+.B eitaas-remmina
+child.
 .SH SEE ALSO
 .BR pcsc_scan (1),
 .BR pkcs11-tool (1),
-.BR xfreerdp3 (1)
+.BR remmina (1)

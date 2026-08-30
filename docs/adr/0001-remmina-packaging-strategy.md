@@ -104,3 +104,11 @@ make a matrix cell pass.
 - Performance work (#36), display correctness (#29), upstream contributions
   (#33), and release/SBOM hardening (#10) remain independent gates and are not
   hidden by the packaging decision.
+
+### Note (2026-08-30, #69)
+
+The direct-FreeRDP launcher that predated this decision (`eitaas connect
+--backend`, `packaging/freerdp-webview/`) has been removed; the last tree
+containing it is tagged `archive/freerdp-webview`. `eitaas connect` now only
+validates the profile and runs `eitaas-remmina`. Display-performance follow-up
+for the bundled client is tracked in #36 (display correctness remains #29).
