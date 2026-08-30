@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 05:57:41 -0500
+Subject: [PATCH 1/4] RDP: preserve protected RDPW settings
+
+---
+ plugins/rdp/rdp_file.c   | 12 +++++++++++-
+ plugins/rdp/rdp_plugin.c |  8 ++++++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
+index e93a6ae..4f3b4c9 100644
+--- a/plugins/rdp/rdp_file.c
++++ b/plugins/rdp/rdp_file.c
+@@ -89,8 +89,11 @@ static void remmina_rdp_file_import_field(RemminaFile *remminafile, const gchar
+ 		}
+ 	} else if (g_strcmp0(key, "redirectprinters") == 0) {
+ 		remmina_plugin_service->file_set_int(remminafile, "shareprinter", (atoi(value) == 1));
+-	} else if (g_strcmp0(key, "redirectsmartcard") == 0) {
++	} else if (g_strcmp0(key, "redirectsmartcard") == 0 ||
++	           g_strcmp0(key, "redirectsmartcards") == 0) {
+ 		remmina_plugin_service->file_set_int(remminafile, "sharesmartcard", (atoi(value) == 1));
++	} else if (g_strcmp0(key, "enablerdsaadauth") == 0 && atoi(value) == 1) {
++		remmina_plugin_service->file_set_string(remminafile, "security", "aad");
+ 	} else if (g_strcmp0(key, "redirectclipboard") == 0) {
+ 		remmina_plugin_service->file_set_int(remminafile, "disableclipboard", (atoi(value) != 1));
+ 	} else if (g_strcmp0(key, "alternate shell") == 0) {
+@@ -206,6 +209,13 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+ 
+ 	remminafile = remmina_rdp_file_import_channel(channel);
+ 	g_io_channel_shutdown(channel, TRUE, &error);
++	if (remminafile && g_ascii_strcasecmp(strrchr(from_file, '.'), ".rdpw") == 0) {
++		/* Protected AVD profiles contain settings and signatures that the generic
++		 * Remmina importer does not model. Keep the source so FreeRDP's native
++		 * connection-file parser can populate the live rdpSettings instance. */
++		remmina_plugin_service->file_set_string(remminafile, "rdpw_path", from_file);
++		remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
++	}
+ 
+ 	return remminafile;
+ }
+diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
+index 5aff616..8baa8a7 100644
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -71,6 +71,7 @@
+ #include <freerdp/client/channels.h>
+ #include <freerdp/client/cliprdr.h>
+ #include <freerdp/client/cmdline.h>
++#include <freerdp/client.h>
+ #include <freerdp/constants.h>
+ #include <freerdp/error.h>
+ #include <freerdp/event.h>
+@@ -268,6 +269,13 @@ static BOOL rf_process_event_queue(RemminaProtocolWidget *gp)
+ 	input = rfi->clientContext.context.input;
+ 
+ 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
++	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile, "rdpw_path");
++	if (rdpw_path &&
++	    freerdp_client_settings_parse_connection_file(rfi->clientContext.context.settings,
++	                                                  rdpw_path) != 0) {
++		REMMINA_PLUGIN_ERROR("Could not load the protected RDPW profile");
++		return FALSE;
++	}
+ 
+ 	while ((event = (RemminaPluginRdpEvent *)g_async_queue_try_pop(rfi->event_queue)) != NULL) {
+ 		time(&(rfi->last_time)); //update last user interaction time

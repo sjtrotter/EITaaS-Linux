@@ -9,6 +9,16 @@ This package combines a private Remmina 1.4.43 build with private FreeRDP
 (`/usr/libexec/eitaas-remmina` on Fedora and `/usr/lib/eitaas-remmina` on
 Debian-family systems). It does not replace the distribution packages.
 
+FreeRDP 3.31.0 is pinned for two distinct reasons. First, it is the exact ABI
+and feature baseline used for the successful GovCloud and CAC hardware tests.
+Second, unlike 3.30.0, its SSO-MIB token path derives the authority from the
+configured AAD endpoint and tenant instead of fixing it to commercial Azure
+`common`; 3.31.0 or newer is therefore required for the sovereign-cloud
+identity-broker route. The browser/CAC Remmina patches themselves use APIs
+already present in 3.30.0, so upstream proposals must describe 3.31 as the
+full sovereign-cloud and tested-bundle requirement, not as an artificial
+compile-time minimum.
+
 The downstream changes preserve the original protected RDPW profile through
 FreeRDP's parser, select ARM/AAD transport, honor smart-card redirection, and
 handle WebKitGTK client-certificate and PIN challenges with PKCS #11-backed

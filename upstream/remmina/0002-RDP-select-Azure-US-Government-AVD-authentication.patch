@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 05:58:04 -0500
+Subject: [PATCH 2/4] RDP: select Azure US Government AVD authentication
+
+---
+ plugins/rdp/rdp_plugin.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
+index 8baa8a7..15f816b 100644
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -276,6 +276,28 @@ static BOOL rf_process_event_queue(RemminaProtocolWidget *gp)
+ 		REMMINA_PLUGIN_ERROR("Could not load the protected RDPW profile");
+ 		return FALSE;
+ 	}
++	if (rdpw_path) {
++		const gchar *gateway = freerdp_settings_get_string(
++		    rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
++		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
++			/* Public Azure US Government endpoints. The redirect remains the URI
++			 * registered for FreeRDP's public AVD client ID. */
++			if (!freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAzureActiveDirectory,
++			                                 "login.microsoftonline.us") ||
++			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAvdScope,
++			                                 "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access") ||
++			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
++			                                 FreeRDP_GatewayAvdAccessAadFormat,
++			                                 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
++			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
++			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
++				REMMINA_PLUGIN_ERROR("Could not configure Azure US Government authentication");
++				return FALSE;
++			}
++		}
++	}
+ 
+ 	while ((event = (RemminaPluginRdpEvent *)g_async_queue_try_pop(rfi->event_queue)) != NULL) {
+ 		time(&(rfi->last_time)); //update last user interaction time
