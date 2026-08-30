@@ -106,6 +106,12 @@ override_dh_installdocs:
 	install -Dpm0644 $(REMMINA)/LICENSE.OpenSSL \
 		$(DOC_DIR)/licenses/Remmina-LICENSE.OpenSSL
 
+# dh_compress gzips anything over 4 KiB below /usr/share/doc; the
+# corresponding-source license texts must stay readable in place, and their
+# file names are asserted by scripts/test-deb-lifecycle.sh.
+override_dh_compress:
+	dh_compress -X/usr/share/doc/eitaas-linux/licenses
+
 override_dh_shlibdeps:
 	dh_shlibdeps -l$(PACKAGE_ROOT)$(PREFIX)/lib
 

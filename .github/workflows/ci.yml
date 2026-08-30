@@ -120,7 +120,9 @@ jobs:
           scripts/build-deb.sh "$archive"
       - name: Verify Debian policy metadata
         run: |
-          lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license \
+          # odd-historical-debian-changelog-version: 0.1.0-1 predates the #80
+          # merge, when the package was not yet Debian-native.
+          lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license,odd-historical-debian-changelog-version \
             "dist/eitaas-linux_${DEB_VERSION}_amd64.changes"
       - name: Test install, upgrade from the split packages, and removal
         run: scripts/test-deb-lifecycle.sh "dist/eitaas-linux_${DEB_VERSION}_amd64.deb"
