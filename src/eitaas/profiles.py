@@ -39,6 +39,7 @@ class StoredProfile:
     path: Path
     imported: float
     default: bool = False
+    valid: bool = True
 
 
 def store_dir() -> Path:
@@ -75,12 +76,19 @@ def _private_dir(path: Path) -> Path:
     return path
 
 
-def _check_import_source(source: Path) -> os.stat_result:
-    """Apply the ownership/type/size/suffix checks; permissions are fixed later."""
+def _open_source(source: Path) -> int:
+    """Open the selected file without following links; all checks use the fd."""
     try:
-        info = source.lstat()
+        return os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
     except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise ProfileError("profile must be a regular file, not a link or device") from error
         raise _os_error(error, "read the selected profile") from error
+
+
+def _check_source(fd: int, source: Path) -> os.stat_result:
+    """Type/ownership/size/suffix checks on the open descriptor; mode is fixed later."""
+    info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode):
         raise ProfileError("profile must be a regular file, not a link or device")
     if info.st_uid != os.getuid():
@@ -94,46 +102,85 @@ def _check_import_source(source: Path) -> os.stat_result:
     return info
 
 
-def _unique_target(store: Path, name: str) -> Path:
-    """Preserve the basename, adding a numeric suffix if it is taken."""
+def _candidates(store: Path, name: str):
+    """Basename first, then ``stem-2``, ``stem-3``…; creation is EEXIST-safe."""
     stem, suffix = Path(name).stem, Path(name).suffix
-    candidate = store / name
+    yield store / name
     counter = 1
-    while candidate.exists() or candidate.is_symlink():
+    while True:
         counter += 1
-        candidate = store / f"{stem}-{counter}{suffix}"
-    return candidate
+        yield store / f"{stem}-{counter}{suffix}"
 
 
-def _copy_then_unlink(source: Path, target: Path) -> None:
-    """Cross-filesystem move: copy without following links, fsync, unlink."""
-    source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        target_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+def _link_into_store(source: Path, store: Path) -> Path | None:
+    """Hard-link the source under a free name; None when on another filesystem."""
+    for target in _candidates(store, source.name):
         try:
-            while chunk := os.read(source_fd, _COPY_CHUNK):
-                os.write(target_fd, chunk)
-            os.fsync(target_fd)
+            os.link(source, target, follow_symlinks=False)
+            return target
+        except FileExistsError:
+            continue
+        except OSError as error:
+            if error.errno == errno.EXDEV:
+                return None
+            raise
+
+
+def _copy_bounded(source_fd: int, target_fd: int) -> None:
+    """Copy at most the safety limit, fully writing each chunk, then fsync."""
+    remaining = MAX_PROFILE_SIZE + 1
+    while remaining:
+        chunk = os.read(source_fd, min(_COPY_CHUNK, remaining))
+        if not chunk:
+            break
+        remaining -= len(chunk)
+        view = memoryview(chunk)
+        while view:
+            view = view[os.write(target_fd, view):]
+    if not remaining:
+        raise ProfileError("profile exceeds the 1 MiB safety limit")
+    os.fsync(target_fd)
+
+
+def _copy_into_store(source_fd: int, source: Path, store: Path) -> tuple[Path, os.stat_result]:
+    """Cross-filesystem import: exclusive-create a 0600 copy, return its identity."""
+    for target in _candidates(store, source.name):
+        try:
+            target_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+        except FileExistsError:
+            continue
+        try:
+            _copy_bounded(source_fd, target_fd)
+            return target, os.fstat(target_fd)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
         finally:
             os.close(target_fd)
-    except BaseException:
+    raise AssertionError("unreachable")
+
+
+def _verify_stored(target: Path, expected: os.stat_result) -> None:
+    """The store entry must be the very inode that was checked, mode 0600."""
+    info = target.lstat()
+    same = (info.st_dev, info.st_ino) == (expected.st_dev, expected.st_ino)
+    if not stat.S_ISREG(info.st_mode) or not same or info.st_mode & 0o077:
         target.unlink(missing_ok=True)
-        raise
-    finally:
-        os.close(source_fd)
-    source.unlink()
+        raise ProfileError("profile changed while it was being imported")
 
 
-def _move(source: Path, target: Path) -> None:
+def _move_into_store(fd: int, source: Path, store: Path) -> Path:
     try:
-        try:
-            os.rename(source, target)
-        except OSError as error:
-            if error.errno != errno.EXDEV:
-                raise
-            _copy_then_unlink(source, target)
-            return
-        target.chmod(0o600)
+        target = _link_into_store(source, store)
+        if target is not None:
+            os.fchmod(fd, 0o600)
+            _verify_stored(target, os.fstat(fd))
+            source.unlink()
+            return target
+        target, identity = _copy_into_store(fd, source, store)
+        _verify_stored(target, identity)
+        source.unlink()
+        return target
     except OSError as error:
         raise _os_error(error, "move the profile into the store") from error
 
@@ -141,11 +188,18 @@ def _move(source: Path, target: Path) -> None:
 def import_profile(source_value: str | os.PathLike[str]) -> StoredProfile:
     """Move a user-owned ``.rdpw`` into the private store and make it default."""
     source = Path(source_value).expanduser()
-    _check_import_source(source)
-    store = _private_dir(store_dir())
-    target = _unique_target(store, source.name)
-    _move(source, target)
-    validate_profile(target)
+    fd = _open_source(source)
+    try:
+        _check_source(fd, source)
+        store = _private_dir(store_dir())
+        target = _move_into_store(fd, source, store)
+    finally:
+        os.close(fd)
+    try:
+        validate_profile(target)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
     set_default(target.name)
     return StoredProfile(target.name, target, target.lstat().st_ctime, default=True)
 
@@ -168,6 +222,8 @@ def _write_default_name(name: str | None) -> None:
         fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".profiles-", text=True)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             parser.write(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.chmod(temporary, 0o600)
         os.replace(temporary, path)
     except OSError as error:
@@ -190,14 +246,22 @@ def list_profiles() -> list[StoredProfile]:
             continue
         if not stat.S_ISREG(info.st_mode) or entry.suffix.lower() != PROFILE_SUFFIX:
             continue
-        profiles.append(StoredProfile(entry.name, entry, info.st_ctime))
+        profiles.append(StoredProfile(entry.name, entry, info.st_ctime, valid=_validates(entry)))
     profiles.sort(key=lambda item: (item.imported, item.name), reverse=True)
-    if profiles and not any(item.name == default_name for item in profiles):
-        default_name = profiles[0].name
+    if not any(item.name == default_name and item.valid for item in profiles):
+        default_name = next((item.name for item in profiles if item.valid), None)
     return [
-        StoredProfile(item.name, item.path, item.imported, item.name == default_name)
+        StoredProfile(item.name, item.path, item.imported, item.name == default_name, item.valid)
         for item in profiles
     ]
+
+
+def _validates(path: Path) -> bool:
+    try:
+        validate_profile(path)
+    except (ProfileError, OSError):
+        return False
+    return True
 
 
 def default_profile() -> StoredProfile | None:
@@ -220,6 +284,8 @@ def _stored(name: str) -> StoredProfile:
 def set_default(name: str) -> StoredProfile:
     """Make an already imported profile the default for ``connect``."""
     item = _stored(name)
+    if not item.valid:
+        raise ProfileError("stored profile no longer passes the safety checks")
     _write_default_name(item.name)
     return StoredProfile(item.name, item.path, item.imported, default=True)
 

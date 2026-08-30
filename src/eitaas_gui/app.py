@@ -35,7 +35,6 @@ from .widgets import ProfileRowWidget, StatusRowWidget, accessible  # noqa: E402
 _ = gettext.gettext
 APP_ID = "org.eitaas.Helper"
 EXPORT_HELP_URL = "https://github.com/sjtrotter/EITaaS-Linux#current-workflow"
-_QUIT_GRACE_SECONDS = 7.0
 
 
 def _on_main(callback: Callable[..., object], *args: object) -> None:
@@ -56,6 +55,7 @@ class HelperWindow(Adw.ApplicationWindow):
         self.connect_state = ConnectState.IDLE
         self.cancel_event: threading.Event | None = None
         self.worker: threading.Thread | None = None
+        self.quit_pending = False
         self.set_title(_("EITaaS Connect"))
         self.set_default_size(680, 600)
         self.set_size_request(360, 400)
@@ -383,6 +383,9 @@ class HelperWindow(Adw.ApplicationWindow):
         self.cancel_button.set_sensitive(True)
         self.worker = None
         self.cancel_event = None
+        if self.quit_pending:
+            self.destroy()
+            return
         if result.error:
             title, body = viewmodel.error_text(result.error)
             self.error_label.set_label(f"{title}\n{body}")
@@ -398,6 +401,8 @@ class HelperWindow(Adw.ApplicationWindow):
     def _on_close_request(self, _window: Gtk.Window) -> bool:
         if self.connect_state is ConnectState.IDLE:
             return False
+        if self.quit_pending:
+            return True
         dialog = Adw.AlertDialog(
             heading=_("Disconnect and quit?"),
             body=_("The remote desktop client is still running."),
@@ -411,17 +416,23 @@ class HelperWindow(Adw.ApplicationWindow):
         return True
 
     def _quit_response(self, _dialog: Adw.AlertDialog, response: str) -> None:
-        if response != "quit":
-            return
-        self.shutdown_worker()
-        self.destroy()
+        if response == "quit":
+            self.request_quit()
 
-    def shutdown_worker(self) -> None:
-        """Set the cancellation event and wait for the launch worker to finish."""
+    def request_quit(self) -> None:
+        """Quit now when idle; otherwise cancel the launch and quit once it ends.
+
+        The worker is never joined on the GTK thread: the window hides, the
+        cancellation event stops the child, and ``_launch_done`` destroys the
+        window (ending the application) after the child has exited.
+        """
+        if self.connect_state is ConnectState.IDLE:
+            self.destroy()
+            return
+        self.quit_pending = True
+        self.set_visible(False)
         if self.cancel_event is not None:
             self.cancel_event.set()
-        if self.worker is not None:
-            self.worker.join(timeout=_QUIT_GRACE_SECONDS)
 
 
 class HelperApplication(Adw.Application):
@@ -432,11 +443,10 @@ class HelperApplication(Adw.Application):
         kwargs.setdefault("flags", Gio.ApplicationFlags.HANDLES_OPEN)
         super().__init__(**kwargs)
         self.core = core or Application()
-        self.connect("shutdown", lambda _app: self._shutdown())
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
-        self._action("quit", lambda: self.quit(), ["<Control>q"])
+        self._action("quit", self._quit, ["<Control>q"])
         self._action("recheck", lambda: self._with_window(HelperWindow.refresh_readiness), ["<Control>r"])
         self._action("import", lambda: self._with_window(HelperWindow.choose_profile), ["<Control>o"])
         self._action("connect", lambda: self._with_window(HelperWindow.start_connection), ["<Control>Return"])
@@ -446,6 +456,13 @@ class HelperApplication(Adw.Application):
         action.connect("activate", lambda _action, _parameter: callback())
         self.add_action(action)
         self.set_accels_for_action(f"app.{name}", accelerators)
+
+    def _quit(self) -> None:
+        window = self.props.active_window
+        if isinstance(window, HelperWindow):
+            window.request_quit()
+        else:
+            self.quit()
 
     def _with_window(self, method: Callable[[HelperWindow], object]) -> None:
         window = self.props.active_window
@@ -466,12 +483,9 @@ class HelperApplication(Adw.Application):
         path = files[0].get_path() if files else None
         if path:
             window.offer_import(Path(path))
+        if len(files) > 1:
+            window.toast(_("Only the first of {count} files is offered for import.").format(count=len(files)))
         window.present()
-
-    def _shutdown(self) -> None:
-        window = self.props.active_window
-        if isinstance(window, HelperWindow):
-            window.shutdown_worker()
 
 
 def run(argv: list[str]) -> int:

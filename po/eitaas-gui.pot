@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: eitaas-gui 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/sjtrotter/EITaaS-Linux/issues\n"
-"POT-Creation-Date: 2026-08-30 12:32-0500\n"
+"POT-Creation-Date: 2026-08-30 12:43-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -296,168 +296,173 @@ msgstr ""
 msgid "EITaaS Connect"
 msgstr ""
 
-#: src/eitaas_gui/app.py:87
+#: src/eitaas_gui/app.py:89
 msgid "Readiness"
 msgstr ""
 
-#: src/eitaas_gui/app.py:90
+#: src/eitaas_gui/app.py:92
 msgid "Profile"
 msgstr ""
 
-#: src/eitaas_gui/app.py:93 src/eitaas_gui/app.py:148 src/eitaas_gui/app.py:150
-#: src/eitaas_gui/app.py:154
+#: src/eitaas_gui/app.py:95 src/eitaas_gui/app.py:150 src/eitaas_gui/app.py:152
+#: src/eitaas_gui/app.py:156
 msgid "Connect"
 msgstr ""
 
-#: src/eitaas_gui/app.py:99
+#: src/eitaas_gui/app.py:101
 msgid "System readiness"
 msgstr ""
 
-#: src/eitaas_gui/app.py:100
+#: src/eitaas_gui/app.py:102
 msgid ""
 "Each line states what was checked and what to do if it failed. Nothing is "
 "changed on your system; commands are shown for you to run."
 msgstr ""
 
-#: src/eitaas_gui/app.py:103
+#: src/eitaas_gui/app.py:105
 msgid "Re-check"
 msgstr ""
 
-#: src/eitaas_gui/app.py:105
+#: src/eitaas_gui/app.py:107
 msgid "Re-check readiness"
 msgstr ""
 
-#: src/eitaas_gui/app.py:114
+#: src/eitaas_gui/app.py:116
 msgid "Import"
 msgstr ""
 
-#: src/eitaas_gui/app.py:116
+#: src/eitaas_gui/app.py:118
 msgid "Profile opened from the file manager"
 msgstr ""
 
-#: src/eitaas_gui/app.py:119
+#: src/eitaas_gui/app.py:121
 msgid "Get your desktop profile"
 msgstr ""
 
-#: src/eitaas_gui/app.py:120
+#: src/eitaas_gui/app.py:122
 msgid "Export instructions (project documentation)"
 msgstr ""
 
-#: src/eitaas_gui/app.py:122
+#: src/eitaas_gui/app.py:124
 msgid "Open the export instructions in a browser"
 msgstr ""
 
-#: src/eitaas_gui/app.py:124
+#: src/eitaas_gui/app.py:126
 msgid "I downloaded the RDP file"
 msgstr ""
 
-#: src/eitaas_gui/app.py:128
+#: src/eitaas_gui/app.py:130
 msgid "Choose the downloaded .rdpw file to import"
 msgstr ""
 
-#: src/eitaas_gui/app.py:133
+#: src/eitaas_gui/app.py:135
 msgid "Imported profiles"
 msgstr ""
 
-#: src/eitaas_gui/app.py:134
+#: src/eitaas_gui/app.py:136
 msgid ""
 "Stored privately under your user data directory (mode 0600). The selected "
 "profile is what Connect opens."
 msgstr ""
 
-#: src/eitaas_gui/app.py:155
+#: src/eitaas_gui/app.py:157
 msgid "Starts the bundled remote desktop client with the selected profile."
 msgstr ""
 
-#: src/eitaas_gui/app.py:163
+#: src/eitaas_gui/app.py:165
 msgid "Connection phase"
 msgstr ""
 
-#: src/eitaas_gui/app.py:165
+#: src/eitaas_gui/app.py:167
 msgid "Cancel"
 msgstr ""
 
-#: src/eitaas_gui/app.py:166
+#: src/eitaas_gui/app.py:168
 msgid "Cancel the connection"
 msgstr ""
 
-#: src/eitaas_gui/app.py:174
+#: src/eitaas_gui/app.py:176
 msgid "Connection error"
 msgstr ""
 
-#: src/eitaas_gui/app.py:197
+#: src/eitaas_gui/app.py:199
 msgid "Close"
 msgstr ""
 
-#: src/eitaas_gui/app.py:223
+#: src/eitaas_gui/app.py:225
 msgid "Copied to clipboard"
 msgstr ""
 
-#: src/eitaas_gui/app.py:244
+#: src/eitaas_gui/app.py:246
 msgid "No profile imported yet"
 msgstr ""
 
-#: src/eitaas_gui/app.py:245
+#: src/eitaas_gui/app.py:247
 msgid "Use the button above after exporting one."
 msgstr ""
 
-#: src/eitaas_gui/app.py:260
+#: src/eitaas_gui/app.py:262
 #, python-brace-format
 msgid "Import {name} into your private profile store?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:271
+#: src/eitaas_gui/app.py:273
 msgid "Choose the downloaded .rdpw profile"
 msgstr ""
 
-#: src/eitaas_gui/app.py:273
+#: src/eitaas_gui/app.py:275
 msgid "Remote desktop profiles (*.rdpw)"
 msgstr ""
 
-#: src/eitaas_gui/app.py:302
+#: src/eitaas_gui/app.py:304
 #, python-brace-format
 msgid "Imported {name}; it is now the default."
 msgstr ""
 
-#: src/eitaas_gui/app.py:310
+#: src/eitaas_gui/app.py:312
 #, python-brace-format
 msgid "Remove {name}?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:311
+#: src/eitaas_gui/app.py:313
 msgid "The imported file is deleted from your private profile store."
 msgstr ""
 
-#: src/eitaas_gui/app.py:313
+#: src/eitaas_gui/app.py:315
 msgid "Keep"
 msgstr ""
 
-#: src/eitaas_gui/app.py:314 src/eitaas_gui/widgets.py:92
+#: src/eitaas_gui/app.py:316 src/eitaas_gui/widgets.py:92
 msgid "Remove"
 msgstr ""
 
-#: src/eitaas_gui/app.py:352
+#: src/eitaas_gui/app.py:354
 msgid "Starting"
 msgstr ""
 
-#: src/eitaas_gui/app.py:374
+#: src/eitaas_gui/app.py:376
 msgid "Stopping the remote desktop client"
 msgstr ""
 
-#: src/eitaas_gui/app.py:400
+#: src/eitaas_gui/app.py:407
 msgid "Disconnect and quit?"
 msgstr ""
 
-#: src/eitaas_gui/app.py:401
+#: src/eitaas_gui/app.py:408
 msgid "The remote desktop client is still running."
 msgstr ""
 
-#: src/eitaas_gui/app.py:403
+#: src/eitaas_gui/app.py:410
 msgid "Keep working"
 msgstr ""
 
-#: src/eitaas_gui/app.py:404
+#: src/eitaas_gui/app.py:411
 msgid "Disconnect and quit"
+msgstr ""
+
+#: src/eitaas_gui/app.py:487
+#, python-brace-format
+msgid "Only the first of {count} files is offered for import."
 msgstr ""
 
 #: src/eitaas_gui/widgets.py:54 src/eitaas_gui/widgets.py:55

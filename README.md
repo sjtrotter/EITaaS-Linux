@@ -97,9 +97,9 @@ password.
 
 ## Graphical helper
 
-The optional `eitaas-linux-gui` package (Debian/Ubuntu, Fedora, and the Arch
-split package are all named `eitaas-linux-gui`) installs **EITaaS Connect**
-(`eitaas-gui`), a GTK 4/Libadwaita window with three pages:
+The optional `eitaas-linux-gui` package (the same name on Debian/Ubuntu,
+Fedora, and Arch) installs **EITaaS Connect** (`eitaas-gui`), a
+GTK 4/Libadwaita window with three pages:
 
 - **Readiness** shows the `eitaas doctor` result as plain-language rows
   (bundled client, desktop session, smart-card service, reader, card

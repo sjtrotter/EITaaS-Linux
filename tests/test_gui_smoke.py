@@ -120,6 +120,26 @@ class HelperWindowSmokeTests(unittest.TestCase):
         self.assertNotEqual(seen["thread"], threading.get_ident(), "launch ran on a worker")
         self.assertTrue(self.window.connect_button.get_visible())
 
+    def test_quit_while_running_cancels_then_destroys_without_joining(self):
+        self.window.import_profile(self.download())
+        wait_until(lambda: len(self.window.profiles) == 1)
+
+        def fake_launch(request, on_progress=None, cancel=None):
+            cancel.wait(5)
+            return Result(ConnectionResult(130, cancelled=True))
+
+        with patch.object(self.core, "launch", side_effect=fake_launch), \
+                patch.object(self.window, "destroy") as destroy:
+            self.window.start_connection()
+            pump(0.1)
+            self.window.request_quit()
+            self.assertFalse(self.window.get_visible())
+            self.assertTrue(self.window.cancel_event.is_set())
+            destroy.assert_not_called()
+            wait_until(lambda: self.window.worker is None)
+            pump(0.1)
+            destroy.assert_called_once()
+
     def test_launch_error_is_rendered_from_application_error(self):
         self.window.import_profile(self.download())
         wait_until(lambda: len(self.window.profiles) == 1)

@@ -10,10 +10,10 @@
     <p>
       EITaaS Connect is a small desktop helper for Azure Virtual Desktop sessions that use a
       smart card (PIV). It checks that the bundled client, the desktop session, the smart-card
-      stack, and the certificate trust store are ready before you connect.
+      stack, and the identity broker are ready before you connect.
     </p>
     <p>
-      Import an exported .rdpw profile and it is copied into a private, per-user store with
+      Import an exported .rdpw profile and it is moved into a private, per-user store with
       restrictive permissions. Pressing Connect launches the bundled eitaas-remmina client for
       that profile. Sign-in and PIN prompts happen inside the client, never in this helper.
     </p>

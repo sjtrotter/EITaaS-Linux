@@ -2,7 +2,7 @@ import os
 import stat
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -153,8 +153,66 @@ class ProfileStoreTests(unittest.TestCase):
         self.assertIn("name: Desktop.rdpw", output.getvalue())
         self.assertNotIn(str(self.downloads), output.getvalue())
         self.assertEqual(profiles.list_profiles(), [])
-        with redirect_stdout(StringIO()):
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
             self.assertEqual(main(["profile", "remove", "Desktop.rdpw"]), 2)
+
+    def test_symlink_swap_between_check_and_link_is_rejected(self):
+        source = self.download()
+        victim = self.home / "victim.txt"
+        victim.write_text("secret")
+        victim.chmod(0o644)
+        real_link = os.link
+
+        def swap_then_link(src, dst, **kwargs):
+            Path(src).unlink()
+            Path(src).symlink_to(victim)
+            return real_link(src, dst, **kwargs)
+
+        with patch("eitaas.profiles.os.link", side_effect=swap_then_link):
+            with self.assertRaises(ProfileError):
+                profiles.import_profile(source)
+        self.assertEqual(profiles.list_profiles(), [])
+        self.assertEqual(stat.S_IMODE(victim.lstat().st_mode), 0o644, "victim mode untouched")
+        self.assertFalse(any(profiles.store_dir().iterdir()))
+
+    def test_copy_path_rechecks_size_and_removes_partial_target(self):
+        source = self.download()
+
+        def grow_then_exdev(src, dst, **kwargs):
+            with open(src, "ab") as handle:
+                handle.write(b"x" * (profiles.MAX_PROFILE_SIZE + 1))
+            raise OSError(18, "Invalid cross-device link")
+
+        with patch("eitaas.profiles.os.link", side_effect=grow_then_exdev):
+            with self.assertRaises(ProfileError):
+                profiles.import_profile(source)
+        self.assertTrue(source.exists(), "source is kept on failure")
+        self.assertFalse(any(profiles.store_dir().iterdir()))
+
+    def test_fifo_source_is_rejected_without_blocking(self):
+        fifo = self.downloads / "pipe.rdpw"
+        os.mkfifo(fifo)
+        with self.assertRaises(ProfileError):
+            profiles.import_profile(fifo)
+
+    def test_invalid_after_move_is_removed_and_not_defaulted(self):
+        source = self.download()
+        with patch("eitaas.profiles.validate_profile", side_effect=ProfileError("bad")):
+            with self.assertRaises(ProfileError):
+                profiles.import_profile(source)
+        self.assertFalse(any(profiles.store_dir().iterdir()))
+        self.assertIsNone(profiles.default_profile())
+
+    def test_default_fallback_skips_profiles_that_no_longer_validate(self):
+        profiles.import_profile(self.download("A.rdpw"))
+        second = profiles.import_profile(self.download("B.rdpw"))
+        second.path.chmod(0o644)
+        profiles._write_default_name(None)
+        listed = {item.name: item for item in profiles.list_profiles()}
+        self.assertFalse(listed["B.rdpw"].valid)
+        self.assertEqual(profiles.default_profile().name, "A.rdpw")
+        with self.assertRaises(ProfileError):
+            profiles.set_default("B.rdpw")
 
 
 if __name__ == "__main__":
