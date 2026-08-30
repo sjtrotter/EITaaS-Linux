@@ -1,19 +1,27 @@
-From 456f880657bebe88910fbca938b3479a1c57ba7d Mon Sep 17 00:00:00 2001
+From 62787c477fbccfe141988cb190c1a3335e98a2bd Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 2/6] RDP: select Azure US Government AVD authentication
+Subject: [PATCH 2/7] RDP: select Azure US Government AVD authentication
 
 FreeRDP defaults the AVD OAuth authority, scope, and redirect format to
 the commercial cloud. A protected profile whose gateway lives in the
 public Azure US Government namespace (*.wvd.azure.us) therefore failed
 authentication against login.microsoftonline.us.
 
-When the parsed gateway host has that suffix, set the authority to
-login.microsoftonline.us, the scope to the www.wvd.azure.us resource, the
-redirect format to the fixed native-client redirect that this cloud
-expects, and enable tenant-specific authorization. Only the public
-gateway suffix and public cloud constants are used; nothing is copied
-from the profile.
+Collect the public constants of every supported cloud in one table,
+rdp_avd_cloud.h: the gateway namespace that identifies the cloud and the
+authority, scope, and redirect format FreeRDP's AVD token path reads. The
+commercial cloud FreeRDP defaults to is the first entry, so the same table
+describes both what a profile gets by default and what a gateway host in
+another namespace selects.
+
+When the gateway host parsed from the profile belongs to a cloud in that
+table, apply its authority, scope, and redirect format and enable
+tenant-specific authorization. An authority that is not FreeRDP's default
+was configured on purpose, so it and the settings around it are used as
+they are instead of being replaced; only the defaults are selected over.
+Nothing is copied from the profile: the gateway suffix decides which row
+of public constants applies.
 
 Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
 newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
@@ -22,33 +30,154 @@ were added in that release, and every other API used is older.
 This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.
 ---
- plugins/rdp/rdp_plugin.c | 19 +++++++++++++++++++
- 1 file changed, 19 insertions(+)
+ plugins/rdp/CMakeLists.txt  |  1 +
+ plugins/rdp/rdp_avd_cloud.h | 81 +++++++++++++++++++++++++++++++++++++
+ plugins/rdp/rdp_plugin.c    | 31 ++++++++++++++
+ 3 files changed, 113 insertions(+)
+ create mode 100644 plugins/rdp/rdp_avd_cloud.h
 
+diff --git a/plugins/rdp/CMakeLists.txt b/plugins/rdp/CMakeLists.txt
+index 5904c5780..3068a6bed 100644
+--- a/plugins/rdp/CMakeLists.txt
++++ b/plugins/rdp/CMakeLists.txt
+@@ -47,6 +47,7 @@ set(REMMINA_PLUGIN_RDP_SRCS
+     rdp_file.h
+     rdp_rdpw.c
+     rdp_rdpw.h
++    rdp_avd_cloud.h
+     rdp_settings.c
+     rdp_settings.h
+     rdp_graphics.c
+diff --git a/plugins/rdp/rdp_avd_cloud.h b/plugins/rdp/rdp_avd_cloud.h
+new file mode 100644
+index 000000000..f600ddb3a
+--- /dev/null
++++ b/plugins/rdp/rdp_avd_cloud.h
+@@ -0,0 +1,81 @@
++/*
++ * Remmina - The GTK+ Remote Desktop Client
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#pragma once
++
++#include <glib.h>
++
++G_BEGIN_DECLS
++
++/*
++ * The public OAuth constants of the Azure clouds whose Azure Virtual Desktop
++ * gateways this client authenticates to: gateway_suffix is the public gateway
++ * namespace that identifies the cloud, and authority, scope and
++ * redirect_format are the values FreeRDP's AVD token path reads from
++ * FreeRDP_GatewayAzureActiveDirectory, FreeRDP_GatewayAvdScope and
++ * FreeRDP_GatewayAvdAccessAadFormat. Nothing here comes from a profile.
++ *
++ * redirect_format is a winpr_asprintf() format string taking the authority
++ * and the tenant, in that order; keep every entry a literal with exactly
++ * those two conversions so that no setting can reach a format argument.
++ */
++typedef struct {
++	const char *	gateway_suffix;
++	const char *	authority;
++	const char *	scope;
++	const char *	redirect_format;
++} RemminaAvdCloud;
++
++/* FreeRDP's default redirect format, accepted in every cloud. */
++#define REMMINA_AVD_REDIRECT_DYNAMIC "https%%3A%%2F%%2F%s%%2F%s%%2Foauth2%%2Fnativeclient"
++
++/*
++ * Every supported cloud. The first entry is the commercial cloud FreeRDP
++ * defaults to and has no gateway suffix of its own: it is what a profile gets
++ * when no other cloud claims its gateway host.
++ */
++static inline const RemminaAvdCloud *remmina_avd_clouds(gsize *count)
++{
++	static const RemminaAvdCloud clouds[] = {
++		{
++			NULL,
++			"login.microsoftonline.com",
++			"https%3A%2F%2Fwww.wvd.microsoft.com%2F.default%20openid%20profile%20offline_access",
++			REMMINA_AVD_REDIRECT_DYNAMIC
++		},
++		{
++			".wvd.azure.us",
++			"login.microsoftonline.us",
++			"https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access",
++			"https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient"
++		}
++	};
++
++	if (count)
++		*count = G_N_ELEMENTS(clouds);
++	return clouds;
++}
++
++/* The commercial cloud, which FreeRDP configures a fresh rdpSettings with. */
++static inline const RemminaAvdCloud *remmina_avd_default_cloud(void)
++{
++	return remmina_avd_clouds(NULL);
++}
++
++/* The cloud whose public gateway namespace holds host, or NULL. */
++static inline const RemminaAvdCloud *remmina_avd_cloud_for_gateway(const char *host)
++{
++	gsize count = 0;
++	const RemminaAvdCloud *clouds = remmina_avd_clouds(&count);
++
++	if (!host)
++		return NULL;
++	for (gsize i = 0; i < count; i++)
++		if (clouds[i].gateway_suffix && g_str_has_suffix(host, clouds[i].gateway_suffix))
++			return &clouds[i];
++	return NULL;
++}
++
++G_END_DECLS
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 8da6c8452..3c623ffa3 100644
+index a24ff1835..94c861d87 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
-@@ -1766,6 +1766,25 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -40,6 +40,7 @@
+ 
+ #include "remmina/plugin.h"
+ #include "rdp_plugin.h"
++#include "rdp_avd_cloud.h"
+ #include "rdp_rdpw.h"
+ #include "rdp_event.h"
+ #include "rdp_graphics.h"
+@@ -1781,6 +1782,36 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  			return FALSE;
  		}
  		g_free(filtered);
 +
-+		const gchar *gateway = freerdp_settings_get_string(
-+			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
-+		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
-+			if (!freerdp_settings_set_string(rfi->clientContext.context.settings,
-+							 FreeRDP_GatewayAzureActiveDirectory,
-+							 "login.microsoftonline.us") ||
-+			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
-+							 FreeRDP_GatewayAvdScope,
-+							 "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access") ||
-+			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
-+							 FreeRDP_GatewayAvdAccessAadFormat,
-+							 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
-+			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
-+						       FreeRDP_GatewayAvdUseTenantid, TRUE)) {
-+				REMMINA_PLUGIN_ERROR("Could not configure Azure US Government authentication");
++		rdpSettings *rdpw_settings = rfi->clientContext.context.settings;
++		const RemminaAvdCloud *cloud = remmina_avd_cloud_for_gateway(
++			freerdp_settings_get_string(rdpw_settings, FreeRDP_GatewayHostname));
++		if (cloud) {
++			const gchar *authority = freerdp_settings_get_string(
++				rdpw_settings, FreeRDP_GatewayAzureActiveDirectory);
++
++			/*
++			 * Anything but FreeRDP's own default was chosen on purpose;
++			 * use it rather than replacing it with the cloud selected
++			 * from the gateway host.
++			 */
++			if (g_strcmp0(authority, remmina_avd_default_cloud()->authority) != 0) {
++				REMMINA_PLUGIN_DEBUG("avd-cloud: keeping the configured authority");
++			} else if (!freerdp_settings_set_string(rdpw_settings,
++								FreeRDP_GatewayAzureActiveDirectory,
++								cloud->authority) ||
++				   !freerdp_settings_set_string(rdpw_settings, FreeRDP_GatewayAvdScope,
++								cloud->scope) ||
++				   !freerdp_settings_set_string(rdpw_settings,
++								FreeRDP_GatewayAvdAccessAadFormat,
++								cloud->redirect_format) ||
++				   !freerdp_settings_set_bool(rdpw_settings,
++							      FreeRDP_GatewayAvdUseTenantid, TRUE)) {
++				remmina_plugin_service->protocol_plugin_set_error(
++					gp, "%s", _("Could not configure Azure Virtual Desktop authentication."));
 +				return FALSE;
 +			}
 +		}

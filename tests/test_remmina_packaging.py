@@ -495,7 +495,8 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
     def test_pkcs11_discovery_is_bounded_cancellable_and_uses_trusted_tool(self):
         source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
         for required in (
-            '#define PKCS11_TOOL "/usr/bin/p11tool"',
+            "#define REMMINA_P11TOOL",
+            "g_file_test(REMMINA_P11TOOL, G_FILE_TEST_IS_EXECUTABLE)",
             "PKCS11_TIMEOUT_SECONDS",
             "PKCS11_MAX_OUTPUT",
             "PKCS11_MAX_URI",
@@ -508,7 +509,11 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         ):
             self.assertIn(required, source)
         self.assertNotIn("g_spawn_sync", source)
-        self.assertNotIn("g_find_program_in_path", source)
+        # Every recipe pins the tool this build runs; the PATH lookup exists
+        # for a build that does not pin one, and never overrides a pinned path.
+        for name, recipe in (("spec", SPEC), ("rules", RULES), ("PKGBUILD", PKGBUILD)):
+            with self.subTest(recipe=name):
+                self.assertIn("-DREMMINA_P11TOOL=/usr/bin/p11tool", recipe)
 
     def test_oauth_patch_restricts_cloud_client_scope_and_redirect(self):
         patch = (PACKAGE_DIR / "0004-use-profile-avd-scope.patch").read_text()
@@ -830,13 +835,78 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
                 self.assertIn("FreeRDP 3.16.0 or", body)
                 self.assertNotIn("SSO-MIB", body)
 
+    # Outside plugins/rdp/ the series may only register what the plugin needs:
+    # the .rdpw file association, the two new sources for translation, and the
+    # opt-in test build. Widen this deliberately.
+    ALLOWED_OUTSIDE_THE_PLUGIN = {
+        "data/desktop/org.remmina.Remmina-mime.xml",
+        "po/POTFILES.in",
+        "CMakeLists.txt",
+    }
+
     def test_series_touches_only_the_rdp_plugin(self):
         for patch in self.patches:
             with self.subTest(patch=patch.name):
-                # The series is an RDP-plugin change only; widen this deliberately
-                # if a future commit must touch the top-level build.
                 for path in re.findall(r"^\+\+\+ b/(\S+)$", self.texts[patch.name], re.MULTILINE):
+                    if path in self.ALLOWED_OUTSIDE_THE_PLUGIN:
+                        continue
                     self.assertTrue(path.startswith("plugins/rdp/"), path)
+
+    def test_rdpw_files_are_associated_with_remmina(self):
+        """Issue #79: a downloaded .rdpw opens with Remmina from a file manager."""
+        mime = self.texts["0001-RDP-preserve-protected-RDPW-settings.patch"]
+        self.assertIn("+++ b/data/desktop/org.remmina.Remmina-mime.xml", mime)
+        for glob in ('+        <glob pattern="*.rdpw"/>', '+        <glob pattern="*.RDPW"/>'):
+            self.assertIn(glob, mime)
+
+    def test_import_rejects_arm_without_a_gateway(self):
+        """Issue #79: an ARM profile that names no gateway is not an AVD file."""
+        first = self.texts["0001-RDP-preserve-protected-RDPW-settings.patch"]
+        self.assertIn("REMMINA_RDPW_AVD_WITHOUT_GATEWAY", first)
+        self.assertIn("not an Azure Virtual Desktop connection file", first)
+
+    def test_a_build_without_aad_refuses_to_connect_an_avd_profile(self):
+        """Issue #79: import may succeed, connecting says why it cannot."""
+        first = self.texts["0001-RDP-preserve-protected-RDPW-settings.patch"]
+        self.assertIn("+#ifndef WITH_RDP_AUTH_AAD", first)
+        self.assertIn("lacks Azure AD support", first)
+
+    def test_invalid_profile_content_never_aborts_remmina(self):
+        """REMMINA_PLUGIN_ERROR calls g_error(): untrusted content must not reach it."""
+        added = "\n".join(line for text in self.texts.values() for line in text.splitlines()
+                          if line.startswith("+") and not line.startswith("+++"))
+        self.assertNotIn("REMMINA_PLUGIN_ERROR", added)
+
+    def test_new_user_visible_strings_are_translatable(self):
+        """Issue #79: both new sources are listed for translation."""
+        joined = "\n".join(self.texts.values())
+        for source in ("plugins/rdp/rdp_web_auth.c", "plugins/rdp/rdp_web_auth_pkcs11.c"):
+            self.assertIn(f"+{source}", joined)
+        pkcs11 = self.texts["0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch"]
+        for dialog in ("Reading smart card", "Select client certificate for %s",
+                       "Client certificate PIN for %s"):
+            self.assertIn(f'_("{dialog}")', pkcs11)
+
+    def test_cloud_constants_live_in_one_table(self):
+        """Issue #79: one authority/scope/redirect table serves selection and validation."""
+        joined = "\n".join(self.texts.values())
+        self.assertEqual(joined.count("static inline const RemminaAvdCloud *remmina_avd_clouds("), 1)
+        for constant in ("https%3A%2F%2Fwww.wvd.azure.us%2F.default",
+                         "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default",
+                         "login.microsoftonline.us\"",
+                         "REMMINA_AVD_REDIRECT_DYNAMIC \""):
+            added = [line for line in joined.splitlines()
+                     if line.startswith("+") and constant in line]
+            self.assertEqual(len(added), 1, constant)
+
+    def test_the_series_ships_a_ctest_for_the_rdpw_helpers(self):
+        """Issue #79: the allowlist and import helpers are exercised by a test."""
+        tests = self.texts["0007-RDP-test-the-protected-connection-file-helpers.patch"]
+        self.assertIn("+++ b/plugins/rdp/test/test_rdp_rdpw.c", tests)
+        self.assertIn("+++ b/plugins/rdp/test/synthetic-avd.rdpw", tests)
+        self.assertIn("add_test(NAME rdp-rdpw", tests)
+        self.assertIn("if(BUILD_TESTING)", tests)
+        self.assertNotRegex(tests, r"(?i)eitaas")
 
     def test_series_carries_no_downstream_branding(self):
         for patch in self.patches:
@@ -878,6 +948,8 @@ class RemminaUpstreamSeriesTests(unittest.TestCase):
         self.assertIn("build ON", job)
         self.assertIn("build OFF", job)
         self.assertIn("--target remmina-plugin-rdp", job)
+        self.assertIn("-DBUILD_TESTING=ON", job)
+        self.assertIn("ctest --test-dir remmina-build-test", job)
         # Remmina's find_suggested_package() is fatal unless WITH_<PKG>=OFF.
         for flag in ("-DWITH_AVAHI=OFF", "-DWITH_CUPS=OFF", "-DWITH_PYTHONLIBS=OFF"):
             self.assertIn(flag, job)
@@ -1010,12 +1082,26 @@ class SmartcardDiagnosticsTests(unittest.TestCase):
             self.assertIn('#define PKCS11_TRUST_MODEL "p11-kit-trust"', source)
             self.assertIn("stats->empty_tokens++", source)
             self.assertIn("stats->trust_skipped++", source)
-            self.assertIn('"PKCS11 token discovery failed (exit status %d)"', source)
-            self.assertIn('"PKCS11 certificate listing failed (exit status %d)"', source)
-            self.assertIn('"PKCS11 discovery tool terminated by signal"', source)
+            # A token whose listing exits non-zero without printing a URL is
+            # empty; a non-zero status and a tool killed by a signal stay
+            # fatal. The message wording differs between the trees because the
+            # upstream strings are translated; the reported status does not.
+            self.assertIn("if (certs->len == 0) {", source)
+            self.assertIn("status < 0", source)
+            self.assertEqual(source.count("(exit status %d)"), 2)
+
+    def test_p11tool_is_resolved_at_run_time_in_both_trees(self):
+        """Issue #79: no hard-coded /usr/bin/p11tool, and a clear error when absent."""
+        for source in (self.downstream, self.upstream):
+            self.assertIn('g_find_program_in_path("p11tool")', source)
+            self.assertIn("#define REMMINA_P11TOOL", source)
+            # the diff body, so a commit message may still name the old path
+            self.assertNotIn('"/usr/bin/p11tool"', source.split("\n---\n", 1)[-1])
+            self.assertIn("discovery-tool-missing", source)
+            self.assertIn("gnutls-bin or gnutls-utils", source)
 
     def test_discovery_against_a_fake_p11tool(self):
-        """Compile the discovery harness with a scratch shell script as PKCS11_TOOL."""
+        """Compile the discovery harness with a scratch shell script as REMMINA_P11TOOL."""
         cc = shutil.which("cc")
         pkg_config = shutil.which("pkg-config")
         if not cc or not pkg_config:
@@ -1036,7 +1122,7 @@ class SmartcardDiagnosticsTests(unittest.TestCase):
             tool.chmod(0o700)
             binary = Path(workdir) / "test_pkcs11_discovery"
             subprocess.run(
-                [cc, "-std=gnu11", "-Wall", "-Werror", f'-DPKCS11_TOOL="{tool}"',
+                [cc, "-std=gnu11", "-Wall", "-Werror", f'-DREMMINA_P11TOOL="{tool}"',
                  str(harness), "-o", str(binary), *flags],
                 check=True, timeout=120,
             )

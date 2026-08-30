@@ -2,5 +2,8 @@ screen mode id:i:2
 redirectsmartcards:i:1
 redirectclipboard:i:0
 full address:s:synthetic.wvd.azure.us
+gatewayhostname:s:synthetic-gateway.wvd.azure.us
+resourceprovider:s:arm
+aadtenantid:s:synthetic-tenant
 loadbalanceinfo:s:SYNTHETIC-NOT-A-REAL-ROUTING-TOKEN
 username:s:synthetic@example.invalid

@@ -1,4 +1,4 @@
-From dbe63a95682a806721bde1c68cae9b6151e4e355 Mon Sep 17 00:00:00 2001
+From b26e79d29c3efe2cfc69b4da49c5d021c8a42c03 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 11:15:06 -0500
 Subject: [PATCH] Harden RDPW and OAuth transaction boundaries
@@ -7,20 +7,63 @@ License: GPL-2.0-or-later
 
 Copyright: 2026 Stephen Trotter
 ---
- plugins/rdp/rdp_file.c     |  83 +++++---
- plugins/rdp/rdp_plugin.c   |  98 +++++++---
+ plugins/rdp/rdp_file.c     | 136 ++++++++++---
+ plugins/rdp/rdp_plugin.c   | 110 ++++++++---
  plugins/rdp/rdp_web_auth.c | 387 +++++++++++++++++++++++++++++++------
- 3 files changed, 460 insertions(+), 108 deletions(-)
+ 3 files changed, 525 insertions(+), 108 deletions(-)
 
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
-index 63f5e0e..f19e19a 100644
+index 63f5e0e..f5374ee 100644
 --- a/plugins/rdp/rdp_file.c
 +++ b/plugins/rdp/rdp_file.c
-@@ -250,6 +250,50 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
+@@ -250,6 +250,101 @@ static RemminaFile *remmina_rdp_file_import_channel(GIOChannel *channel)
  	return remminafile;
  }
  
-+static RemminaFile *remmina_rdp_file_import_buffer(const gchar *contents, gsize length)
++/*
++ * Azure Virtual Desktop publishes the ARM resource provider together with the
++ * gateway host that serves the workspace. An ARM file without that host names
++ * no gateway to reach and can only fail at connection time, so it is refused
++ * while importing; a file that does not select ARM is an ordinary profile.
++ */
++typedef enum {
++	RDPW_GENERIC = 0,
++	RDPW_AVD,
++	RDPW_AVD_WITHOUT_GATEWAY
++} RdpwKind;
++
++static RdpwKind remmina_rdp_file_classify(const gchar *utf8)
++{
++	gboolean arm = FALSE;
++	gboolean gateway = FALSE;
++	gchar **lines = g_strsplit(utf8, "\n", -1);
++
++	for (gchar **line = lines; line && *line; line++) {
++		g_strchomp(*line);
++		const gchar *first = strchr(*line, ':');
++		if (!first)
++			continue;
++		const gchar *second = strchr(first + 1, ':');
++		if (!second)
++			continue;
++		gchar *key = g_strndup(*line, first - *line);
++		const gchar *value = second + 1;
++
++		if (g_ascii_strcasecmp(key, "resourceprovider") == 0 &&
++		    g_ascii_strcasecmp(value, "arm") == 0)
++			arm = TRUE;
++		else if (g_ascii_strcasecmp(key, "gatewayhostname") == 0 && *value)
++			gateway = TRUE;
++		g_free(key);
++	}
++	g_strfreev(lines);
++	if (!arm)
++		return RDPW_GENERIC;
++	return gateway ? RDPW_AVD : RDPW_AVD_WITHOUT_GATEWAY;
++}
++
++static RemminaFile *remmina_rdp_file_import_buffer(const gchar *contents, gsize length,
++                                                   RdpwKind *kind)
 +{
 +	const gchar *source = contents;
 +	gsize source_length = length;
@@ -40,6 +83,14 @@ index 63f5e0e..f19e19a 100644
 +	}
 +	if (!utf8) {
 +		g_clear_error(&error);
++		return NULL;
++	}
++
++	*kind = remmina_rdp_file_classify(utf8);
++	if (*kind == RDPW_AVD_WITHOUT_GATEWAY) {
++		REMMINA_PLUGIN_WARNING("This is not an Azure Virtual Desktop connection file: "
++		                       "it selects the ARM resource provider but names no gateway host");
++		g_free(utf8);
 +		return NULL;
 +	}
 +
@@ -67,7 +118,7 @@ index 63f5e0e..f19e19a 100644
  RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from_file)
  {
  	TRACE_CALL(__func__);
-@@ -260,7 +304,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -260,7 +355,7 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  	gboolean protected_profile = extension && g_ascii_strcasecmp(extension, ".rdpw") == 0;
  	gchar *protected_contents = NULL;
  	gsize protected_length = 0;
@@ -76,17 +127,19 @@ index 63f5e0e..f19e19a 100644
  
  	if (protected_profile) {
  		if (!remmina_rdp_file_read_protected(from_file, &protected_contents,
-@@ -269,8 +313,15 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -269,8 +364,17 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  			g_free(protected_contents);
  			return NULL;
  		}
 -		protected_digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
 -		    (const guchar *)protected_contents, protected_length);
 +		protected_encoded = g_base64_encode((const guchar *)protected_contents, protected_length);
-+		remminafile = remmina_rdp_file_import_buffer(protected_contents, protected_length);
++		RdpwKind kind = RDPW_GENERIC;
++		remminafile = remmina_rdp_file_import_buffer(protected_contents, protected_length, &kind);
 +		if (remminafile) {
 +			remmina_plugin_service->file_set_string(remminafile, "rdpw_data", protected_encoded);
-+			remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
++			if (kind == RDPW_AVD)
++				remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
 +		}
 +		g_free(protected_contents);
 +		g_free(protected_encoded);
@@ -94,7 +147,7 @@ index 63f5e0e..f19e19a 100644
  	}
  
  	channel = g_io_channel_new_file(from_file, "r", &error);
-@@ -278,37 +329,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -278,37 +382,11 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
  	if (channel == NULL) {
  		g_print("Failed to import %s: %s\n", from_file, error->message);
  		g_clear_error(&error);
@@ -133,7 +186,7 @@ index 63f5e0e..f19e19a 100644
  	return remminafile;
  }
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 4f7224a..4434824 100644
+index 4f7224a..ee7007b 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
 @@ -155,6 +155,10 @@ static void freerdp_abort_connect_context(rdpContext* context) {
@@ -147,7 +200,7 @@ index 4f7224a..4434824 100644
  static BOOL gfx_h264_available = FALSE;
  
  /* Compatibility: these functions have been introduced with https://github.com/FreeRDP/FreeRDP/commit/8c5d96784d
-@@ -1749,32 +1753,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1749,32 +1753,31 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  	channels = rfi->clientContext.context.channels;
  
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
@@ -157,16 +210,23 @@ index 4f7224a..4434824 100644
 -		const gchar *rdpw_digest = remmina_plugin_service->file_get_string(
 -		    remminafile, "eitaas_rdpw_sha256");
 -		gchar *contents = NULL;
-+	const gchar *rdpw_data = remmina_plugin_service->file_get_string(remminafile, "rdpw_data");
-+	if (rdpw_data) {
- 		gsize length = 0;
+-		gsize length = 0;
 -		gchar *digest = NULL;
 -		if (!rdpw_digest || !remmina_rdp_file_read_protected(
 -		                         rdpw_path, &contents, &length, NULL)) {
 -			g_free(contents);
 -			REMMINA_PLUGIN_ERROR("Could not safely load the protected RDPW profile");
--			return FALSE;
--		}
++	const gchar *rdpw_data = remmina_plugin_service->file_get_string(remminafile, "rdpw_data");
++	if (rdpw_data) {
++#ifndef WITH_RDP_AUTH_AAD
++		/* Importing an AVD profile works, but there is no WebKit token path. */
++		if (g_strcmp0(remmina_plugin_service->file_get_string(remminafile, "gwtransp"),
++			      "arm") == 0) {
++			remmina_plugin_service->protocol_plugin_set_error(
++				gp, "%s", _("This build of Remmina lacks Azure AD support, which this "
++					    "Azure Virtual Desktop connection requires."));
+ 			return FALSE;
+ 		}
 -		digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256,
 -		    (const guchar *)contents, length);
 -		if (g_strcmp0(digest, rdpw_digest) != 0 ||
@@ -175,6 +235,8 @@ index 4f7224a..4434824 100644
 -			g_free(digest);
 -			g_free(contents);
 -			REMMINA_PLUGIN_ERROR("Protected RDPW profile changed after import or is invalid");
++#endif
++		gsize length = 0;
 +		guchar *contents = g_base64_decode(rdpw_data, &length);
 +		gsize filtered_length = 0;
 +		gchar *filtered = rdpw_native_settings_allowlist(contents, length, &filtered_length);
@@ -182,7 +244,8 @@ index 4f7224a..4434824 100644
 +		if (!filtered || freerdp_client_settings_parse_connection_file_buffer(
 +		        rfi->clientContext.context.settings, (const BYTE *)filtered, filtered_length) != 0) {
 +			g_free(filtered);
-+			REMMINA_PLUGIN_ERROR("Protected RDPW profile contains invalid or disallowed settings");
++			remmina_plugin_service->protocol_plugin_set_error(
++				gp, "%s", _("The stored connection file holds invalid or disallowed settings."));
  			return FALSE;
  		}
 -		g_free(digest);
@@ -191,7 +254,17 @@ index 4f7224a..4434824 100644
  		const gchar *gateway = freerdp_settings_get_string(
  			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
  		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
-@@ -3679,3 +3671,63 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
+@@ -1789,7 +1792,8 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+ 			                                 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
+ 			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
+ 			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
+-				REMMINA_PLUGIN_ERROR("Could not configure Azure Government authentication");
++				remmina_plugin_service->protocol_plugin_set_error(
++					gp, "%s", _("Could not configure Azure Virtual Desktop authentication."));
+ 				return FALSE;
+ 			}
+ 		}
+@@ -3679,3 +3683,63 @@ G_MODULE_EXPORT gboolean remmina_plugin_entry(RemminaPluginService *service)
  
  	return TRUE;
  }
