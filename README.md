@@ -236,9 +236,11 @@ each, the newest five kept). The last line is `exit=<code>`.
   in the session log rather than suppressed at the source; no `WLOG_FILTER` or
   bundled FreeRDP patch is used for them.
 
-  **Older logs are not cleaned retroactively.** Session logs written before the
-  cookie rules landed (bundles up to `1.4.43+eitaas0.13`) may still contain
-  Azure `ARRAffinity` routing cookies in clear text. They are load-balancer
+  **Older logs are not cleaned retroactively.** Session logs written by earlier
+  builds — the `eitaas-linux` 0.1.x CLI and the split-package installs that
+  preceded it, together with bundle releases up to `1.4.43+eitaas0.15` — may
+  still contain unredacted Azure `ARRAffinity` routing cookies; the cookie
+  rules ship in the `eitaas-linux` 0.2.x package. They are load-balancer
   routing values, not credentials, but they are server-issued and
   session-scoped: review a log before attaching it to a support request, or
   delete `$XDG_STATE_HOME/eitaas-remmina/logs/` and let the next connection
