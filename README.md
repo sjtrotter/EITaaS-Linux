@@ -59,11 +59,18 @@ untrusted processes belonging to one user. Remove the CAC when it is not in use.
    eitaas inspect-profile Desktop.rdpw
    ```
 
-5. Connect:
+5. Connect with the isolated one-shot GovCloud client:
 
    ```bash
-   eitaas connect Desktop.rdpw
+   eitaas-remmina Desktop.rdpw
    ```
+
+The EITaaS suite combines the `eitaas` setup/diagnostic tool with a pinned,
+privately installed Remmina and FreeRDP pair. It does not replace the system
+Remmina installation, and it does not provide an enhanced connection-manager
+mode. The exact upstream versions and downstream CAC/GovCloud patches are
+recorded in `packaging/remmina/sources.json` and shipped with corresponding
+source.
 
 Do not publish, attach, or commit the exported profile. Treat it as
 user/resource-specific connection material even when it does not contain a

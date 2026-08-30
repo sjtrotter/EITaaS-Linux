@@ -37,26 +37,13 @@ architectures remain unsupported until they have native builders and CAC/AVD
 hardware results. Support is release-specific: passing on one Fedora, Ubuntu,
 Debian, or Arch snapshot does not imply support for another.
 
-### Portable formats
+### Product boundary
 
-AppImage is a secondary experiment, not the primary release format. An
-evaluation must be built on the oldest selected glibc baseline, must not bundle
-or replace the host PC/SC daemon or PKCS #11 middleware, and must record:
-
-- compressed and unpacked size;
-- glibc and graphics compatibility on every target host;
-- WebKitGTK authentication behavior;
-- discovery of host OpenSC/vendor modules and the PC/SC socket; and
-- the complete native matrix below.
-
-An AppImage built from the Fedora artifact is explicitly not a supported
-portable deliverable.
-
-Flatpak is deferred. Before it can become a candidate, a documented design
-must demonstrate least-privilege access to the PC/SC socket, required devices,
-host PKCS #11 middleware, WebKit authentication, and desktop integration. A
-broad filesystem or device escape is not an acceptable substitute. Until that
-design and the hardware matrix pass, no Flatpak is published as supported.
+EITaaS is distributed only as distribution-native packages containing the
+setup/diagnostic wrapper and the isolated one-shot Remmina/FreeRDP pair. A
+connection always starts with `eitaas-remmina PROFILE.rdpw`; an enhanced
+connection manager, replacement or side-by-side Remmina plugin, AppImage,
+Flatpak, and independent RDP client are intentionally outside scope.
 
 ## Support boundary
 
@@ -80,24 +67,24 @@ for required host components.
 `A` means an automated gate. `H` means a manual hardware/AVD gate. Every cell
 is required for a support claim unless marked not applicable.
 
-| Gate | Fedora RPM | Ubuntu DEB | Debian DEB | Arch package | AppImage evaluation | Flatpak evaluation |
-| --- | --- | --- | --- | --- | --- | --- |
-| Manifest pins and SHA-256 verification | A | A | A | A | A | A |
-| Reproducible source/recipe inputs | A | A | A | A | A | A |
-| Clean build on declared baseline | A | A | A | A | A | A |
-| Install, upgrade, remove | A | A | A | A | A | A |
-| Private-prefix and dependency audit | A | A | A | A | A | A |
-| License and corresponding-source contents | A | A | A | A | A | A |
-| Artifact SBOM and provenance | A | A | A | A | A | A |
-| `eitaas doctor` and isolated launcher smoke test | A | A | A | A | A | A |
-| Azure Government initial CAC authentication | H | H | H | H | H | H |
-| Smart-card passthrough inside AVD | H | H | H | H | H | H |
-| Card removal/reinsertion | H | H | H | H | H | H |
-| Disconnect/reconnect | H | H | H | H | H | H |
-| Cancel during certificate discovery | H | H | H | H | H | H |
-| GNOME/KDE X11 and Wayland/XWayland rendering | H | H | H | H | H | H |
-| Multimonitor, scaling, input alignment, and responsiveness | H | H | H | H | H | H |
-| Host middleware/socket compatibility | H | H | H | H | H | H |
+| Gate | Fedora RPM | Ubuntu DEB | Debian DEB | Arch package |
+| --- | --- | --- | --- | --- |
+| Manifest pins and SHA-256 verification | A | A | A | A |
+| Reproducible source/recipe inputs | A | A | A | A |
+| Clean build on declared baseline | A | A | A | A |
+| Install, upgrade, remove | A | A | A | A |
+| Private-prefix and dependency audit | A | A | A | A |
+| License and corresponding-source contents | A | A | A | A |
+| Artifact SBOM and provenance | A | A | A | A |
+| `eitaas doctor` and isolated launcher smoke test | A | A | A | A |
+| Azure Government initial CAC authentication | H | H | H | H |
+| Smart-card passthrough inside AVD | H | H | H | H |
+| Card removal/reinsertion | H | H | H | H |
+| Disconnect/reconnect | H | H | H | H |
+| Cancel during certificate discovery | H | H | H | H |
+| GNOME/KDE X11 and Wayland/XWayland rendering | H | H | H | H |
+| Multimonitor, scaling, input alignment, and responsiveness | H | H | H | H |
+| Host middleware/socket compatibility | H | H | H | H |
 
 Hardware evidence must not contain real profiles, identities, certificate
 details, PINs, OAuth callbacks, or tokens. Failures remain failures; certificate
@@ -107,15 +94,13 @@ make a matrix cell pass.
 ## Release consequences
 
 - The current Fedora RPM is downloadable proof of concept, not evidence that
-  Ubuntu, Debian, Arch, AppImage, or Flatpak is supported.
+  Ubuntu, Debian, or Arch is supported.
 - DEB (#40) and PKGBUILD (#41) recipes for the enhanced client are required
   before those native targets can enter hardware validation.
-- AppImage feasibility is tracked in #42; Flatpak confinement feasibility is
-  tracked in #43. Neither format is currently supported.
 - Release automation must generate an SBOM for the actual enhanced-client
   artifact, not only for the Python build environment.
 - The binary and corresponding source package must be published together for
   every supported artifact.
-- Performance work (#36), display correctness (#29), plugin/upstream design
-  (#33), launch modes (#38), and release/SBOM hardening (#10) remain independent
-  gates and are not hidden by the packaging decision.
+- Performance work (#36), display correctness (#29), upstream contributions
+  (#33), and release/SBOM hardening (#10) remain independent gates and are not
+  hidden by the packaging decision.
