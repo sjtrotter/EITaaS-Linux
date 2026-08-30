@@ -201,3 +201,36 @@ jobs:
             dist/eitaas-remmina*.tar.xz
             dist/eitaas-remmina*.buildinfo
             dist/eitaas-remmina*.changes
+
+  remmina-arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report Arch validation scope
+        run: |
+          snapshot=$(cat packaging/remmina/arch/SNAPSHOT)
+          echo "Release/reproducibility snapshot: $snapshot"
+          echo "GitHub CI uses current official repositories for compatibility validation."
+      - name: Install build dependencies
+        run: >-
+          pacman -Syyu --noconfirm --needed base-devel cmake curl gettext git
+          gnutls gtk3 icu json-c json-glib krb5 libsecret libsodium libsoup3
+          libssh namcap ninja opensc openssl patch pcsclite python
+          webkit2gtk-4.1
+      - name: Build package as an unprivileged user
+        run: |
+          useradd --create-home builder
+          install -d -o builder -g builder "$GITHUB_WORKSPACE/.build" "$GITHUB_WORKSPACE/dist"
+          runuser -u builder -- scripts/build-remmina-arch.sh
+      - name: Check package metadata and contents
+        run: namcap .build/eitaas-remmina-arch/package/PKGBUILD dist/eitaas-remmina-*.pkg.tar.zst
+      - name: Test install, dependencies, and removal
+        run: scripts/test-remmina-arch-lifecycle.sh dist/eitaas-remmina-*.pkg.tar.zst
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remmina-arch-package
+          path: |
+            dist/eitaas-remmina-*.pkg.tar.zst
+            .build/eitaas-remmina-arch/eitaas-remmina-*-source.tar.gz
