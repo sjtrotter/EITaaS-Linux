@@ -210,7 +210,9 @@ jobs:
       - name: Select recorded Arch repository snapshot
         run: |
           snapshot=$(cat packaging/remmina/arch/SNAPSHOT)
-          printf 'Server = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "$snapshot" > /etc/pacman.d/mirrorlist
+          # The primary archive host returns 404 from some GitHub-hosted Azure
+          # runners. Use Arch's documented dedicated archive mirror instead.
+          printf 'Server = https://umea.archive.pkgbuild.com/repos/%s/$repo/os/$arch\n' "$snapshot" > /etc/pacman.d/mirrorlist
       - name: Install build dependencies
         run: >-
           pacman -Syyu --noconfirm --needed base-devel cmake curl gettext git
