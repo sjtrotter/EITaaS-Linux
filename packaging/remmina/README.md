@@ -34,6 +34,11 @@ After installation, launch only through:
 eitaas-remmina "$HOME/Downloads/Desktop.rdpw"
 ```
 
+This command is a one-shot connection: cancelling CAC authentication closes
+the authentication flow and the isolated Remmina application instead of
+leaving its connection manager open. A future no-argument manager mode is
+tracked separately and will intentionally remain open between connections.
+
 The launcher uses an isolated configuration directory below
 `$XDG_STATE_HOME/eitaas-remmina` (or `~/.local/state/eitaas-remmina`) so user
 plugins and settings from the distribution Remmina installation are not mixed

@@ -142,6 +142,15 @@ static void discovery_free(EitaasCertificateDiscovery *discovery)
 	g_free(discovery);
 }
 
+static void quit_oneshot_application(void)
+{
+	if (g_strcmp0(g_getenv("EITAAS_REMMINA_ONESHOT"), "1") != 0)
+		return;
+	GApplication *application = g_application_get_default();
+	if (application)
+		g_application_quit(application);
+}
+
 static void enumerate_certificates_thread(GTask *task, gpointer source_object,
 	                                      gpointer task_data, GCancellable *cancellable)
 {
@@ -194,6 +203,7 @@ static GPtrArray *discover_certificates(GtkWindow *parent,
 		discovery->abandoned = TRUE;
 		webkit_authentication_request_cancel(request);
 		gtk_window_close(parent);
+		quit_oneshot_application();
 		return NULL;
 	}
 
