@@ -173,9 +173,9 @@ These are the defaults as implemented today, not intentions:
   a profile that omits it gets the RDP default (enabled). The launcher does not
   override it, and the field is not among the keys forwarded to FreeRDP's
   native profile parser. The exported profile is the policy source, by design.
-- **Untrusted profile content is allowlisted.** Only a fixed set of AVD/gateway
-  keys from the signed profile reaches FreeRDP's native parser
-  (`packaging/remmina/0006-*.patch`).
+- **Untrusted profile content is allowlisted.** Only a fixed set of AVD and
+  gateway keys from the profile reaches FreeRDP's native parser; everything
+  else is dropped before parsing (`packaging/remmina/0006-*.patch`).
 - **Nothing privileged is installed or changed.** No pcsc-lite or polkit
   override, no trust-store modification, no `sudo` anywhere in diagnostics.
 - Real profiles, OAuth callbacks, keys, certificates, packet captures, and
