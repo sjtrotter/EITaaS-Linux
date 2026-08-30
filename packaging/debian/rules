@@ -1,10 +1,12 @@
 #!/usr/bin/make -f
 
-# Two binary packages share one pybuild build: pybuild installs the wheel into
-# debian/tmp and the *.install files split it. dh_python3 runs for every binary
-# package that ships files under /usr/lib/python3/dist-packages, so both
-# eitaas-linux and eitaas-linux-gui receive ${python3:Depends} without
-# --package hints. The dist-info stays in eitaas-linux only.
+# Two binary packages share one pybuild build. With more than one package
+# pybuild would install into the first python3-* package directory, so pin
+# the destination to debian/tmp and let the *.install files split it.
+# dh_python3 processes every package shipping /usr/lib/python3 files, so both
+# eitaas-linux and eitaas-linux-gui receive ${python3:Depends}.
+export PYBUILD_DESTDIR=debian/tmp
+
 %:
 	dh $@ --with python3 --buildsystem=pybuild
 
