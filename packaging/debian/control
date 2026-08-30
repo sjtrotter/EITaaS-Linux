@@ -20,6 +20,7 @@ Build-Depends:
  libsoup-3.0-dev,
  libssh-dev,
  libssl-dev,
+ libusb-1.0-0-dev,
  libwebkit2gtk-4.1-dev,
  ninja-build,
  patch,

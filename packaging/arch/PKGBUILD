@@ -20,7 +20,7 @@ depends=('python' 'python-gobject' 'gtk4' 'libadwaita'
          'curl' 'gnutls' 'gtk3' 'icu' 'jansson' 'json-c' 'json-glib' 'krb5'
          'libsecret' 'libsodium' 'libsoup3' 'libssh' 'openssl' 'opensc'
          'pcsclite' 'ccid' 'pcsc-tools' 'webkit2gtk-4.1')
-makedepends=('cmake' 'ninja' 'python-build' 'python-installer'
+makedepends=('cmake' 'libusb' 'ninja' 'python-build' 'python-installer'
              'python-setuptools' 'python-wheel' 'desktop-file-utils')
 provides=('eitaas-remmina' 'eitaas-linux-gui')
 conflicts=('eitaas-remmina' 'eitaas-linux-gui')
@@ -47,7 +47,6 @@ build() {
   cmake -S "$freerdp" -B freerdp-build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$_prefix" \
     -DCMAKE_INSTALL_LIBDIR=lib -DWITH_AAD=ON -DWITH_PCSC=ON \
-    -DCHANNEL_URBDRC=OFF \
     -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON -DWITH_CLIENT_SDL=OFF \
     -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF \
     -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF -DWITH_DOCUMENTATION=OFF \

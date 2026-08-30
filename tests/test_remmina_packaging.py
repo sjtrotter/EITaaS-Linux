@@ -304,30 +304,36 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertNotIn("Recommends:", CONTROL)
         self.assertNotIn("optdepends=", PKGBUILD)
 
-    def test_usb_redirection_is_compiled_out_of_every_recipe(self):
-        """The product redirects smart cards over PC/SC, never USB devices.
+    def test_usb_redirection_ships_with_libusb_declared_everywhere(self):
+        """USB device redirection is part of the product (owner decision).
 
-        FreeRDP enables its urbdrc channel whenever libusb happens to be
-        installed, so leaving the channel to chance made the shipped content
-        depend on the builder's host. Every recipe disables it explicitly and
-        no recipe or package job depends on libusb, which also makes the RPM,
-        DEB, and Arch payloads identical.
+        FreeRDP builds its urbdrc channel whenever libusb is present, so the
+        payload is deterministic only if every recipe and package CI job
+        declares the dependency. No recipe may set a CHANNEL_URBDRC flag in
+        either direction; the declared dependency is the guarantee.
         """
         for name, recipe in RECIPES.items():
             with self.subTest(recipe=name):
-                self.assertIn("-DCHANNEL_URBDRC=OFF", recipe)
+                self.assertNotIn("CHANNEL_URBDRC", recipe)
                 self.assertIn("-DWITH_PCSC=ON", recipe)
-                self.assertNotIn("libusb", recipe)
-        for name, path in (
-            ("packaging/debian/control", CONTROL),
-            ("packaging/remmina/README.md", (PACKAGE_DIR / "README.md").read_text()),
+        # The dependency lives where each distro declares build inputs.
+        self.assertIn("libusb1-devel", SPEC)
+        self.assertIn("libusb-1.0-0-dev", CONTROL)
+        self.assertIn("'libusb'", PKGBUILD)
+        def job_section(name):
+            body = WORKFLOW.split(f"  {name}:", 1)[1]
+            # A job body ends where the next top-level job key begins.
+            for marker in ("\n  deb-package:", "\n  rpm-package:",
+                           "\n  arch-package:", "\n  remmina-upstream-series:"):
+                body = body.split(marker, 1)[0]
+            return body
+        for job, token in (
+            ("deb-package", "libusb-1.0-0-dev"),
+            ("rpm-package", "libusb1-devel"),
+            ("arch-package", " libusb"),
         ):
-            with self.subTest(document=name):
-                self.assertNotIn("libusb", path)
-        # remmina-upstream-series builds a stock FreeRDP for a plugin compile
-        # check and is out of scope; the package jobs precede it in the file.
-        package_jobs = WORKFLOW.split("  remmina-upstream-series:", 1)[0]
-        self.assertNotIn("libusb", package_jobs)
+            with self.subTest(job=job, dependency=token.strip()):
+                self.assertIn(token, job_section(job))
 
     def test_remmina_configure_flags_match_across_recipes(self):
         """One Remmina feature set, so the three payloads cannot drift apart."""
