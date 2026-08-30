@@ -39,6 +39,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-08-30">
+      <description>
+        <p>Single package per distribution: the bundled Remmina/FreeRDP client, the command-line helper, and this graphical helper now install together as eitaas-linux.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-08-30">
       <description>
         <p>Initial release: readiness checks, .rdpw profile import, and one-click launch of the bundled client.</p>

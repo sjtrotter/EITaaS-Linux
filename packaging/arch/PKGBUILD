@@ -1,73 +1,111 @@
 # Maintainer: EITaaS-Linux contributors <sjtrotter@users.noreply.github.com>
 
-# Split package rather than optdepends: with plain optdepends the .desktop
-# entry and the .rdpw MIME association would be installed on CLI-only systems
-# and advertise a non-functional application. The GUI module, its console
-# script, desktop integration, and GTK dependencies live in eitaas-linux-gui.
-pkgbase=eitaas-linux
-pkgname=(eitaas-linux eitaas-linux-gui)
-pkgver=0.1.0
+# One package (#80): the private Remmina/FreeRDP bundle, the eitaas-remmina
+# launcher, the eitaas command-line helper, and the EITaaS Connect GTK 4
+# helper with its desktop entry, .rdpw MIME association, and icons.
+#
+# source= is the corresponding-source tarball assembled by
+# scripts/build-arch.sh from packaging/remmina/sources.json: the repository
+# tree plus both verified upstream archives with the ordered patch series
+# already applied. The builder substitutes its checksum for @SHA256@; the
+# recipe never carries an upstream download URL.
+pkgname=eitaas-linux
+pkgver=0.2.0
 pkgrel=1
-pkgdesc='Community Linux helper for EITaaS Azure Virtual Desktop'
-arch=('any')
+pkgdesc='EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI'
+arch=('x86_64')
 url='https://github.com/sjtrotter/EITaaS-Linux'
-license=('MIT')
-makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
-_commit='c4f07c13ef27965c2d3f2a543f18b50faf5de79e'
-source=("$pkgbase-$pkgver.tar.gz::$url/archive/$_commit.tar.gz")
-sha256sums=('4055095dab0cc2ecfd2dd16cd3582cd9c41a0c651049547b8389e526a579ed58')
-_source_dir="EITaaS-Linux-$_commit"
+license=('GPL-2.0-or-later' 'Apache-2.0' 'MIT')
+depends=('python' 'python-gobject' 'gtk4' 'libadwaita'
+         'curl' 'gnutls' 'gtk3' 'icu' 'jansson' 'json-c' 'json-glib' 'krb5'
+         'libsecret' 'libsodium' 'libsoup3' 'libssh' 'openssl' 'opensc'
+         'pcsclite' 'ccid' 'pcsc-tools' 'webkit2gtk-4.1')
+makedepends=('cmake' 'ninja' 'python-build' 'python-installer'
+             'python-setuptools' 'python-wheel' 'desktop-file-utils')
+provides=('eitaas-remmina' 'eitaas-linux-gui')
+conflicts=('eitaas-remmina' 'eitaas-linux-gui')
+replaces=('eitaas-remmina' 'eitaas-linux-gui')
+options=('!debug')
+source=("$pkgname-$pkgver-source.tar.gz")
+sha256sums=('@SHA256@')
+_prefix='/usr/lib/eitaas-remmina'
+
+# packaging/remmina/sources.json is the only place the pins are written down.
+_pin() {
+  python -c 'import json,sys;print(json.load(open("packaging/remmina/sources.json"))["sources"][sys.argv[1]][sys.argv[2]])' \
+    "$1" "$2"
+}
 
 build() {
-  cd "$_source_dir"
+  local private_root="$srcdir/private-root"
+  local freerdp remmina
+  freerdp="FreeRDP-$(_pin freerdp version)"
+  remmina="Remmina-$(_pin remmina commit)"
+
   python -m build --wheel --no-isolation
+
+  cmake -S "$freerdp" -B freerdp-build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$_prefix" \
+    -DCMAKE_INSTALL_LIBDIR=lib -DWITH_AAD=ON -DWITH_PCSC=ON \
+    -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON -DWITH_CLIENT_SDL=OFF \
+    -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF \
+    -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF -DWITH_DOCUMENTATION=OFF \
+    -DWITH_FUSE=OFF -DWITH_CUPS=OFF -DWITH_FFMPEG=OFF \
+    -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF -DWITH_ALSA=OFF \
+    -DWITH_PULSE=OFF -DWITH_JPEG=OFF -DWITH_GSM=OFF -DWITH_LAME=OFF \
+    -DWITH_OPENH264=OFF
+  cmake --build freerdp-build --parallel 1
+  DESTDIR="$private_root" cmake --install freerdp-build
+
+  cmake -S "$remmina" -B remmina-build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$_prefix" \
+    -DCMAKE_PREFIX_PATH="$private_root$_prefix" \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+    -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib:$ORIGIN/..' \
+    -DWITH_FREERDP3=ON -DWITH_RDP_AUTH_AAD=ON -DWITH_SSO_MIB=OFF \
+    -DWITH_GCRYPT=OFF -DWITH_VTE=OFF -DHAVE_LIBAPPINDICATOR=OFF \
+    -DWITH_CUPS=OFF -DWITH_AVAHI=OFF -DWITH_LIBVNCSERVER=OFF \
+    -DWITH_SPICE=OFF -DWITH_NEWS=OFF -DWITH_STATS=OFF -DWITH_TIP=OFF \
+    -DWITH_MANPAGES=OFF -DWITH_ICON_CACHE=OFF -DWITH_WWW=OFF \
+    -DWITH_GVNC=OFF -DWITH_X2GO=OFF -DWITH_KF5WALLET=OFF -DWITH_ST=OFF \
+    -DWITH_XDMCP=OFF -DWITH_NX=OFF -DWITH_PYTHONLIBS=OFF
+  cmake --build remmina-build --parallel 1
 }
 
 check() {
-  cd "$_source_dir"
   PYTHONPATH=src python -m unittest discover -s tests -v
+  test -x remmina-build/src/remmina
+  test -f remmina-build/plugins/rdp/remmina-plugin-rdp.so
+  grep -a -q 'Protected RDPW profile contains invalid or disallowed settings' \
+    remmina-build/plugins/rdp/remmina-plugin-rdp.so
+  grep -a -q 'Select smart-card authentication certificate' \
+    remmina-build/plugins/rdp/remmina-plugin-rdp.so
+  desktop-file-validate data/org.eitaas.Helper.desktop
 }
 
-package_eitaas-linux() {
-  pkgdesc='Community Linux helper for EITaaS Azure Virtual Desktop'
-  depends=('python' 'opensc' 'pcsclite' 'ccid' 'pcsc-tools')
-  optdepends=('eitaas-remmina: bundled one-shot Remmina/FreeRDP client used by eitaas connect'
-              'eitaas-linux-gui: GTK 4 graphical helper')
-  cd "$_source_dir"
+package() {
+  local freerdp remmina license_dir doc_dir
+  freerdp="FreeRDP-$(_pin freerdp version)"
+  remmina="Remmina-$(_pin remmina commit)"
+  license_dir="$pkgdir/usr/share/licenses/$pkgname"
+  doc_dir="$pkgdir/usr/share/doc/$pkgname"
 
-  # The wheel carries both Python packages; the GUI module and its console
-  # script are shipped by package_eitaas-linux-gui(). The dist-info stays here.
   python -m installer --destdir="$pkgdir" dist/*.whl
-  rm -r "$pkgdir"/usr/lib/python*/site-packages/eitaas_gui
-  rm "$pkgdir/usr/bin/eitaas-gui"
+
+  DESTDIR="$pkgdir" cmake --install freerdp-build
+  DESTDIR="$pkgdir" cmake --install remmina-build
+  rm -rf "$pkgdir$_prefix/include" "$pkgdir$_prefix/lib/cmake" \
+    "$pkgdir$_prefix/lib/pkgconfig" "$pkgdir$_prefix/share/man"
+  rm -f "$pkgdir$_prefix"/lib/*.so
+
+  install -Dpm755 packaging/remmina/eitaas-remmina \
+    "$pkgdir/usr/bin/eitaas-remmina"
   install -Dpm644 docs/eitaas.1 "$pkgdir/usr/share/man/man1/eitaas.1"
+  install -Dpm644 docs/eitaas-gui.1 "$pkgdir/usr/share/man/man1/eitaas-gui.1"
   install -Dpm644 completions/eitaas.bash \
     "$pkgdir/usr/share/bash-completion/completions/eitaas"
   install -Dpm644 completions/_eitaas \
     "$pkgdir/usr/share/zsh/site-functions/_eitaas"
-  install -Dpm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dpm644 NOTICE "$pkgdir/usr/share/doc/$pkgname/NOTICE"
-  install -Dpm644 SECURITY.md "$pkgdir/usr/share/doc/$pkgname/SECURITY.md"
-  install -Dpm644 SUPPORT.md "$pkgdir/usr/share/doc/$pkgname/SUPPORT.md"
-}
-
-package_eitaas-linux-gui() {
-  pkgdesc='Graphical readiness/profile/connect helper for EITaaS Azure Virtual Desktop'
-  depends=('eitaas-linux' 'python-gobject' 'gtk4' 'libadwaita')
-  optdepends=('eitaas-remmina: bundled one-shot Remmina/FreeRDP client used for connections')
-  cd "$_source_dir"
-
-  # Install the wheel into a staging tree and keep only the GUI module and its
-  # console script; the eitaas package and the dist-info belong to eitaas-linux.
-  local staging sitelib
-  staging=$(mktemp -d -p "$srcdir")
-  python -m installer --destdir="$staging" dist/*.whl
-  sitelib=$(cd "$staging" && echo usr/lib/python*/site-packages)
-  install -d "$pkgdir/$sitelib" "$pkgdir/usr/bin"
-  cp -a "$staging/$sitelib/eitaas_gui" "$pkgdir/$sitelib/"
-  cp -a "$staging/usr/bin/eitaas-gui" "$pkgdir/usr/bin/"
-  rm -r "$staging"
-
   install -Dpm644 data/org.eitaas.Helper.desktop \
     "$pkgdir/usr/share/applications/org.eitaas.Helper.desktop"
   install -Dpm644 data/org.eitaas.Helper.metainfo.xml \
@@ -78,6 +116,19 @@ package_eitaas-linux-gui() {
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.eitaas.Helper.svg"
   install -Dpm644 data/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg \
     "$pkgdir/usr/share/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg"
-  install -Dpm644 docs/eitaas-gui.1 "$pkgdir/usr/share/man/man1/eitaas-gui.1"
-  install -Dpm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+  install -Dpm644 LICENSE "$license_dir/EITaaS-LICENSE"
+  install -Dpm644 packaging/remmina/THIRD_PARTY_NOTICES.md \
+    "$license_dir/THIRD_PARTY_NOTICES.md"
+  install -Dpm644 "$freerdp/LICENSE" "$license_dir/FreeRDP-LICENSE"
+  install -Dpm644 "$freerdp/winpr/libwinpr/sysinfo/cpufeatures/NOTICE" \
+    "$license_dir/FreeRDP-cpufeatures-NOTICE"
+  install -Dpm644 "$remmina/COPYING" "$license_dir/Remmina-COPYING"
+  install -Dpm644 "$remmina/LICENSE" "$license_dir/Remmina-LICENSE"
+  install -Dpm644 "$remmina/LICENSE.OpenSSL" "$license_dir/Remmina-LICENSE.OpenSSL"
+
+  install -Dpm644 packaging/remmina/sources.json "$doc_dir/sources.json"
+  install -Dpm644 NOTICE "$doc_dir/NOTICE"
+  install -Dpm644 SECURITY.md "$doc_dir/SECURITY.md"
+  install -Dpm644 SUPPORT.md "$doc_dir/SUPPORT.md"
 }

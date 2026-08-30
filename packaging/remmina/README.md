@@ -1,13 +1,19 @@
 # Isolated Remmina prototype
 
-All packaging formats must consume the pinned source and ordered patch data in
-`sources.json`. The cross-distribution delivery decision and validation matrix
-are recorded in `docs/adr/0001-remmina-packaging-strategy.md`.
+This directory holds the bundle inputs every packaging format consumes: the
+pinned source and ordered patch data in `sources.json`, the CAC integration
+sources, the `eitaas-remmina` launcher, the notices, and the Arch snapshot
+date. The recipes themselves live in `packaging/rpm/eitaas-linux.spec`,
+`packaging/debian/`, and `packaging/arch/PKGBUILD` -- one binary package,
+`eitaas-linux`, per distribution (#80). The cross-distribution delivery
+decision and validation matrix are recorded in
+`docs/adr/0001-remmina-packaging-strategy.md`.
 
-This package combines a private Remmina 1.4.43 build with private FreeRDP
+That package combines a private Remmina 1.4.43 build with private FreeRDP
 3.30.0 libraries under a distribution-native private prefix
 (`/usr/libexec/eitaas-remmina` on Fedora and `/usr/lib/eitaas-remmina` on
-Debian-family systems). It does not replace the distribution packages.
+Debian-family and Arch systems) with the `eitaas` command-line helper and the
+EITaaS Connect GTK 4 helper. It does not replace the distribution packages.
 
 The downstream patches require the FreeRDP 3.16 settings API
 (`FreeRDP_GatewayAvdScope` and `FreeRDP_GatewayAvdAccessAadFormat`, added in
@@ -50,33 +56,25 @@ Pinned Remmina source:
 - commit `030946c83fe1b7218a21b6d32f9c975b243b7031`
 - SHA-256 `8976850314dddab8cfe74f413233a712e7ba4b6ccf72b56cbf635b51f1ea2801`
 
-Build RPMs conservatively with `RPM_BUILD_NCPUS=1` and `_smp_build_ncpus 1`.
-Build native DEB source and binary packages on Ubuntu 24.04 or Debian 13 with:
+Build the combined package for one distribution with:
 
 ```console
-scripts/build-remmina-deb.sh
+scripts/build-rpm.sh    # Fedora, RPM
+scripts/build-deb.sh    # Ubuntu 24.04 or Debian 13, native DEB
+scripts/build-arch.sh   # Arch Linux (must run unprivileged)
 ```
 
-The DEB builder consumes the same `sources.json`, verifies both upstream
-archives, applies the same ordered patch series, and forces a single compile
-job. It writes packages and corresponding source artifacts to `dist/`. These
-DEBs are build- and lifecycle-tested in clean containers; Azure Government and
-CAC hardware validation is still required on each distribution before either
+Each builder consumes the same `sources.json`, verifies both upstream archives
+against their SHA-256 digests, applies the same ordered patch series, forces a
+single compile job, and writes the binary package and its corresponding source
+artifacts to `dist/`. `scripts/prepare-bundle-source.py` does the fetching and
+tree assembly for all three. The Arch builder uses the repository snapshot
+recorded in `SNAPSHOT`. These packages are build- and lifecycle-tested in clean
+containers by `scripts/test-{deb,rpm,arch}-lifecycle.sh`; Azure Government and
+CAC hardware validation is still required on each distribution before it
 becomes a supported runtime target.
 
-Build the native Arch package against the repository snapshot recorded in
-`arch/SNAPSHOT` with:
-
-```console
-scripts/build-remmina-arch.sh
-```
-
-The Arch builder must run unprivileged. It derives the version and complete
-corresponding-source checksum from `sources.json`, forces one compile job, and
-writes the package to `dist/`. Arch remains candidate-only pending its hardware
-matrix.
-
-Release and reproducibility builds use the repository date in `arch/SNAPSHOT`.
+Release and reproducibility builds use the repository date in `SNAPSHOT`.
 GitHub-hosted Azure runners cannot currently retrieve dated repositories from
 either Arch archive endpoint, so CI uses Arch's current official repositories
 only to validate that the package builds and passes its install, upgrade,
@@ -168,7 +166,9 @@ access, refresh, and id tokens.
 
 ## Authentication path and build flags
 
-All three recipes build FreeRDP and Remmina with `-DWITH_SSO_MIB=OFF`,
+All three recipes (`packaging/rpm/eitaas-linux.spec`,
+`packaging/debian/rules`, `packaging/arch/PKGBUILD`) build FreeRDP and Remmina
+with `-DWITH_SSO_MIB=OFF`,
 `-DWITH_AAD=ON`/`-DWITH_RDP_AUTH_AAD=ON`, and `-DWITH_PCSC=ON`, and none of
 them declares an `sso-mib` build or runtime dependency; the flags are asserted
 by `tests/test_remmina_packaging.py`. The Microsoft Identity Broker route was
@@ -190,6 +190,7 @@ FreeRDP is Apache-2.0, and the standalone EITaaS launcher is MIT. See
 The source RPM, Debian source package, and Arch corresponding-source tarball
 are buildable source distributions for this prototype. Each contains both
 pinned upstream archives, all downstream patches, the CAC integration sources,
-launcher, license texts, notice manifest, and native packaging metadata.
-Rebuilding still downloads normal distribution build dependencies; it does not
-fetch either application source tree.
+launcher, the Python `eitaas`/`eitaas_gui` sources, license texts, notice
+manifest, and native packaging metadata. Rebuilding still downloads normal
+distribution build dependencies; it does not fetch either application source
+tree.

@@ -73,108 +73,10 @@ jobs:
           path: dist/eitaas-linux-*.tar.gz
 
   deb-package:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: >-
-          sudo apt-get update && sudo apt-get install -y
-          build-essential debhelper dh-python pybuild-plugin-pyproject python3-all
-          python3-setuptools python3-wheel lintian desktop-file-utils
-      - name: Build DEB from canonical source
-        run: |
-          archive=$(scripts/build-source-tarball.sh HEAD dist)
-          scripts/build-deb.sh "$archive"
-      - run: >-
-          lintian --suppress-tags
-          bad-distribution-in-changes-file,initial-upload-closes-no-bugs
-          dist/*.changes
-      # desktop-file-utils is only needed for the post-install validation; the
-      # package build itself runs no GUI tests (they skip without gi).
-      - run: >-
-          sudo apt-get install -y ./dist/eitaas-linux_0.1.0-1_all.deb
-          ./dist/eitaas-linux-gui_0.1.0-1_all.deb
-      - run: eitaas --version
-      - run: eitaas-gui --version
-      - run: desktop-file-validate /usr/share/applications/org.eitaas.Helper.desktop
-      - name: Run installed diagnostics
-        run: |
-          status=0
-          eitaas doctor --json > doctor.json || status=$?
-          test "$status" -eq 0 -o "$status" -eq 1
-      - run: sudo apt-get remove -y eitaas-linux-gui eitaas-linux
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deb-package
-          path: |
-            dist/*.deb
-            dist/*.dsc
-            dist/*.debian.tar.*
-            dist/*.orig.tar.*
-            dist/*.buildinfo
-            dist/*.changes
-
-  rpm-package:
-    runs-on: ubuntu-latest
-    container: fedora:44
-    steps:
-      - run: >-
-          dnf install -y git findutils rpm-build python3-devel
-          python3-setuptools pyproject-rpm-macros python3-wheel rpmlint
-          desktop-file-utils appstream gtk4 libadwaita python3-gobject
-      - uses: actions/checkout@v4
-      - name: Build RPM from canonical source
-        run: |
-          archive=$(scripts/build-source-tarball.sh HEAD dist)
-          scripts/build-rpm.sh "$archive"
-      - run: rpmlint -r packaging/rpm/eitaas-linux.rpmlintrc packaging/rpm/eitaas-linux.spec dist/*.rpm
-      - run: dnf install -y dist/eitaas-linux-*.noarch.rpm
-      - run: eitaas --version
-      - run: eitaas-gui --version
-      - name: Run installed diagnostics
-        run: |
-          status=0
-          eitaas doctor --json > doctor.json || status=$?
-          test "$status" -eq 0 -o "$status" -eq 1
-      - run: dnf remove -y eitaas-linux-gui eitaas-linux
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rpm-package
-          path: dist/*.rpm
-
-  arch-package:
-    runs-on: ubuntu-latest
-    container: archlinux:base
-    steps:
-      - run: >-
-          pacman -Syu --noconfirm --needed base-devel git namcap
-          python-build python-installer python-setuptools python-wheel
-          opensc pcsclite ccid pcsc-tools
-          python-gobject gtk4 libadwaita desktop-file-utils
-      - uses: actions/checkout@v4
-      - name: Build package as an unprivileged user
-        run: |
-          useradd --create-home builder
-          chown -R builder:builder "$GITHUB_WORKSPACE"
-          runuser -u builder -- sh -c '
-            archive=$(scripts/build-source-tarball.sh HEAD dist)
-            scripts/build-arch.sh "$archive"
-          '
-      - run: namcap packaging/arch/PKGBUILD dist/*.pkg.tar.zst
-      - run: pacman -U --noconfirm dist/eitaas-linux-*.pkg.tar.zst
-      - run: eitaas --version
-      - run: eitaas-gui --version
-      - name: Run installed diagnostics
-        run: |
-          status=0
-          eitaas doctor --json > doctor.json || status=$?
-          test "$status" -eq 0 -o "$status" -eq 1
-      - run: pacman -R --noconfirm eitaas-linux-gui eitaas-linux
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arch-package
-          path: dist/*.pkg.tar.zst
-
-  remmina-deb-package:
+    # One job per distribution builds the single combined eitaas-linux package
+    # (#80): the private Remmina/FreeRDP bundle, the CLI, and the helper GUI.
+    # The recipes force `--parallel 1` as a packaging-reproducibility rule, so
+    # this job compiles both upstreams serially.
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
     strategy:
@@ -190,12 +92,13 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: >-
           apt-get update && apt-get install -y
-          build-essential cmake debhelper devscripts dpkg-dev gettext git
-          gnutls-bin libcurl4-openssl-dev libgtk-3-dev libicu-dev libjson-c-dev
-          libjson-glib-dev libkrb5-dev libpcsclite-dev libsecret-1-dev
-          libsodium-dev libsoup-3.0-dev libssh-dev libssl-dev
-          libusb-1.0-0-dev libwebkit2gtk-4.1-dev lintian ninja-build opensc
-          patch pcscd python3 zlib1g-dev
+          build-essential cmake debhelper desktop-file-utils devscripts
+          dh-python dpkg-dev gettext git gnutls-bin libcurl4-openssl-dev
+          libgtk-3-dev libicu-dev libjson-c-dev libjson-glib-dev libkrb5-dev
+          libpcsclite-dev libsecret-1-dev libsodium-dev libsoup-3.0-dev
+          libssh-dev libssl-dev libusb-1.0-0-dev libwebkit2gtk-4.1-dev
+          lintian ninja-build opensc patch pcscd pybuild-plugin-pyproject
+          python3 python3-all python3-setuptools python3-wheel zlib1g-dev
       - uses: actions/checkout@v4
       - name: Resolve pinned versions from the packaging manifests
         run: |
@@ -204,44 +107,121 @@ jobs:
             python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"][sys.argv[2]][sys.argv[3]])' \
               "$manifest" "$1" "$2"
           }
-          deb_version=$(dpkg-parsechangelog -l packaging/remmina/debian/changelog -S Version)
+          deb_version=$(dpkg-parsechangelog -l packaging/debian/changelog -S Version)
           {
             # Debian artifact file names carry no epoch.
             echo "DEB_VERSION=${deb_version#*:}"
             echo "FREERDP_VERSION=$(read_manifest freerdp version)"
             echo "REMMINA_COMMIT=$(read_manifest remmina commit)"
           } >>"$GITHUB_ENV"
-      - name: Build binary and native source packages
-        run: scripts/build-remmina-deb.sh
+      - name: Build the combined package from canonical source
+        run: |
+          archive=$(scripts/build-source-tarball.sh HEAD dist)
+          scripts/build-deb.sh "$archive"
       - name: Verify Debian policy metadata
         run: |
           lintian --suppress-tags bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license \
-            "dist/eitaas-remmina_${DEB_VERSION}_amd64.changes"
-      - name: Test install, upgrade, dependencies, and removal
-        run: scripts/test-remmina-deb-lifecycle.sh "dist/eitaas-remmina_${DEB_VERSION}_amd64.deb"
+            "dist/eitaas-linux_${DEB_VERSION}_amd64.changes"
+      - name: Test install, upgrade from the split packages, and removal
+        run: scripts/test-deb-lifecycle.sh "dist/eitaas-linux_${DEB_VERSION}_amd64.deb"
       - name: Verify corresponding source contents
         run: |
           target=$(mktemp -d)
-          dpkg-source --extract "dist/eitaas-remmina_${DEB_VERSION}.dsc" "$target/source"
+          dpkg-source --extract "dist/eitaas-linux_${DEB_VERSION}.dsc" "$target/source"
           test -f "$target/source/FreeRDP-${FREERDP_VERSION}/LICENSE"
           test -f "$target/source/Remmina-${REMMINA_COMMIT}/COPYING"
-          test -f "$target/source/sources.json"
+          test -f "$target/source/packaging/remmina/sources.json"
+          test -f "$target/source/src/eitaas/__init__.py"
+          test -f "$target/source/src/eitaas_gui/main.py"
           python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["patches"]))' \
             packaging/remmina/sources.json >"$target/patches.txt"
           while read -r patch; do
-            test -f "$target/source/patches/$patch"
+            test -f "$target/source/packaging/remmina/$patch"
           done <"$target/patches.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: remmina-deb-${{ matrix.name }}
+          name: deb-package-${{ matrix.name }}
           path: |
-            dist/eitaas-remmina*.deb
-            dist/eitaas-remmina*.ddeb
-            dist/eitaas-remmina*.dsc
-            dist/eitaas-remmina*.tar.xz
-            dist/eitaas-remmina*.buildinfo
-            dist/eitaas-remmina*.changes
+            dist/eitaas-linux*.deb
+            dist/eitaas-linux*.ddeb
+            dist/eitaas-linux*.dsc
+            dist/eitaas-linux*.tar.xz
+            dist/eitaas-linux*.buildinfo
+            dist/eitaas-linux*.changes
+
+  rpm-package:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - run: >-
+          dnf install -y git findutils rpm-build rpmlint
+          python3-devel python3-setuptools pyproject-rpm-macros python3-wheel
+          desktop-file-utils appstream cmake gcc gcc-c++ ninja-build patch
+          gtk3-devel json-c-devel json-glib-devel krb5-devel libcurl-devel
+          libicu-devel libsecret-devel libsodium-devel libsoup3-devel
+          libssh-devel openssl-devel pcsc-lite-devel webkit2gtk4.1-devel
+      - uses: actions/checkout@v4
+      - name: Build the combined package from canonical source
+        run: |
+          archive=$(scripts/build-source-tarball.sh HEAD dist)
+          scripts/build-rpm.sh "$archive"
+      - run: rpmlint -r packaging/rpm/eitaas-linux.rpmlintrc packaging/rpm/eitaas-linux.spec dist/*.rpm
+      - name: Verify corresponding source contents
+        run: |
+          read_manifest() {
+            python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"][sys.argv[2]][sys.argv[3]])' \
+              packaging/remmina/sources.json "$1" "$2"
+          }
+          rpm -qlp dist/eitaas-linux-*.src.rpm >srpm-files.txt
+          grep -qx "$(read_manifest freerdp version).tar.gz" srpm-files.txt
+          grep -qx "Remmina-$(read_manifest remmina commit).tar.gz" srpm-files.txt
+          grep -q '\.tar\.gz$' srpm-files.txt
+          grep -qx eitaas-linux.spec srpm-files.txt
+      - name: Test install, upgrade from the split packages, and removal
+        run: scripts/test-rpm-lifecycle.sh dist/eitaas-linux-*.x86_64.rpm
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rpm-package
+          path: dist/*.rpm
+
+  arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - name: Install build dependencies
+        run: >-
+          pacman -Syyu --noconfirm --needed base-devel cmake curl desktop-file-utils
+          gettext git gnutls gtk3 gtk4 icu json-c json-glib krb5 libadwaita
+          libsecret libsodium libsoup3 libssh namcap ninja opensc openssl patch
+          pcsclite ccid pcsc-tools python python-build python-gobject
+          python-installer python-setuptools python-wheel webkit2gtk-4.1 zstd
+      - uses: actions/checkout@v4
+      - name: Report Arch validation scope
+        run: |
+          snapshot=$(cat packaging/remmina/SNAPSHOT)
+          echo "Release/reproducibility snapshot: $snapshot"
+          echo "GitHub CI uses current official repositories for compatibility validation."
+      - name: Build package as an unprivileged user
+        run: |
+          useradd --create-home builder
+          install -d -o builder -g builder "$GITHUB_WORKSPACE/.build" "$GITHUB_WORKSPACE/dist"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- sh -c '
+            archive=$(scripts/build-source-tarball.sh HEAD dist)
+            scripts/build-arch.sh "$archive"
+          '
+      - run: namcap .build/eitaas-bundle/package/PKGBUILD dist/eitaas-linux-*.pkg.tar.zst
+      - name: Test install, upgrade, and removal
+        run: scripts/test-arch-lifecycle.sh dist/eitaas-linux-*.pkg.tar.zst
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arch-package
+          path: |
+            dist/eitaas-linux-*.pkg.tar.zst
+            .build/eitaas-bundle/eitaas-linux-*-source.tar.gz
 
   remmina-upstream-series:
     # Applies upstream/remmina/*.patch with `git am` onto the recorded Remmina
@@ -334,36 +314,3 @@ jobs:
           build OFF
           # The PKCS #11 sources are gated on the AAD feature.
           ! grep -q rdp_web_auth_pkcs11 remmina-build-OFF/build.ninja
-
-  remmina-arch-package:
-    runs-on: ubuntu-latest
-    container: archlinux:base
-    steps:
-      - uses: actions/checkout@v4
-      - name: Report Arch validation scope
-        run: |
-          snapshot=$(cat packaging/remmina/arch/SNAPSHOT)
-          echo "Release/reproducibility snapshot: $snapshot"
-          echo "GitHub CI uses current official repositories for compatibility validation."
-      - name: Install build dependencies
-        run: >-
-          pacman -Syyu --noconfirm --needed base-devel cmake curl gettext git
-          gnutls gtk3 icu json-c json-glib krb5 libsecret libsodium libsoup3
-          libssh namcap ninja opensc openssl patch pcsclite python
-          webkit2gtk-4.1
-      - name: Build package as an unprivileged user
-        run: |
-          useradd --create-home builder
-          install -d -o builder -g builder "$GITHUB_WORKSPACE/.build" "$GITHUB_WORKSPACE/dist"
-          runuser -u builder -- scripts/build-remmina-arch.sh
-      - name: Check package metadata and contents
-        run: namcap .build/eitaas-remmina-arch/package/PKGBUILD dist/eitaas-remmina-*.pkg.tar.zst
-      - name: Test install, dependencies, and removal
-        run: scripts/test-remmina-arch-lifecycle.sh dist/eitaas-remmina-*.pkg.tar.zst
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: remmina-arch-package
-          path: |
-            dist/eitaas-remmina-*.pkg.tar.zst
-            .build/eitaas-remmina-arch/eitaas-remmina-*-source.tar.gz

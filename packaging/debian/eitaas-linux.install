@@ -1,9 +1,0 @@
-usr/lib/python3*/dist-packages/eitaas/
-usr/lib/python3*/dist-packages/eitaas_linux-*.dist-info/
-usr/bin/eitaas
-docs/eitaas.1 usr/share/man/man1
-completions/eitaas.bash usr/share/bash-completion/completions
-completions/_eitaas usr/share/zsh/vendor-completions
-NOTICE usr/share/doc/eitaas-linux
-SECURITY.md usr/share/doc/eitaas-linux
-SUPPORT.md usr/share/doc/eitaas-linux

@@ -7,7 +7,8 @@ upstream Remmina/FreeRDP submission; treat that as policy.
 ## What this repository is
 
 Community Linux tooling for Azure Virtual Desktop (US Government cloud) with CAC
-smart-card redirection. Two deliverables:
+smart-card redirection. One installable deliverable per distribution — the
+`eitaas-linux` package (#80) — built from three source trees:
 
 - `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|profile|smartcard|certificates`).
   `api.py` is the presentation-neutral facade; frontends never import platform modules directly.
@@ -15,10 +16,11 @@ smart-card redirection. Two deliverables:
   Python holds no RDP/OAuth policy — that lives in the Remmina patches.
   `profiles.py` is the private profile store (`$XDG_DATA_HOME/eitaas-remmina/profiles/`, names only)
   used by `eitaas profile` and the GUI; `connect` without an argument uses its default.
-- `src/eitaas_gui/` — GTK 4/Libadwaita helper `eitaas-gui` ("EITaaS Connect"), shipped by the optional
-  `eitaas-linux-gui` package; imports `eitaas.api` only. `viewmodel.py` is toolkit-free and tested without GTK.
-- `packaging/remmina/` — the product client: an isolated one-shot Remmina 1.4.43 + FreeRDP 3.30.x
-  bundle with downstream patches and `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth).
+- `src/eitaas_gui/` — GTK 4/Libadwaita helper `eitaas-gui` ("EITaaS Connect"), shipped in the single
+  `eitaas-linux` package; imports `eitaas.api` only. `viewmodel.py` is toolkit-free and tested without GTK.
+- `packaging/remmina/` — the bundle inputs for the product client: the pinned manifest, the ordered
+  patch series, `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth), the `eitaas-remmina` launcher, and the
+  notices for the isolated one-shot Remmina 1.4.43 + FreeRDP 3.30.x build.
   `upstream/remmina/` holds the unbranded upstream-candidate exports of the same changes.
 
 Read `README.md`, `docs/adr/*.md`, and `docs/audits/*.md` before changing behavior.
@@ -54,7 +56,9 @@ no connection-manager mode, no Flatpak/AppImage.
 **Single source of truth (SSOT).**
 - Version pins, patch order, and downstream sources live in `packaging/remmina/sources.json`; it is the
   intended SSOT for the Remmina bundle (aligning CI/spec/script strings to it is tracked in #64).
-  `scripts/check-version-consistency.py` guards the Python package version across pyproject/RPM/DEB/Arch.
+  `scripts/check-version-consistency.py` guards the single package version (pyproject.toml) across
+  RPM/DEB/Arch, the man pages, and the AppStream metainfo; the pinned Remmina/FreeRDP versions never
+  become part of it.
   Never add a new hard-coded version string a manifest already holds.
 - Cloud constants (authorities, scopes, hosts) are defined once per language and referenced.
 - The downstream patch queue and the upstream series must implement the *same* behavior; a fix
@@ -108,7 +112,10 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
 ## Useful paths
 
 - Pinned Remmina source for downstream work: `Remmina-030946c8…` (see `sources.json`); build recipe in
-  `packaging/remmina/eitaas-remmina.spec` / `debian/rules` / `arch/PKGBUILD`.
+  `packaging/rpm/eitaas-linux.spec` / `packaging/debian/rules` / `packaging/arch/PKGBUILD` (#80: one
+  binary package `eitaas-linux` per distribution contains the bundle, the CLI, and the GUI).
+- Combined package builds: `scripts/build-rpm.sh`, `build-deb.sh`, `build-arch.sh`; corresponding source is
+  assembled by `scripts/prepare-bundle-source.py`; lifecycle checks are `scripts/test-{deb,rpm,arch}-lifecycle.sh`.
 - Local build trees may exist under `.build/` (ignored, machine-local); if present, `.build/remmina-poc/prefix`
   holds an installed FreeRDP for plugin builds (check its version against `sources.json`).
 - Support matrix and gates: `docs/supported-platforms.md`. Release: `docs/release-checklist.md`.

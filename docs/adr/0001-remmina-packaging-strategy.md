@@ -13,8 +13,10 @@ interfaces are not made portable merely by placing a Fedora binary in a
 self-mounting archive.
 
 The Python `eitaas-linux` helper packages and the enhanced `eitaas-remmina`
-client are separate deliverables. A distribution is not supported for the
-enhanced client just because its helper package builds there.
+client were separate deliverables when this decision was taken. A distribution
+is not supported for the enhanced client just because its helper package
+builds there. (Superseded in packaging terms by the 2026-08-30 note on #80
+below; the support boundary itself is unchanged.)
 
 ## Decision
 
@@ -123,3 +125,26 @@ rebuilding each distribution's Remmina source package) were evaluated and
 deferred: the former works only where the distribution ships >= 3.16 (not
 Debian 13 or Ubuntu 24.04), the latter replaces the user's Remmina contrary to
 ADR-0002. The private bundle stays the delivery for all targets.
+
+### Note (2026-08-30, #80)
+
+The delivery model is unchanged -- native RPM, DEB, and Arch packages built
+from `packaging/remmina/sources.json` into a private prefix -- but the split
+is gone. Each distribution now produces exactly **one** binary package,
+`eitaas-linux`, containing the private Remmina/FreeRDP bundle, the
+`eitaas-remmina` launcher, the `eitaas` command-line helper, and the EITaaS
+Connect GTK 4 helper with its desktop entry, `.rdpw` MIME association, and
+icons. The package version is the project version from `pyproject.toml`; the
+pinned upstream versions stay in `sources.json` and the notices.
+
+The former `eitaas-remmina` and `eitaas-linux-gui` packages are retired
+through `Obsoletes`/`Provides` (RPM), `Breaks`/`Replaces`/`Provides` (DEB),
+and `conflicts`/`replaces`/`provides` (Arch); the DEB and RPM lifecycle tests
+install stand-ins for both and assert they are gone after the upgrade.
+
+Consequences for the matrix above: the "Fedora RPM / Ubuntu DEB / Debian DEB /
+Arch package" columns now describe a single artifact each rather than a pair,
+and the corresponding-source requirement is met by one source RPM, one native
+Debian source package, and one Arch source tarball that each carry both
+upstream archives, the patch series, and the Python sources. Hardware gates
+are unaffected: only Fedora 44 has passed them.
