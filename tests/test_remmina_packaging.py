@@ -6,6 +6,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = PROJECT_ROOT / "packaging" / "remmina"
+UPSTREAM_DIR = PROJECT_ROOT / "upstream" / "remmina"
 SPEC = (PACKAGE_DIR / "eitaas-remmina.spec").read_text()
 MANIFEST = json.loads((PACKAGE_DIR / "sources.json").read_text())
 CHANGELOG = (PACKAGE_DIR / "debian" / "changelog").read_text()
@@ -283,6 +284,39 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             "winpr_RAND",
         ):
             self.assertIn(required, patch)
+
+    @staticmethod
+    def _added_web_auth_lines(patch: str) -> list[str]:
+        """Return the lines a patch adds to plugins/rdp/rdp_web_auth.c."""
+        sections = re.split(r"^diff --git ", patch, flags=re.MULTILINE)
+        section = next(s for s in sections if s.startswith("a/plugins/rdp/rdp_web_auth.c"))
+        return [line[1:] for line in section.splitlines() if line.startswith("+") and not line.startswith("+++")]
+
+    def test_oauth_dialog_is_bound_to_its_transaction_in_downstream_and_upstream(self):
+        downstream = (PACKAGE_DIR / "0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch").read_text()
+        upstream = (UPSTREAM_DIR / "0009-RDP-synchronize-OAuth-completion.patch").read_text()
+        helpers = []
+        for patch in (downstream, upstream):
+            added = self._added_web_auth_lines(patch)
+            start = added.index("#define OAUTH_TRANSACTION_TIMEOUT (5 * G_TIME_SPAN_MINUTE)")
+            close = added.index("static void oauth_transaction_close(RemminaOAuthTransaction *transaction)")
+            end = added.index("}", close)
+            helpers.append([line for line in added[start:end + 1] if line.strip()])
+            joined = "\n".join(added)
+            # The transaction is reference counted; every dialog and idle owns a reference.
+            self.assertIn("static RemminaOAuthTransaction *oauth_transaction_ref(", joined)
+            self.assertIn('g_signal_connect(dialog, "destroy", G_CALLBACK(oauth_dialog_destroy_cb),', joined)
+            self.assertIn("oauth_transaction_ref(transaction), oauth_transaction_unref);", joined)
+            # Callbacks receive the transaction that created the dialog, never a lookup on gp.
+            self.assertIn("GdkEvent *event, RemminaOAuthTransaction *transaction)", joined)
+            self.assertIn("WebKitPolicyDecisionType type, RemminaOAuthTransaction *transaction)", joined)
+            self.assertNotIn('g_object_get_data(G_OBJECT(gp), "oauth-transaction");', joined)
+            # Timeout tears the dialog down on the GTK thread and cleanup clears the transaction.
+            self.assertIn("static gboolean oauth_transaction_close_idle(gpointer data)", joined)
+            self.assertEqual(joined.count("oauth_transaction_close(transaction);"), 2)
+            self.assertEqual(joined.count('g_object_set_data(G_OBJECT(gp), "oauth-transaction", NULL);'), 2)
+            self.assertNotIn("SET_AUTH_URI", joined)
+        self.assertEqual(helpers[0], helpers[1])
 
     def test_certificate_loading_and_pin_state_are_asynchronous_and_bounded(self):
         source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
