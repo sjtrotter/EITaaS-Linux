@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.7%{?dist}
+Release:        0.8%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -15,6 +15,7 @@ Source3:        eitaas_cac_auth.h
 Source4:        eitaas-remmina
 Source5:        EITaaS-LICENSE
 Source6:        THIRD_PARTY_NOTICES.md
+Source7:        sources.json
 Patch0:         0001-preserve-protected-rdpw-settings.patch
 Patch1:         0002-add-cac-webview-authentication.patch
 Patch2:         0003-keep-private-runtime-paths.patch
@@ -99,6 +100,7 @@ install -Dpm0644 Remmina-%{remmina_commit}/LICENSE.OpenSSL \
   "$license_dir/Remmina-LICENSE.OpenSSL"
 install -Dpm0644 %{SOURCE5} "$license_dir/EITaaS-LICENSE"
 install -Dpm0644 %{SOURCE6} "$license_dir/THIRD_PARTY_NOTICES.md"
+install -Dpm0644 %{SOURCE7} %{buildroot}%{_docdir}/%{name}/sources.json
 rm -rf %{buildroot}$prefix/include %{buildroot}$prefix/lib64/cmake \
        %{buildroot}$prefix/lib64/pkgconfig %{buildroot}$prefix/share/man
 rm -f %{buildroot}$prefix/lib64/*.so
@@ -117,6 +119,7 @@ test -s "$license_dir/Remmina-LICENSE"
 test -s "$license_dir/Remmina-LICENSE.OpenSSL"
 test -s "$license_dir/EITaaS-LICENSE"
 test -s "$license_dir/THIRD_PARTY_NOTICES.md"
+test -s %{buildroot}%{_docdir}/%{name}/sources.json
 grep -q 'Apache License' "$license_dir/FreeRDP-LICENSE"
 grep -q 'special exception' "$license_dir/Remmina-COPYING"
 grep -q 'GNU GENERAL PUBLIC LICENSE' "$license_dir/Remmina-LICENSE"
@@ -125,10 +128,14 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 
 %files
 %license %{_licensedir}/%{name}
+%doc %{_docdir}/%{name}/sources.json
 %{_bindir}/eitaas-remmina
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.8
+- Ship the shared pinned-source manifest used by native packaging formats
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.7
 - Install distinct EITaaS, Remmina, FreeRDP, and bundled-component notices
 - Document component licensing and verify corresponding sources in package checks

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "package_version": "1.4.43",
+  "sources": {
+    "freerdp": {
+      "version": "3.31.0",
+      "url": "https://github.com/FreeRDP/FreeRDP/archive/refs/tags/3.31.0.tar.gz",
+      "sha256": "3c66cdd4506b86c451dd0817cb60aa8434c32f56ac1f92aa543f332b376113af",
+      "license": "Apache-2.0"
+    },
+    "remmina": {
+      "version": "1.4.43",
+      "commit": "030946c83fe1b7218a21b6d32f9c975b243b7031",
+      "url": "https://gitlab.com/Remmina/Remmina/-/archive/030946c83fe1b7218a21b6d32f9c975b243b7031/Remmina-030946c83fe1b7218a21b6d32f9c975b243b7031.tar.gz",
+      "sha256": "8976850314dddab8cfe74f413233a712e7ba4b6ccf72b56cbf635b51f1ea2801",
+      "license": "GPL-2.0-or-later"
+    }
+  },
+  "patches": [
+    "0001-preserve-protected-rdpw-settings.patch",
+    "0002-add-cac-webview-authentication.patch",
+    "0003-keep-private-runtime-paths.patch",
+    "0004-use-profile-avd-scope.patch"
+  ],
+  "downstream_sources": [
+    "eitaas_cac_auth.c",
+    "eitaas_cac_auth.h",
+    "eitaas-remmina"
+  ]
+}

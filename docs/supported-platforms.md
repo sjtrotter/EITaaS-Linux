@@ -1,5 +1,10 @@
 # Supported platforms
 
+The delivery decision, exact enhanced-client support boundary, and required
+CI/hardware matrix are defined in
+[`docs/adr/0001-remmina-packaging-strategy.md`](adr/0001-remmina-packaging-strategy.md).
+Native packages are the baseline; portable formats are not currently supported.
+
 AVD connections require FreeRDP 3 compiled with AAD and PC/SC support plus a
 non-terminal authentication path. Package names alone are not treated as
 proof; `eitaas doctor` checks build capabilities and the live broker.
