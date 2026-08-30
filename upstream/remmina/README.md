@@ -15,7 +15,8 @@ Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`:
 7. validate, own, and transaction-bind OAuth callbacks with state and PKCE;
 8. load the selected PKCS #11 certificate away from the GTK thread and bind
    PIN prompts to a bounded certificate transaction; and
-9. replace OAuth polling with synchronized, finite completion.
+9. replace OAuth polling with synchronized, finite completion whose dialog
+   is bound to, and torn down with, the transaction that created it.
 
 The patches deliberately omit EITaaS branding, one-shot lifecycle behavior,
 core-dump policy, private runtime paths, and the downstream certificate-label

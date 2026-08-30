@@ -1,20 +1,53 @@
-From b7c20fa7b9983dc398a4203e8989aebd0c1ec295 Mon Sep 17 00:00:00 2001
+From f8d632b24e1b444a3a40353805934b9dd7da38ab Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 09:11:09 -0500
+Date: Sun, 30 Aug 2026 11:16:11 -0500
 Subject: [PATCH] RDP: synchronize OAuth completion
 
+The embedded WebKit OAuth flow published its result through unsynchronized
+object data on the protocol widget and the worker thread polled it every
+500 ms without any bound, so a dialog that was never answered kept the
+connection thread spinning forever and the callbacks acted on "whatever
+transaction is on the widget now".
+
+Introduce a reference-counted RemminaOAuthTransaction that carries the
+authorization URI, the expected redirect and OAuth state, and the single
+terminal result behind a mutex and condition variable. The worker waits
+on the condition with a finite deadline, and each dialog and idle holds
+its own reference and receives the transaction that created it, never a
+replacement looked up on the widget. The dialog's "destroy" handler drops
+the dialog's reference, and the worker ends every transaction through
+oauth_transaction_close(), which destroys a still-open dialog (for
+example after the timeout) from the GTK thread via an idle, waits
+(bounded) for that to happen, and only then clears "oauth-transaction"
+on the widget. A show idle that runs after the transaction has already
+completed does not open a dialog, and the delete-event handler returns
+gboolean as GTK expects. Callback URIs must carry exactly one of "code"
+or "error" together with the expected state.
+
+Manual check: let the dialog time out (or shorten OAUTH_TRANSACTION_TIMEOUT
+locally), confirm the dialog closes and the connection fails, then
+reconnect and complete the sign-in in the fresh dialog.
+
+This change was prepared with AI assistance (Claude) and reviewed by the
+author.
 ---
- plugins/rdp/rdp_web_auth.c | 149 +++++++++++++++++++++++--------------
- 1 file changed, 93 insertions(+), 56 deletions(-)
+ plugins/rdp/rdp_web_auth.c | 286 +++++++++++++++++++++++++++----------
+ 1 file changed, 209 insertions(+), 77 deletions(-)
 
 diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
-index 9cac0e729..e34b50212 100644
+index 9cac0e729..6a9470392 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
-@@ -75,23 +75,67 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
- #define GET_AUTH_URI(gp) \
- 	(gchar*) g_object_get_data(G_OBJECT(gp), "auth-uri")
+@@ -69,29 +69,144 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
  
+ #define AUTH_CANCELLED "__AUTH_CANCELLED__"
+ 
+-#define SET_AUTH_URI(gp, auth_uri) \
+-	g_object_set_data(G_OBJECT(gp), "auth-uri", auth_uri)
+-
+-#define GET_AUTH_URI(gp) \
+-	(gchar*) g_object_get_data(G_OBJECT(gp), "auth-uri")
+-
 -#define SET_TOKEN_URI(gp, token_uri) \
 -	g_object_set_data_full(G_OBJECT(gp), "token-uri", \
 -	                       (token_uri) ? g_strdup(token_uri) : NULL, g_free)
@@ -32,71 +65,148 @@ index 9cac0e729..e34b50212 100644
 -	                       (state) ? g_strdup(state) : NULL, g_free)
 -#define GET_OAUTH_STATE(gp) \
 -	((const gchar *)g_object_get_data(G_OBJECT(gp), "oauth-state"))
++#define OAUTH_TRANSACTION_TIMEOUT (5 * G_TIME_SPAN_MINUTE)
++#define OAUTH_DIALOG_CLOSE_TIMEOUT (10 * G_TIME_SPAN_SECOND)
++
++/*
++ * One interactive OAuth authorization. The worker thread that runs
++ * remmina_rdp_get_*_access_token() owns the transaction from creation until
++ * cleanup. The dialog holds a reference from creation until its "destroy"
++ * signal and each idle holds one while it is pending, so the callbacks bound
++ * to a dialog always act on the transaction that created it. "dialog" is only
++ * touched on the GTK thread; every other field is guarded by "mutex".
++ */
 +typedef struct {
++	gint ref_count;
 +	GMutex mutex;
 +	GCond condition;
++	RemminaProtocolWidget *gp;
++	GtkWidget *dialog;
++	gchar *auth_uri;
 +	gchar *token_uri;
 +	gchar *expected_redirect;
 +	gchar *state;
 +	gboolean completed;
++	gboolean closed;
 +} RemminaOAuthTransaction;
 +
-+static void oauth_transaction_free(gpointer data)
++static RemminaOAuthTransaction *oauth_transaction_ref(RemminaOAuthTransaction *transaction)
++{
++	g_atomic_int_inc(&transaction->ref_count);
++	return transaction;
++}
++
++static void oauth_transaction_unref(gpointer data)
 +{
 +	RemminaOAuthTransaction *transaction = data;
-+	if (!transaction)
++	if (!transaction || !g_atomic_int_dec_and_test(&transaction->ref_count))
 +		return;
 +	g_mutex_clear(&transaction->mutex);
 +	g_cond_clear(&transaction->condition);
++	g_free(transaction->auth_uri);
 +	g_free(transaction->token_uri);
 +	g_free(transaction->expected_redirect);
 +	g_free(transaction->state);
 +	g_free(transaction);
 +}
 +
-+static RemminaOAuthTransaction *oauth_transaction_new(const gchar *redirect, const gchar *state)
++static RemminaOAuthTransaction *oauth_transaction_new(RemminaProtocolWidget *gp, const gchar *auth_uri,
++						      const gchar *redirect, const gchar *state)
 +{
 +	RemminaOAuthTransaction *transaction = g_new0(RemminaOAuthTransaction, 1);
++	transaction->ref_count = 1;
 +	g_mutex_init(&transaction->mutex);
 +	g_cond_init(&transaction->condition);
++	transaction->gp = gp;
++	transaction->auth_uri = g_strdup(auth_uri);
 +	transaction->expected_redirect = g_strdup(redirect);
 +	transaction->state = g_strdup(state);
 +	return transaction;
 +}
 +
-+static void oauth_transaction_complete(RemminaProtocolWidget *gp, const gchar *uri)
++/* Records the single terminal result of a transaction; later results are ignored. */
++static void oauth_transaction_complete(RemminaOAuthTransaction *transaction, const gchar *uri)
 +{
-+	RemminaOAuthTransaction *transaction = g_object_get_data(G_OBJECT(gp), "oauth-transaction");
-+	if (!transaction)
-+		return;
 +	g_mutex_lock(&transaction->mutex);
 +	if (!transaction->completed) {
 +		transaction->token_uri = g_strdup(uri);
 +		transaction->completed = TRUE;
-+		g_cond_signal(&transaction->condition);
++		g_cond_broadcast(&transaction->condition);
 +	}
 +	g_mutex_unlock(&transaction->mutex);
 +}
 +
++static gboolean oauth_transaction_is_completed(RemminaOAuthTransaction *transaction)
++{
++	g_mutex_lock(&transaction->mutex);
++	gboolean completed = transaction->completed;
++	g_mutex_unlock(&transaction->mutex);
++	return completed;
++}
++
 +static gchar *oauth_transaction_wait(RemminaOAuthTransaction *transaction)
 +{
-+	gint64 deadline = g_get_monotonic_time() + (5 * G_TIME_SPAN_MINUTE);
++	gint64 deadline = g_get_monotonic_time() + OAUTH_TRANSACTION_TIMEOUT;
 +	g_mutex_lock(&transaction->mutex);
-+	while (!transaction->completed && g_cond_wait_until(
-+	           &transaction->condition, &transaction->mutex, deadline)) {
++	while (!transaction->completed &&
++	       g_cond_wait_until(&transaction->condition, &transaction->mutex, deadline)) {
 +	}
 +	if (!transaction->completed) {
 +		transaction->token_uri = g_strdup(AUTH_CANCELLED);
 +		transaction->completed = TRUE;
 +	}
-+	gchar *result = transaction->completed ? g_strdup(transaction->token_uri) : NULL;
++	gchar *result = g_strdup(transaction->token_uri);
 +	g_mutex_unlock(&transaction->mutex);
 +	return result;
++}
++
++static void oauth_dialog_destroy_cb(GtkWidget *dialog, RemminaOAuthTransaction *transaction)
++{
++	g_mutex_lock(&transaction->mutex);
++	if (transaction->dialog == dialog)
++		transaction->dialog = NULL;
++	g_mutex_unlock(&transaction->mutex);
++	oauth_transaction_unref(transaction);
++}
++
++static gboolean oauth_transaction_close_idle(gpointer data)
++{
++	RemminaOAuthTransaction *transaction = data;
++	g_mutex_lock(&transaction->mutex);
++	GtkWidget *dialog = transaction->dialog;
++	transaction->dialog = NULL;
++	g_mutex_unlock(&transaction->mutex);
++	if (dialog)
++		gtk_widget_destroy(dialog);
++	g_mutex_lock(&transaction->mutex);
++	transaction->closed = TRUE;
++	g_cond_broadcast(&transaction->condition);
++	g_mutex_unlock(&transaction->mutex);
++	return G_SOURCE_REMOVE;
++}
++
++/*
++ * Ends the transaction from the worker thread: any dialog that is still open
++ * (for example after a timeout) is destroyed on the GTK thread and the worker
++ * waits, bounded, until that has happened. A dialog that has not been shown
++ * yet is never shown because the transaction is already completed.
++ */
++static void oauth_transaction_close(RemminaOAuthTransaction *transaction)
++{
++	gint64 deadline = g_get_monotonic_time() + OAUTH_DIALOG_CLOSE_TIMEOUT;
++	oauth_transaction_complete(transaction, AUTH_CANCELLED);
++	gdk_threads_add_idle_full(G_PRIORITY_DEFAULT_IDLE, oauth_transaction_close_idle,
++				  oauth_transaction_ref(transaction), oauth_transaction_unref);
++	g_mutex_lock(&transaction->mutex);
++	while (!transaction->closed &&
++	       g_cond_wait_until(&transaction->condition, &transaction->mutex, deadline)) {
++	}
++	g_mutex_unlock(&transaction->mutex);
 +}
  
  static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar **value)
  {
-@@ -120,10 +164,10 @@ static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar *
+@@ -120,10 +235,10 @@ static gboolean oauth_query_value(const gchar *query, const gchar *name, gchar *
  	return *value != NULL;
  }
  
@@ -110,7 +220,7 @@ index 9cac0e729..e34b50212 100644
  	GUri *actual = uri ? g_uri_parse(uri, G_URI_FLAGS_NONE, NULL) : NULL;
  	GUri *expected = expected_uri ? g_uri_parse(expected_uri, G_URI_FLAGS_NONE, NULL) : NULL;
  	gchar *state = NULL;
-@@ -138,9 +182,9 @@ static gboolean oauth_callback_matches(RemminaProtocolWidget *gp, const gchar *u
+@@ -138,9 +253,9 @@ static gboolean oauth_callback_matches(RemminaProtocolWidget *gp, const gchar *u
  		g_uri_get_userinfo(actual) == NULL && g_uri_get_fragment(actual) == NULL;
  	gboolean state_ok = destination && oauth_query_value(g_uri_get_query(actual), "state", &state) &&
  		g_strcmp0(state, expected_state) == 0;
@@ -123,38 +233,81 @@ index 9cac0e729..e34b50212 100644
  	g_free(state);
  	g_free(code);
  	g_free(oauth_error);
-@@ -216,7 +260,7 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+@@ -215,12 +330,14 @@ static gchar* get_auth_hints(RemminaProtocolWidget *gp) {
+ 	return g_string_free(url_params, FALSE);
  }
  
- static void delete_event_cb(GtkWidget *dialog, GdkEvent* event, RemminaProtocolWidget *gp) {
+-static void delete_event_cb(GtkWidget *dialog, GdkEvent* event, RemminaProtocolWidget *gp) {
 -	SET_TOKEN_URI(gp, AUTH_CANCELLED);
-+	oauth_transaction_complete(gp, AUTH_CANCELLED);
++static gboolean delete_event_cb(GtkWidget *dialog, GdkEvent *event, RemminaOAuthTransaction *transaction)
++{
++	oauth_transaction_complete(transaction, AUTH_CANCELLED);
++	return FALSE;
  }
  
  static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *decision,
-@@ -233,8 +277,10 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
+-	WebKitPolicyDecisionType type, RemminaProtocolWidget *gp)
++	WebKitPolicyDecisionType type, RemminaOAuthTransaction *transaction)
+ {
+ 	WebKitNavigationPolicyDecision *nav_decision;
+ 
+@@ -233,8 +350,8 @@ static gboolean decide_policy_cb(WebKitWebView *web_view, WebKitPolicyDecision *
  		if (webkit_navigation_action_is_redirect(nav_action)) {
  			WebKitURIRequest *req = webkit_navigation_action_get_request(nav_action);
  			const gchar *uri = webkit_uri_request_get_uri(req);
 -			if (oauth_callback_matches(gp, uri)) {
 -				SET_TOKEN_URI(gp, uri);
-+			RemminaOAuthTransaction *transaction = g_object_get_data(
-+				G_OBJECT(gp), "oauth-transaction");
-+			if (transaction && oauth_callback_matches(transaction, uri)) {
-+				oauth_transaction_complete(gp, uri);
++			if (oauth_callback_matches(transaction, uri)) {
++				oauth_transaction_complete(transaction, uri);
  				GtkWidget *dialog = gtk_widget_get_toplevel(GTK_WIDGET(web_view));
  				gtk_widget_destroy(GTK_WIDGET(dialog));
  			}
-@@ -275,7 +321,7 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+@@ -258,11 +375,16 @@ static void remmina_rdp_webview_set_title(GtkWindow *dialog, RemminaProtocolWidg
+ 	g_free(title);
+ }
+ 
+-static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+-	char* auth_uri = GET_AUTH_URI(gp);
++static gboolean remmina_rdp_webview_show(gpointer data)
++{
++	RemminaOAuthTransaction *transaction = data;
++	const gchar *auth_uri = transaction->auth_uri;
++
++	if (oauth_transaction_is_completed(transaction))
++		return G_SOURCE_REMOVE;
+ 
+ 	GtkWidget *dialog = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+-	remmina_rdp_webview_set_title(GTK_WINDOW(dialog), gp);
++	remmina_rdp_webview_set_title(GTK_WINDOW(dialog), transaction->gp);
+ 	gtk_window_set_default_size(GTK_WINDOW(dialog), 500, 500);
+ 
+ 	WebKitWebView *webView = WEBKIT_WEB_VIEW(webkit_web_view_new());
+@@ -275,7 +397,7 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
  	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
  		if (authentication_uri)
  			g_uri_unref(authentication_uri);
 -		SET_TOKEN_URI(gp, AUTH_CANCELLED);
-+		oauth_transaction_complete(gp, AUTH_CANCELLED);
++		oauth_transaction_complete(transaction, AUTH_CANCELLED);
  		gtk_widget_destroy(dialog);
  		return G_SOURCE_REMOVE;
  	}
-@@ -317,6 +363,7 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -285,8 +407,13 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 
+ 	webkit_web_view_load_uri(webView, auth_uri);
+ 
+-	g_signal_connect(dialog, "delete-event", G_CALLBACK(delete_event_cb), gp);
+-	g_signal_connect(webView, "decide-policy", G_CALLBACK(decide_policy_cb), gp);
++	g_mutex_lock(&transaction->mutex);
++	transaction->dialog = dialog;
++	g_mutex_unlock(&transaction->mutex);
++	g_signal_connect(dialog, "destroy", G_CALLBACK(oauth_dialog_destroy_cb),
++			 oauth_transaction_ref(transaction));
++	g_signal_connect(dialog, "delete-event", G_CALLBACK(delete_event_cb), transaction);
++	g_signal_connect(webView, "decide-policy", G_CALLBACK(decide_policy_cb), transaction);
+ 	g_signal_connect(webView, "authenticate", G_CALLBACK(remmina_rdp_webview_pkcs11_authenticate), dialog);
+ 
+ 	gtk_widget_show_all(dialog);
+@@ -317,6 +444,7 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  	char* pkce_verifier = NULL;
  	char* pkce_challenge = NULL;
  	gchar* expected_redirect = NULL;
@@ -162,17 +315,15 @@ index 9cac0e729..e34b50212 100644
  
  	assert(scope);
  	assert(req_cnf);
-@@ -356,25 +403,22 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -355,26 +483,26 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+ 		goto cleanup;
  	}
  
- 	SET_AUTH_URI(gp, auth_uri);
+-	SET_AUTH_URI(gp, auth_uri);
 -	SET_EXPECTED_REDIRECT(gp, expected_redirect);
 -	SET_OAUTH_STATE(gp, oauth_state);
-+	transaction = oauth_transaction_new(expected_redirect, oauth_state);
-+	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", transaction,
-+	                       oauth_transaction_free);
- 	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
- 
+-	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
+-
 -	char* token_uri;
 -	while(true) {
 -		usleep(500 * 1000);
@@ -181,6 +332,15 @@ index 9cac0e729..e34b50212 100644
 -			continue;
 -		}
 -
++	/* Fail closed if a previous transaction on this widget was never cleaned up. */
++	if (g_object_get_data(G_OBJECT(gp), "oauth-transaction"))
++		goto cleanup;
++	transaction = oauth_transaction_new(gp, auth_uri, expected_redirect, oauth_state);
++	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", oauth_transaction_ref(transaction),
++			       oauth_transaction_unref);
++	gdk_threads_add_idle_full(G_PRIORITY_DEFAULT_IDLE, remmina_rdp_webview_show,
++				  oauth_transaction_ref(transaction), oauth_transaction_unref);
++
 +	char* token_uri = oauth_transaction_wait(transaction);
 +	if (token_uri) {
  		if (g_str_equal(token_uri, AUTH_CANCELLED)) {
@@ -195,7 +355,7 @@ index 9cac0e729..e34b50212 100644
  			goto cleanup;
  		}
  
-@@ -383,11 +427,12 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
+@@ -383,11 +511,12 @@ static BOOL remmina_rdp_get_rdsaad_access_token(freerdp* instance, const char* s
  							"s&req_cnf=%s&code_verifier=%s",
  							code, client_id, scope, redirect_uri, req_cnf, pkce_verifier) <= 0)
  		{
@@ -209,17 +369,23 @@ index 9cac0e729..e34b50212 100644
  	}
  
  cleanup:
-@@ -400,9 +445,6 @@ cleanup:
+@@ -399,10 +528,11 @@ cleanup:
+ 	free(pkce_verifier);
  	free(pkce_challenge);
  	g_free(expected_redirect);
- 	SET_AUTH_URI(gp, NULL);
+-	SET_AUTH_URI(gp, NULL);
 -	SET_TOKEN_URI(gp, NULL);
 -	SET_EXPECTED_REDIRECT(gp, NULL);
 -	SET_OAUTH_STATE(gp, NULL);
++	if (transaction) {
++		oauth_transaction_close(transaction);
++		g_object_set_data(G_OBJECT(gp), "oauth-transaction", NULL);
++		oauth_transaction_unref(transaction);
++	}
  	return rc && (*token != NULL);
  }
  
-@@ -427,6 +469,7 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -427,6 +557,7 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  	char* pkce_verifier = NULL;
  	char* pkce_challenge = NULL;
  	gchar* expected_redirect = NULL;
@@ -227,17 +393,15 @@ index 9cac0e729..e34b50212 100644
  	const char* scope = "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default";
  
  	assert(token);
-@@ -474,27 +517,23 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -473,28 +604,27 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+ 		goto cleanup;
  	}
  
- 	SET_AUTH_URI(gp, auth_uri);
+-	SET_AUTH_URI(gp, auth_uri);
 -	SET_EXPECTED_REDIRECT(gp, expected_redirect);
 -	SET_OAUTH_STATE(gp, oauth_state);
-+	transaction = oauth_transaction_new(expected_redirect, oauth_state);
-+	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", transaction,
-+	                       oauth_transaction_free);
- 	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
- 
+-	IDLE_ADD((GSourceFunc)remmina_rdp_webview_show, gp);
+-
 -	char* token_uri;
 -	while(true) {
 -		usleep(500 * 1000);
@@ -247,6 +411,15 @@ index 9cac0e729..e34b50212 100644
 -			continue;
 -		}
 -
++	/* Fail closed if a previous transaction on this widget was never cleaned up. */
++	if (g_object_get_data(G_OBJECT(gp), "oauth-transaction"))
++		goto cleanup;
++	transaction = oauth_transaction_new(gp, auth_uri, expected_redirect, oauth_state);
++	g_object_set_data_full(G_OBJECT(gp), "oauth-transaction", oauth_transaction_ref(transaction),
++			       oauth_transaction_unref);
++	gdk_threads_add_idle_full(G_PRIORITY_DEFAULT_IDLE, remmina_rdp_webview_show,
++				  oauth_transaction_ref(transaction), oauth_transaction_unref);
++
 +	char* token_uri = oauth_transaction_wait(transaction);
 +	if (token_uri) {
  		if (g_str_equal(token_uri, AUTH_CANCELLED))
@@ -262,7 +435,7 @@ index 9cac0e729..e34b50212 100644
  			goto cleanup;
  		}
  
-@@ -503,11 +542,12 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
+@@ -503,11 +633,12 @@ static BOOL remmina_rdp_get_avd_access_token(freerdp* instance, char** token) {
  					"grant_type=authorization_code&code=%s&client_id=%s&scope=%s&redirect_uri=%s&code_verifier=%s", code,
  					client_id, scope, redirect_uri, pkce_verifier) <= 0)
  		{
@@ -276,13 +449,19 @@ index 9cac0e729..e34b50212 100644
  	}
  
  cleanup:
-@@ -520,9 +560,6 @@ cleanup:
+@@ -519,10 +650,11 @@ cleanup:
+ 	free(pkce_verifier);
  	free(pkce_challenge);
  	g_free(expected_redirect);
- 	SET_AUTH_URI(gp, NULL);
+-	SET_AUTH_URI(gp, NULL);
 -	SET_TOKEN_URI(gp, NULL);
 -	SET_EXPECTED_REDIRECT(gp, NULL);
 -	SET_OAUTH_STATE(gp, NULL);
++	if (transaction) {
++		oauth_transaction_close(transaction);
++		g_object_set_data(G_OBJECT(gp), "oauth-transaction", NULL);
++		oauth_transaction_unref(transaction);
++	}
  	return rc && (*token != NULL);
  }
  
