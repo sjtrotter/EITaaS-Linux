@@ -6,9 +6,11 @@ build_root=${EITAAS_REMMINA_DEB_BUILD_ROOT:-"$project_root/.build/eitaas-remmina
 
 # packaging/remmina/debian/changelog is the single source of truth for the
 # Debian version; dpkg-parsechangelog ships with the dpkg-dev that
-# dpkg-buildpackage below already requires.
+# dpkg-buildpackage below already requires. Debian file names carry no epoch,
+# so drop one if the changelog ever gains it.
 version=$(dpkg-parsechangelog \
   -l "$project_root/packaging/remmina/debian/changelog" -S Version)
+version=${version#*:}
 source_root="$build_root/eitaas-remmina-$version"
 
 mkdir -p "$build_root/cache" "$project_root/dist"

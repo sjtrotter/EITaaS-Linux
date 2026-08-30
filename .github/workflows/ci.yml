@@ -183,8 +183,10 @@ jobs:
             python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"][sys.argv[2]][sys.argv[3]])' \
               "$manifest" "$1" "$2"
           }
+          deb_version=$(dpkg-parsechangelog -l packaging/remmina/debian/changelog -S Version)
           {
-            echo "DEB_VERSION=$(dpkg-parsechangelog -l packaging/remmina/debian/changelog -S Version)"
+            # Debian artifact file names carry no epoch.
+            echo "DEB_VERSION=${deb_version#*:}"
             echo "FREERDP_VERSION=$(read_manifest freerdp version)"
             echo "REMMINA_COMMIT=$(read_manifest remmina commit)"
           } >>"$GITHUB_ENV"
@@ -203,9 +205,11 @@ jobs:
           test -f "$target/source/FreeRDP-${FREERDP_VERSION}/LICENSE"
           test -f "$target/source/Remmina-${REMMINA_COMMIT}/COPYING"
           test -f "$target/source/sources.json"
-          for patch in $(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["patches"]))' packaging/remmina/sources.json); do
+          python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["patches"]))' \
+            packaging/remmina/sources.json >"$target/patches.txt"
+          while read -r patch; do
             test -f "$target/source/patches/$patch"
-          done
+          done <"$target/patches.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -19,6 +19,13 @@ def debian_version():
     return match.group(1)
 
 
+def executable_lines(text):
+    """Drop whole-line shell/YAML comments so prose cannot trip the SSOT guards."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
 class RemminaPackagingComplianceTests(unittest.TestCase):
     def test_native_debian_recipe_uses_private_prefix_and_embedded_auth(self):
         rules = (PACKAGE_DIR / "debian" / "rules").read_text()
@@ -116,7 +123,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         # positive integer.
         pkgbuild = (PACKAGE_DIR / "arch" / "PKGBUILD").read_text()
         self.assertIn("pkgver=@PKGVER@", pkgbuild)
-        self.assertNotIn(package_version, pkgbuild)
+        self.assertNotIn(f"pkgver={package_version}", pkgbuild)
         pkgrel = re.search(r"(?m)^pkgrel=(\S+)$", pkgbuild)
         self.assertIsNotNone(pkgrel)
         self.assertRegex(pkgrel.group(1), r"^[1-9]\d*$")
@@ -129,6 +136,9 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn('source_root="$build_root/eitaas-remmina-$version"', builder)
         self.assertIn("dpkg-parsechangelog", WORKFLOW)
         self.assertIn("DEB_VERSION", WORKFLOW)
+        # Debian artifact file names carry no epoch; both consumers strip one.
+        self.assertIn("version=${version#*:}", builder)
+        self.assertIn("DEB_VERSION=${deb_version#*:}", WORKFLOW)
         # The lifecycle downgrade target is derived from the package under test.
         self.assertIn('prior_version="$expected_version~0"', lifecycle)
 
@@ -139,9 +149,9 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             "remmina commit": MANIFEST["sources"]["remmina"]["commit"],
         }
         consumers = {
-            "scripts/build-remmina-deb.sh": builder,
-            "scripts/test-remmina-deb-lifecycle.sh": lifecycle,
-            ".github/workflows/ci.yml": WORKFLOW,
+            "scripts/build-remmina-deb.sh": executable_lines(builder),
+            "scripts/test-remmina-deb-lifecycle.sh": executable_lines(lifecycle),
+            ".github/workflows/ci.yml": executable_lines(WORKFLOW),
         }
         for label, value in pinned.items():
             for name, text in consumers.items():
