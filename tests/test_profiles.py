@@ -1,3 +1,4 @@
+import errno
 import os
 import stat
 import tempfile
@@ -65,13 +66,18 @@ class ProfileStoreTests(unittest.TestCase):
         source = self.download()
 
         def cross_device(src, dst, *args, **kwargs):
-            raise OSError(18, "Invalid cross-device link")
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
 
-        with patch("eitaas.profiles.os.rename", side_effect=cross_device):
+        with patch("eitaas.profiles.os.link", side_effect=cross_device) as link, \
+                patch("eitaas.profiles._verify_stored", wraps=profiles._verify_stored) as verify:
             stored = profiles.import_profile(source)
+        link.assert_called_once()
+        verify.assert_called_once()
         self.assertFalse(source.exists())
+        self.assertEqual(stored.path, profiles.store_dir() / "Desktop.rdpw")
         self.assertEqual(stored.path.read_bytes(), FIXTURE.read_bytes())
         self.assertEqual(stat.S_IMODE(stored.path.lstat().st_mode), 0o600)
+        self.assertTrue(stat.S_ISREG(stored.path.lstat().st_mode))
 
     def test_duplicate_basenames_get_numeric_suffix(self):
         first = profiles.import_profile(self.download())
