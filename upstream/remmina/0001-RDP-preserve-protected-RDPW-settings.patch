@@ -1,7 +1,7 @@
 From 15f44629c168ec2ace89b8d2d0b9f2aca311c754 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 1/5] RDP: preserve protected RDPW settings
+Subject: [PATCH 1/6] RDP: preserve protected RDPW settings
 
 Azure Virtual Desktop publishes protected connection files (.rdpw) whose
 settings and signature the generic Remmina .rdp importer does not model.

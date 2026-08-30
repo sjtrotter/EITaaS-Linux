@@ -1,7 +1,7 @@
 From 63a37839963eece31c0daaa7edd322f85d5e6f74 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 5/5] RDP: handle PKCS11 client certificates in WebKit
+Subject: [PATCH 5/6] RDP: handle PKCS11 client certificates in WebKit
 
 Certificate-based authentication in Azure AD challenges the embedded web
 view for a TLS client certificate from certauth.<authority> and, when the

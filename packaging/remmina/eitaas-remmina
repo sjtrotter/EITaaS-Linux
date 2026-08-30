@@ -25,6 +25,14 @@ export EITAAS_REMMINA_ONESHOT=1
 # a terminal both need them. Remmina additionally appends its debug lines to
 # $TMPDIR/remmina_log_file.log (upstream behaviour).
 export G_MESSAGES_DEBUG="${G_MESSAGES_DEBUG:-remmina}"
+# Deliberately no WLOG_LEVEL/WLOG_FILTER export. FreeRDP already reports
+# gateway failures at WinPR's default INFO threshold -- the ARM response read
+# gives "timeout [<n>ms] exceeded" at ERROR from com.freerdp.core.gateway.http
+# and arm.c reports its own failures at ERROR -- and the applied wait is
+# printed by the plugin's "avd-arm: response-timeout-ms=" debug line above.
+# Raising the level would leak secrets: at DEBUG, com.freerdp.utils.http logs
+# the whole OAuth token request body (the authorization code) and the whole
+# token-endpoint response (access, refresh, and id tokens).
 
 for client in \
 	/usr/libexec/eitaas-remmina/bin/remmina \

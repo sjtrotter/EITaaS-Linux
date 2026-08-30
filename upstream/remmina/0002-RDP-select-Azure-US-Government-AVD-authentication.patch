@@ -1,7 +1,7 @@
 From 456f880657bebe88910fbca938b3479a1c57ba7d Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
-Subject: [PATCH 2/5] RDP: select Azure US Government AVD authentication
+Subject: [PATCH 2/6] RDP: select Azure US Government AVD authentication
 
 FreeRDP defaults the AVD OAuth authority, scope, and redirect format to
 the commercial cloud. A protected profile whose gateway lives in the

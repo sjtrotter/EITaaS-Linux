@@ -3,7 +3,7 @@
 This directory contains a generic, unbranded patch series prepared against
 Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`. It is one
 linear series exported with `git format-patch` from the local GitLab-fork
-branch `contrib/eitaas-series-v3` (head `63a378399`); each commit is a
+branch `contrib/eitaas-series-v4` (head `0ab01e608`); each commit is a
 complete logical change with no fix-up of an earlier commit:
 
 1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`15f44629c`) reads a
@@ -28,7 +28,14 @@ complete logical change with no fix-up of an earlier commit:
    and logs every stage through `REMMINA_PLUGIN_DEBUG`/`REMMINA_PLUGIN_WARNING`
    with stable `smartcard-auth: <code>` reason codes (counts, the verified
    sign-in host, and codes only; no URIs, labels, PINs, or callback URLs);
-   the sources compile only when `WITH_RDP_AUTH_AAD` is enabled.
+   the sources compile only when `WITH_RDP_AUTH_AAD` is enabled; and
+6. `0006-RDP-extend-ARM-gateway-response-timeout.patch` (`0ab01e608`)
+   applies the profile timeout to `FreeRDP_TcpConnectTimeout` as well as
+   `FreeRDP_TcpAckTimeout` (matching FreeRDP's own /timeout option), and
+   raises the ARM gateway response wait to 60 seconds when the ARM
+   transport is selected and the profile sets no timeout of its own (the
+   ARM connection request is not idempotent and is never re-sent), logging
+   `avd-arm: response-timeout-ms=60000` at debug level.
 
 The patches deliberately omit EITaaS branding, one-shot lifecycle behavior,
 core-dump policy, private runtime paths, and the downstream certificate-label
@@ -47,11 +54,13 @@ until the corresponding issue has a developer-attested verification comment.
 The earlier three-branch exports (`contrib/rdpw-govcloud`,
 `contrib/avd-settings-auth`, `contrib/webkit-pkcs11-auth` and their
 `-issue60`/`-issue61` follow-ups) and the `contrib/eitaas-series-v2`/`-v2b`,
-`contrib/eitaas-series-v3-logging-main`, and `contrib/eitaas-series-v3-logging`
-branches are superseded by this series: `contrib/eitaas-series-v3` carries the
-logging tree of `contrib/eitaas-series-v3-logging-main` (`6d75d9fe9`, identical
-tree) with the commit messages reworded to the SSO-MIB-off / FreeRDP 3.30
-wording of EITaaS-Linux #77/#81.
+`contrib/eitaas-series-v3-logging-main`, `contrib/eitaas-series-v3-logging`,
+and `contrib/eitaas-series-v3` branches are superseded by this series:
+`contrib/eitaas-series-v4` keeps the five commits of `contrib/eitaas-series-v3`
+(`63a378399`, whose logging tree matches `contrib/eitaas-series-v3-logging-main`
+`6d75d9fe9` with the commit messages reworded to the SSO-MIB-off /
+FreeRDP 3.30 wording of EITaaS-Linux #77/#81) unchanged and adds the ARM
+gateway response-timeout commit (EITaaS-Linux #84).
 
 ## FreeRDP compatibility
 
@@ -102,5 +111,5 @@ remains necessary because CI cannot prove WebKit client-certificate behavior,
 PIN entry, or card redirection.
 
 Before submission, rebase the series on the latest Remmina master and follow
-its contribution process. The five files are review artifacts, not a claim
+its contribution process. The six files are review artifacts, not a claim
 that Remmina or FreeRDP maintainers have accepted the design.

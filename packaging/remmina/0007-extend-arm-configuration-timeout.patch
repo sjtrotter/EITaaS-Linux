@@ -1,0 +1,50 @@
+From: EITaaS-Linux contributors <noreply@example.invalid>
+Subject: [PATCH] Extend the ARM gateway response timeout
+License: GPL-2.0-or-later
+Copyright: 2026 Stephen Trotter
+
+The profile "timeout" setting only reached FreeRDP_TcpAckTimeout, while
+FreeRDP reads gateway HTTP responses under FreeRDP_TcpConnectTimeout
+(and FreeRDP's own /timeout option applies the value to both settings);
+apply it to both. An Azure Virtual Desktop ARM gateway orchestrates the
+session host on first contact and can hold the socket longer than the
+15000 ms FreeRDP_TcpConnectTimeout default before responding; the
+connection request is not idempotent, so when the ARM transport is
+selected and the profile sets no timeout, wait up to 60000 ms instead
+of retrying, and log the applied wait at debug level.
+
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -68,6 +68,11 @@
+ #else
+ #define RDP2TCP_DVC_CHANNEL_NAME "rdp2tcp"
+ #endif
++
++/* Response wait for the non-idempotent ARM gateway connection request;
++ * Azure Virtual Desktop session-host orchestration can exceed FreeRDP's
++ * 15 second FreeRDP_TcpConnectTimeout default. */
++#define ARM_GATEWAY_RESPONSE_TIMEOUT 60000u
+ #include <freerdp/client/channels.h>
+ #include <freerdp/client/cliprdr.h>
+ #include <freerdp/client/cmdline.h>
+@@ -2445,7 +2450,20 @@
+ 		guint64 val = g_ascii_strtoull(cs, (gchar **)&endptr, 10);
+ 		if (val > 600000 || val <= 0)
+ 			val = 600000;
++		/* FreeRDP's own /timeout option applies the value to both settings;
++		 * gateway HTTP responses are read under FreeRDP_TcpConnectTimeout. */
+ 		freerdp_settings_set_uint32(rfi->clientContext.context.settings, FreeRDP_TcpAckTimeout, (UINT32)val);
++		freerdp_settings_set_uint32(rfi->clientContext.context.settings, FreeRDP_TcpConnectTimeout, (UINT32)val);
++	}
++#endif
++
++#ifdef WITH_RDP_AUTH_AAD
++	cs = remmina_plugin_service->file_get_string(remminafile, "timeout");
++	if ((cs == NULL || cs[0] == '\0') &&
++	    freerdp_settings_get_bool(rfi->clientContext.context.settings, FreeRDP_GatewayArmTransport) &&
++	    freerdp_settings_get_uint32(rfi->clientContext.context.settings, FreeRDP_TcpConnectTimeout) < ARM_GATEWAY_RESPONSE_TIMEOUT) {
++		freerdp_settings_set_uint32(rfi->clientContext.context.settings, FreeRDP_TcpConnectTimeout, ARM_GATEWAY_RESPONSE_TIMEOUT);
++		REMMINA_PLUGIN_DEBUG("avd-arm: response-timeout-ms=%u", ARM_GATEWAY_RESPONSE_TIMEOUT);
+ 	}
+ #endif
+ 

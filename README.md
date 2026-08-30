@@ -197,6 +197,23 @@ each, the newest five kept). The last line is `exit=<code>`.
 | `pin-cancelled (user|window-closed|transaction-cleared)` | warning | PIN dialog dismissed |
 | `oneshot-quit (application=)` | debug | The one-shot client is quitting after a cancelled discovery |
 
+  The bundled client also logs the Azure Virtual Desktop ARM gateway phase
+  with an `avd-arm:` prefix, identical in the downstream and upstream trees:
+
+| Code | Level | Meaning |
+|---|---|---|
+| `avd-arm: response-timeout-ms=60000` | debug | The profile set no timeout, so the wait for the ARM gateway's connection response was raised from FreeRDP's 15 s default to 60 s (the request is not idempotent and is never re-sent) |
+
+  The launcher does **not** raise FreeRDP's own log level: at `WLOG_LEVEL=DEBUG`
+  FreeRDP's `com.freerdp.utils.http` logger writes the whole OAuth token
+  request body and the whole token-endpoint response (access, refresh, and id
+  tokens) to the log. The evidence a timeout needs is already emitted at
+  WinPR's default level — `timeout [<n>ms] exceeded` at ERROR from
+  `com.freerdp.core.gateway.http` — so no `WLOG_LEVEL`/`WLOG_FILTER` export is
+  set. Session-log lines are redacted before they are written (JWTs, `Bearer`
+  values in any casing, quoted-JSON token fields, `Set-Cookie`/`ARRAffinity`
+  cookie values, sensitive `key=value` pairs, and URL query values).
+
 ## Bundled client and desktop support
 
 Connections use only the bundled `eitaas-remmina` package: Remmina and

@@ -17,6 +17,77 @@ class RedactionTests(unittest.TestCase):
         sample = "eyJ" + "hbGciOiJIUzI1NiJ9" + "." + "eyJzdWIiOiIxIn0" + ".signature"
         self.assertNotIn(sample, redact(sample))
 
+    def test_bearer_value_is_redacted(self):
+        # FreeRDP logs the Authorization header only at TRACE level, which the
+        # launcher never enables; redact bearer values anyway (belt and braces).
+        for line in (
+            "Authorization: Bearer synthetic.opaque-value~1",
+            "using Bearer synthetic-opaque-value for the gateway",
+            # wst.c appends the token as "ClmTk=Bearer%20..." but other
+            # producers lower-case the scheme; the rule is case-insensitive.
+            "using bearer synthetic-opaque-value for the gateway",
+            "using BEARER synthetic-opaque-value for the gateway",
+        ):
+            redacted = redact(line)
+            self.assertNotIn("synthetic", redacted, redacted)
+            self.assertIn("<redacted>", redacted)
+        self.assertIn(
+            "Bearer <redacted>",
+            redact("using Bearer synthetic-opaque-value for the gateway"),
+        )
+
+    def test_quoted_json_token_values_are_redacted(self):
+        # The OAuth token endpoint answers with this exact shape; the refresh
+        # token is opaque, so no JWT rule catches it, and the quotes keep the
+        # key away from the bare "key: value" rule.
+        body = (
+            '{"token_type":"Bearer","access_token":"x",'
+            '"refresh_token":"0.AXoAsyntheticREFRESHvalue123","id_token":"y"}'
+        )
+        redacted = redact(body)
+        self.assertNotIn("0.AXoAsyntheticREFRESHvalue123", redacted)
+        self.assertEqual(
+            redacted,
+            '{"token_type":"Bearer","access_token":"<redacted>",'
+            '"refresh_token":"<redacted>","id_token":"<redacted>"}',
+        )
+        for key in ("code", "session", "authorization", "cookie", "secret"):
+            with self.subTest(key=key):
+                line = f'{{"{key}": "synthetic-value"}}'
+                self.assertNotIn("synthetic-value", redact(line))
+
+    def test_cookie_values_are_redacted(self):
+        # FreeRDP logs the Azure load-balancing cookie at INFO level in
+        # libfreerdp/core/gateway/wst.c, so it reaches the session log by
+        # default (issue #88).
+        cases = {
+            "Got ARRAffinity cookie         synthetic-affinity-value":
+                "Got ARRAffinity cookie         <redacted>",
+            "Got ARRAffinitySameSite cookie synthetic-samesite-value":
+                "Got ARRAffinitySameSite cookie <redacted>",
+            "ARRAffinity=synthetic-affinity-value": "ARRAffinity=<redacted>",
+            "Set-Cookie: ARRAffinity=synthetic-affinity-value; path=/; HttpOnly":
+                "Set-Cookie: ARRAffinity=<redacted>",
+            "set-cookie: synthetic-nameless-value": "set-cookie: <redacted>",
+            "Cookie: ARRAffinity=synthetic-affinity-value":
+                "Cookie: ARRAffinity=<redacted>",
+        }
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(redact(line), expected)
+
+    def test_redaction_is_idempotent(self):
+        for line in (
+            '{"access_token":"synthetic"}',
+            "Set-Cookie: ARRAffinity=synthetic-affinity-value",
+            "Got ARRAffinity cookie synthetic-affinity-value",
+            "password=synthetic",
+            "using Bearer synthetic-opaque-value",
+        ):
+            with self.subTest(line=line):
+                once = redact(line)
+                self.assertEqual(redact(once), once)
+
 
 class LogRedactionTests(unittest.TestCase):
     def test_remmina_debug_keys_with_prefixes_are_redacted(self):

@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.13%{?dist}
+Release:        0.15%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -22,6 +22,7 @@ Patch2:         0003-keep-private-runtime-paths.patch
 Patch3:         0004-use-profile-avd-scope.patch
 Patch4:         0005-bind-protected-rdpw-content.patch
 Patch5:         0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch
+Patch6:         0007-extend-arm-configuration-timeout.patch
 
 BuildRequires:  cmake
 BuildRequires:  gcc
@@ -60,6 +61,7 @@ patch --fuzz=0 -p1 -d "$remmina" < %{PATCH2}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH3}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH4}
 patch --fuzz=0 -p1 -d "$remmina" < %{PATCH5}
+patch --fuzz=0 -p1 -d "$remmina" < %{PATCH6}
 
 %build
 prefix=%{_libexecdir}/eitaas-remmina
@@ -136,6 +138,12 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.15
+- Apply the profile timeout to gateway response reads and default the ARM
+  gateway response wait to 60 seconds
+- Leave FreeRDP's WinPR log level at its default; at DEBUG the OAuth token
+  request body and token-endpoint response are written to the log
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.13
 - Drop SSO-MIB from the bundle and re-pin FreeRDP to 3.30.0
 

@@ -203,7 +203,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_downstream_patches_declare_their_license(self):
         patches = sorted(PACKAGE_DIR.glob("*.patch"))
-        self.assertEqual(len(patches), 6)
+        self.assertEqual(len(patches), 7)
         for patch in patches:
             with self.subTest(patch=patch.name):
                 self.assertIn("License: GPL-2.0-or-later", patch.read_text().split("---", 1)[0])
@@ -439,6 +439,80 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
         self.assertIn("copyright 2026 Stephen Trotter", " ".join(notice.split()))
         self.assertIn("developed with AI assistance", notice)
+
+
+class ArmGatewayTimeoutTests(unittest.TestCase):
+    """Issue #84: the ARM gateway response wait is extended in both trees."""
+
+    DOWNSTREAM = "0007-extend-arm-configuration-timeout.patch"
+    UPSTREAM = "0006-RDP-extend-ARM-gateway-response-timeout.patch"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.downstream = (PACKAGE_DIR / cls.DOWNSTREAM).read_text()
+        cls.upstream = (UPSTREAM_DIR / cls.UPSTREAM).read_text()
+
+    @staticmethod
+    def _added_lines(patch):
+        return [
+            line[1:]
+            for line in patch.splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        ]
+
+    def test_patch_is_registered_in_manifest_and_spec(self):
+        self.assertIn(self.DOWNSTREAM, MANIFEST["patches"])
+        self.assertIn(f"Patch6:         {self.DOWNSTREAM}", SPEC)
+        self.assertIn('patch --fuzz=0 -p1 -d "$remmina" < %{PATCH6}', SPEC)
+
+    def test_profile_timeout_reaches_both_tcp_timeouts(self):
+        # Remmina applied the profile "timeout" only to FreeRDP_TcpAckTimeout;
+        # gateway responses are read under FreeRDP_TcpConnectTimeout.
+        for name, patch in (("downstream", self.downstream), ("upstream", self.upstream)):
+            with self.subTest(tree=name):
+                added = "\n".join(self._added_lines(patch))
+                self.assertIn("FreeRDP_TcpConnectTimeout, (UINT32)val", added)
+
+    def test_arm_default_applies_only_without_a_profile_timeout(self):
+        for name, patch in (("downstream", self.downstream), ("upstream", self.upstream)):
+            with self.subTest(tree=name):
+                added = "\n".join(self._added_lines(patch))
+                self.assertIn("#define ARM_GATEWAY_RESPONSE_TIMEOUT 60000u", added)
+                self.assertIn("#ifdef WITH_RDP_AUTH_AAD", added)
+                self.assertIn("cs == NULL || cs[0] == '\\0'", added)
+                self.assertIn("FreeRDP_GatewayArmTransport", added)
+                self.assertIn("< ARM_GATEWAY_RESPONSE_TIMEOUT", added)
+                self.assertIn(
+                    'REMMINA_PLUGIN_DEBUG("avd-arm: response-timeout-ms=%u", ARM_GATEWAY_RESPONSE_TIMEOUT)',
+                    added,
+                )
+
+    def test_downstream_and_upstream_changes_are_equivalent(self):
+        down = ["".join(l.split()) for l in self._added_lines(self.downstream) if l.strip()]
+        up = ["".join(l.split()) for l in self._added_lines(self.upstream) if l.strip()]
+        self.assertEqual(down, up)
+
+    def test_launcher_never_raises_the_freerdp_log_level(self):
+        # At DEBUG, com.freerdp.utils.http logs the full OAuth token request
+        # body and the full token-endpoint response (access, refresh, and id
+        # tokens). The timeout evidence this fix needs is already an ERROR
+        # ("timeout [<n>ms] exceeded", com.freerdp.core.gateway.http), so the
+        # launcher must leave WinPR at its default INFO level.
+        launcher = (PACKAGE_DIR / "eitaas-remmina").read_text()
+        for line in launcher.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            self.assertNotIn("WLOG_LEVEL", line, line)
+            self.assertNotIn("WLOG_FILTER", line, line)
+
+    def test_arm_reason_line_is_documented(self):
+        for path in (
+            PROJECT_ROOT / "README.md",
+            PACKAGE_DIR / "README.md",
+            PROJECT_ROOT / "docs" / "eitaas.1",
+        ):
+            with self.subTest(path=str(path.relative_to(PROJECT_ROOT))):
+                self.assertIn("avd-arm: response-timeout-ms=60000", path.read_text())
 
 
 class RemminaUpstreamSeriesTests(unittest.TestCase):

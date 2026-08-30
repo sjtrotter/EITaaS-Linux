@@ -22,7 +22,8 @@
     "0003-keep-private-runtime-paths.patch",
     "0004-use-profile-avd-scope.patch",
     "0005-bind-protected-rdpw-content.patch",
-    "0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch"
+    "0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch",
+    "0007-extend-arm-configuration-timeout.patch"
   ],
   "downstream_sources": [
     "eitaas_cac_auth.c",

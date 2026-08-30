@@ -1,0 +1,74 @@
+From 0ab01e608f7ebf4da0ec12702e1311b8560956f6 Mon Sep 17 00:00:00 2001
+From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 14:26:46 -0500
+Subject: [PATCH 6/6] RDP: extend ARM gateway response timeout
+
+The "timeout" profile setting only reached FreeRDP_TcpAckTimeout.
+FreeRDP's own /timeout option applies the value to both
+FreeRDP_TcpAckTimeout and FreeRDP_TcpConnectTimeout (clamped to at
+most 600000 ms), and FreeRDP's gateway HTTP code reads every response
+under FreeRDP_TcpConnectTimeout, so a timeout configured in the
+profile never affected how long a gateway response was awaited.
+Apply the profile value to both settings.
+
+An Azure Virtual Desktop ARM gateway orchestrates the session host
+when it receives the connection request and can hold the socket open
+longer than FreeRDP's 15000 ms FreeRDP_TcpConnectTimeout default
+before it sends the response line, which fails the connection with
+"error retrieving ARM configuration" right after authentication.
+The connection request is not idempotent, so re-sending it is not a
+safe recovery; when the ARM gateway transport is selected and the
+profile sets no timeout of its own, raise the response wait to
+60000 ms instead and log the applied wait through the plugin debug
+channel as "avd-arm: response-timeout-ms=60000".
+
+Tested with FreeRDP 3.30.0. The series requires FreeRDP 3.16.0 or
+newer: FreeRDP_GatewayAvdScope and FreeRDP_GatewayAvdAccessAadFormat
+were added in that release, and every other API used is older.
+
+This change was prepared with AI assistance (Claude, Anthropic) and was
+reviewed and tested by the author.
+---
+ plugins/rdp/rdp_plugin.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
+index 3c623ffa3..f1f17d4c8 100644
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -68,6 +68,11 @@
+ #else
+ #define RDP2TCP_DVC_CHANNEL_NAME "rdp2tcp"
+ #endif
++
++/* Response wait for the non-idempotent ARM gateway connection request;
++ * Azure Virtual Desktop session-host orchestration can exceed FreeRDP's
++ * 15 second FreeRDP_TcpConnectTimeout default. */
++#define ARM_GATEWAY_RESPONSE_TIMEOUT 60000u
+ #include <freerdp/client/channels.h>
+ #include <freerdp/client/cliprdr.h>
+ #include <freerdp/client/cmdline.h>
+@@ -2445,7 +2450,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+ 		guint64 val = g_ascii_strtoull(cs, (gchar **)&endptr, 10);
+ 		if (val > 600000 || val <= 0)
+ 			val = 600000;
++		/* FreeRDP's own /timeout option applies the value to both settings;
++		 * gateway HTTP responses are read under FreeRDP_TcpConnectTimeout. */
+ 		freerdp_settings_set_uint32(rfi->clientContext.context.settings, FreeRDP_TcpAckTimeout, (UINT32)val);
++		freerdp_settings_set_uint32(rfi->clientContext.context.settings, FreeRDP_TcpConnectTimeout, (UINT32)val);
++	}
++#endif
++
++#ifdef WITH_RDP_AUTH_AAD
++	cs = remmina_plugin_service->file_get_string(remminafile, "timeout");
++	if ((cs == NULL || cs[0] == '\0') &&
++	    freerdp_settings_get_bool(rfi->clientContext.context.settings, FreeRDP_GatewayArmTransport) &&
++	    freerdp_settings_get_uint32(rfi->clientContext.context.settings, FreeRDP_TcpConnectTimeout) < ARM_GATEWAY_RESPONSE_TIMEOUT) {
++		freerdp_settings_set_uint32(rfi->clientContext.context.settings, FreeRDP_TcpConnectTimeout, ARM_GATEWAY_RESPONSE_TIMEOUT);
++		REMMINA_PLUGIN_DEBUG("avd-arm: response-timeout-ms=%u", ARM_GATEWAY_RESPONSE_TIMEOUT);
+ 	}
+ #endif
+ 
+-- 
+2.55.0
+
