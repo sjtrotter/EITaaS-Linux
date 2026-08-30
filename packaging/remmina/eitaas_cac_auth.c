@@ -43,6 +43,13 @@ typedef struct {
 	guint dropped;
 } EitaasDiscoveryStats;
 
+/*
+ * Shared between the GTK thread and the discovery worker: the worker only
+ * reads tool and writes stats, the GTK thread owns every other field and does
+ * not read stats until the task has completed. The struct outlives the worker
+ * because discovery_free() runs either from the completion callback or, for an
+ * abandoned dialog, from that callback after the cancellation lands.
+ */
 typedef struct {
 	WebKitAuthenticationRequest *request;
 	gchar *tool;
@@ -302,14 +309,21 @@ static GTlsCertificate *load_certificate_async(EitaasAuthToplevel *toplevel,
 		 */
 		gboolean abandoned = !load->completed;
 		load->abandoned = abandoned;
-		const gchar *message = load->timed_out
-				       ? "Loading the smart-card certificate timed out" : load->error_message;
+		/*
+		 * Own the text as well: show_error() runs a nested loop in which the
+		 * completion callback can free an abandoned load, and with it the
+		 * error message this thread is about to show.
+		 */
+		gchar *message = load->timed_out
+				 ? g_strdup("Loading the smart-card certificate timed out")
+				 : g_strdup(load->error_message);
 		if (message && toplevel->window)
 			show_error(toplevel, load->timed_out ? "load-timeout" : "load-error", message);
 		else if (!message)
 			log_rejection("load-cancelled", toplevel->window ? "user" : "window-closed");
 		if (!abandoned)
 			certificate_load_free(load);
+		g_free(message);
 		return NULL;
 	}
 	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
@@ -338,6 +352,8 @@ static GPtrArray *command_urls(const gchar *const *argv, GCancellable *cancellab
 	                          gint *exit_status, GError **error)
 {
 	GPtrArray *urls = g_ptr_array_new_with_free_func(g_free);
+
+	g_return_val_if_fail(error && !*error, urls);
 	GSubprocess *process = g_subprocess_newv(argv,
 	    G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error);
 

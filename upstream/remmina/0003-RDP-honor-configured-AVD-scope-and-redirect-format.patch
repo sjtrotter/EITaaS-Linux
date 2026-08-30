@@ -1,4 +1,4 @@
-From 9ae938d86aec0fc82f1b5c77df744f70255bfca2 Mon Sep 17 00:00:00 2001
+From fa086034f39567ca3f7cf923e031297eeaa3e3b1 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 3/7] RDP: honor configured AVD scope and redirect format
@@ -32,10 +32,10 @@ reviewed and tested by the author.
  2 files changed, 50 insertions(+), 4 deletions(-)
 
 diff --git a/plugins/rdp/rdp_avd_cloud.h b/plugins/rdp/rdp_avd_cloud.h
-index f600ddb3a..196b690a4 100644
+index 283c26f8e..bdfd5c2e4 100644
 --- a/plugins/rdp/rdp_avd_cloud.h
 +++ b/plugins/rdp/rdp_avd_cloud.h
-@@ -78,4 +78,19 @@ static inline const RemminaAvdCloud *remmina_avd_cloud_for_gateway(const char *h
+@@ -79,4 +79,19 @@ static inline const RemminaAvdCloud *remmina_avd_cloud_for_gateway(const char *h
  	return NULL;
  }
  

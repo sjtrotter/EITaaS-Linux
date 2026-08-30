@@ -1,4 +1,4 @@
-From 62787c477fbccfe141988cb190c1a3335e98a2bd Mon Sep 17 00:00:00 2001
+From 44db83125bf6386f91f0fa7a1981639633281ad6 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 2/7] RDP: select Azure US Government AVD authentication
@@ -31,9 +31,9 @@ This change was prepared with AI assistance (Claude, Anthropic) and was
 reviewed and tested by the author.
 ---
  plugins/rdp/CMakeLists.txt  |  1 +
- plugins/rdp/rdp_avd_cloud.h | 81 +++++++++++++++++++++++++++++++++++++
+ plugins/rdp/rdp_avd_cloud.h | 82 +++++++++++++++++++++++++++++++++++++
  plugins/rdp/rdp_plugin.c    | 31 ++++++++++++++
- 3 files changed, 113 insertions(+)
+ 3 files changed, 114 insertions(+)
  create mode 100644 plugins/rdp/rdp_avd_cloud.h
 
 diff --git a/plugins/rdp/CMakeLists.txt b/plugins/rdp/CMakeLists.txt
@@ -50,10 +50,10 @@ index 5904c5780..3068a6bed 100644
      rdp_graphics.c
 diff --git a/plugins/rdp/rdp_avd_cloud.h b/plugins/rdp/rdp_avd_cloud.h
 new file mode 100644
-index 000000000..f600ddb3a
+index 000000000..283c26f8e
 --- /dev/null
 +++ b/plugins/rdp/rdp_avd_cloud.h
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,82 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -73,9 +73,10 @@ index 000000000..f600ddb3a
 + * FreeRDP_GatewayAzureActiveDirectory, FreeRDP_GatewayAvdScope and
 + * FreeRDP_GatewayAvdAccessAadFormat. Nothing here comes from a profile.
 + *
-+ * redirect_format is a winpr_asprintf() format string taking the authority
-+ * and the tenant, in that order; keep every entry a literal with exactly
-+ * those two conversions so that no setting can reach a format argument.
++ * redirect_format is a winpr_asprintf() format string that is passed the
++ * authority and the tenant, in that order; keep every entry a literal using
++ * at most those two %s conversions, in that order, and no other conversion,
++ * so that no setting can reach a format argument.
 + */
 +typedef struct {
 +	const char *	gateway_suffix;
@@ -136,7 +137,7 @@ index 000000000..f600ddb3a
 +
 +G_END_DECLS
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index a24ff1835..94c861d87 100644
+index b7ffc5e95..c760aca0c 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
 @@ -40,6 +40,7 @@
@@ -147,7 +148,7 @@ index a24ff1835..94c861d87 100644
  #include "rdp_rdpw.h"
  #include "rdp_event.h"
  #include "rdp_graphics.h"
-@@ -1781,6 +1782,36 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1784,6 +1785,36 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  			return FALSE;
  		}
  		g_free(filtered);

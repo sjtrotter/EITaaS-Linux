@@ -1,4 +1,4 @@
-From b2476facbd87be4121b8abebdad4a18e23a83da3 Mon Sep 17 00:00:00 2001
+From 72e496cdb4474fa6df5b6c6b2ecc97708f0bf229 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 14:26:46 -0500
 Subject: [PATCH 6/7] RDP: extend ARM gateway response timeout
@@ -33,7 +33,7 @@ reviewed and tested by the author.
  1 file changed, 18 insertions(+)
 
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 94c861d87..7bca8f615 100644
+index c760aca0c..8fae9604f 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
 @@ -70,6 +70,11 @@
@@ -48,7 +48,7 @@ index 94c861d87..7bca8f615 100644
  #include <freerdp/client/channels.h>
  #include <freerdp/client/cliprdr.h>
  #include <freerdp/client/cmdline.h>
-@@ -2472,7 +2477,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -2475,7 +2480,20 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  		guint64 val = g_ascii_strtoull(cs, (gchar **)&endptr, 10);
  		if (val > 600000 || val <= 0)
  			val = 600000;

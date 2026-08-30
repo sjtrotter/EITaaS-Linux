@@ -1,4 +1,4 @@
-From e5a5686a12fb87679fb40933d377e83fe0290a3d Mon Sep 17 00:00:00 2001
+From 9cf9be73eba94e604e7ec94a42db2893f6e1b687 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 5/7] RDP: handle PKCS11 client certificates in WebKit
@@ -73,10 +73,10 @@ reviewed and tested by the author.
 ---
  plugins/rdp/CMakeLists.txt        |  11 +
  plugins/rdp/rdp_web_auth.c        |   4 +
- plugins/rdp/rdp_web_auth_pkcs11.c | 859 ++++++++++++++++++++++++++++++
+ plugins/rdp/rdp_web_auth_pkcs11.c | 875 ++++++++++++++++++++++++++++++
  plugins/rdp/rdp_web_auth_pkcs11.h |  10 +
  po/POTFILES.in                    |   1 +
- 5 files changed, 885 insertions(+)
+ 5 files changed, 901 insertions(+)
  create mode 100644 plugins/rdp/rdp_web_auth_pkcs11.c
  create mode 100644 plugins/rdp/rdp_web_auth_pkcs11.h
 
@@ -103,7 +103,7 @@ index 3068a6bed..9ef74ee62 100644
          message(WARNING "Disabling RDP AAD authentication.")
      endif()
 diff --git a/plugins/rdp/rdp_web_auth.c b/plugins/rdp/rdp_web_auth.c
-index fc0156c14..feb479de8 100644
+index 81c23f77a..f86eb8f5d 100644
 --- a/plugins/rdp/rdp_web_auth.c
 +++ b/plugins/rdp/rdp_web_auth.c
 @@ -60,6 +60,7 @@ static BOOL remmina_sso_mib_try_access_token(freerdp *instance, AccessTokenType
@@ -114,7 +114,7 @@ index fc0156c14..feb479de8 100644
  #include <webkit2/webkit2.h>
  #include <freerdp/utils/aad.h>
  #include <freerdp/crypto/crypto.h>
-@@ -444,6 +445,8 @@ static gboolean remmina_rdp_webview_show(gpointer data)
+@@ -453,6 +454,8 @@ static gboolean remmina_rdp_webview_show(gpointer data)
  		g_mutex_unlock(&transaction->mutex);
  		return G_SOURCE_REMOVE;
  	}
@@ -123,7 +123,7 @@ index fc0156c14..feb479de8 100644
  	g_uri_unref(authentication_uri);
  
  	webkit_web_view_load_uri(webView, auth_uri);
-@@ -456,6 +459,7 @@ static gboolean remmina_rdp_webview_show(gpointer data)
+@@ -465,6 +468,7 @@ static gboolean remmina_rdp_webview_show(gpointer data)
  			 oauth_transaction_ref(transaction));
  	g_signal_connect(dialog, "delete-event", G_CALLBACK(delete_event_cb), transaction);
  	g_signal_connect(webView, "decide-policy", G_CALLBACK(decide_policy_cb), transaction);
@@ -133,10 +133,10 @@ index fc0156c14..feb479de8 100644
  
 diff --git a/plugins/rdp/rdp_web_auth_pkcs11.c b/plugins/rdp/rdp_web_auth_pkcs11.c
 new file mode 100644
-index 000000000..36929a4b0
+index 000000000..067a3fb22
 --- /dev/null
 +++ b/plugins/rdp/rdp_web_auth_pkcs11.c
-@@ -0,0 +1,859 @@
+@@ -0,0 +1,875 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -183,6 +183,13 @@ index 000000000..36929a4b0
 +	guint	certificates;
 +} RemminaDiscoveryStats;
 +
++/*
++ * Shared between the GTK thread and the discovery worker: the worker only
++ * reads tool and writes stats, the GTK thread owns every other field and does
++ * not read stats until the task has completed. The struct outlives the worker
++ * because discovery_free() runs either from the completion callback or, for an
++ * abandoned dialog, from that callback after the cancellation lands.
++ */
 +typedef struct {
 +	WebKitAuthenticationRequest *	request;
 +	gchar *				tool;
@@ -447,14 +454,21 @@ index 000000000..36929a4b0
 +		 */
 +		gboolean abandoned = !load->completed;
 +		load->abandoned = abandoned;
-+		const gchar *message = load->timed_out
-+				       ? "Loading the smart-card certificate timed out" : load->error_message;
++		/*
++		 * Own the text as well: show_error() runs a nested loop in which the
++		 * completion callback can free an abandoned load, and with it the
++		 * error message this thread is about to show.
++		 */
++		gchar *message = load->timed_out
++				 ? g_strdup(_("Loading the smart-card certificate timed out"))
++				 : g_strdup(load->error_message);
 +		if (message && toplevel->window)
 +			show_error(toplevel, load->timed_out ? "load-timeout" : "load-error", message);
 +		else if (!message)
 +			log_rejection("load-cancelled", toplevel->window ? "user" : "window-closed");
 +		if (!abandoned)
 +			certificate_load_free(load);
++		g_free(message);
 +		return NULL;
 +	}
 +	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
@@ -484,6 +498,8 @@ index 000000000..36929a4b0
 +			          gint *exit_status, GError **error)
 +{
 +	GPtrArray *urls = g_ptr_array_new_with_free_func(g_free);
++
++	g_return_val_if_fail(error && !*error, urls);
 +	GSubprocess *process = g_subprocess_newv(argv,
 +	    G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error);
 +

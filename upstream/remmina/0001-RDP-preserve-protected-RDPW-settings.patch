@@ -1,4 +1,4 @@
-From 65f002c1c2437cff46bd1006a64d283bc9a9b123 Mon Sep 17 00:00:00 2001
+From a2f714b38417d87f6271eb560b3815222d8df11e Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 12:04:23 -0500
 Subject: [PATCH 1/7] RDP: preserve protected RDPW settings
@@ -19,8 +19,11 @@ Before connecting, the buffer is filtered through an explicit allowlist of
 AVD routing and authentication keys and only that filtered text is handed
 to FreeRDP's native connection-file parser, which populates the live
 rdpSettings. Lines starting with "/" are rejected because FreeRDP treats
-them as embedded command-line arguments. The plugin-level parse happens
-once, in remmina_rdp_main(), rather than for every queued input event.
+them as embedded command-line arguments, and the buffer is split into lines
+on CR as well as LF, exactly as that parser splits it, so a carriage return
+inside a line cannot hide a setting from the filter or from the check below.
+The plugin-level parse happens once, in remmina_rdp_main(), rather than for
+every queued input event.
 
 Reading, decoding, classifying and filtering a protected file live in
 rdp_rdpw.c, which depends on GLib alone: the importer and the connection
@@ -63,11 +66,11 @@ reviewed and tested by the author.
 ---
  data/desktop/org.remmina.Remmina-mime.xml |   2 +
  plugins/rdp/CMakeLists.txt                |   2 +
- plugins/rdp/rdp_file.c                    |  65 ++++++-
- plugins/rdp/rdp_plugin.c                  |  34 ++++
- plugins/rdp/rdp_rdpw.c                    | 213 ++++++++++++++++++++++
+ plugins/rdp/rdp_file.c                    |  65 +++++-
+ plugins/rdp/rdp_plugin.c                  |  37 ++++
+ plugins/rdp/rdp_rdpw.c                    | 251 ++++++++++++++++++++++
  plugins/rdp/rdp_rdpw.h                    |  29 +++
- 6 files changed, 344 insertions(+), 1 deletion(-)
+ 6 files changed, 385 insertions(+), 1 deletion(-)
  create mode 100644 plugins/rdp/rdp_rdpw.c
  create mode 100644 plugins/rdp/rdp_rdpw.h
 
@@ -200,7 +203,7 @@ index e93a6aef7..ae3d25541 100644
  	}
  
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 5aff61676..a24ff1835 100644
+index 5aff61676..b7ffc5e95 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
 @@ -40,6 +40,7 @@
@@ -219,7 +222,7 @@ index 5aff61676..a24ff1835 100644
  #include <freerdp/constants.h>
  #include <freerdp/error.h>
  #include <freerdp/event.h>
-@@ -1748,6 +1750,38 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
+@@ -1748,6 +1750,41 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
  	channels = rfi->clientContext.context.channels;
  
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
@@ -246,8 +249,11 @@ index 5aff61676..a24ff1835 100644
 +		gsize filtered_length = 0;
 +		gchar *filtered = remmina_rdpw_filter_native_settings(utf8, &filtered_length);
 +		g_free(utf8);
-+		if (!filtered || freerdp_client_settings_parse_connection_file_buffer(
-+			    rfi->clientContext.context.settings, (const BYTE *)filtered, filtered_length) != 0) {
++		/* Nothing to hand over is not an error: the profile carries no AVD setting. */
++		if (!filtered || (filtered_length > 0 &&
++				  freerdp_client_settings_parse_connection_file_buffer(
++					  rfi->clientContext.context.settings,
++					  (const BYTE *)filtered, filtered_length) != 0)) {
 +			g_free(filtered);
 +			remmina_plugin_service->protocol_plugin_set_error(
 +				gp, "%s", _("The stored connection file holds invalid or disallowed settings."));
@@ -260,10 +266,10 @@ index 5aff61676..a24ff1835 100644
  	datapath = g_build_path("/",
 diff --git a/plugins/rdp/rdp_rdpw.c b/plugins/rdp/rdp_rdpw.c
 new file mode 100644
-index 000000000..bc5b8534d
+index 000000000..aadeb2576
 --- /dev/null
 +++ b/plugins/rdp/rdp_rdpw.c
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,251 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -287,6 +293,9 @@ index 000000000..bc5b8534d
 +#include <unistd.h>
 +
 +/*
++ * The GError text below reaches the log, not a dialog: the importer decides
++ * what to tell the user. Keep it short and free of profile content.
++ *
 + * Read the file at path exactly once through a descriptor opened with
 + * O_NOFOLLOW. Only a regular file of at most REMMINA_RDPW_MAX_SIZE bytes is
 + * accepted, and the size reported by fstat() must match what is read, so the
@@ -318,7 +327,14 @@ index 000000000..bc5b8534d
 +		ssize_t count = read(descriptor, buffer + offset, expected - offset);
 +		if (count < 0 && errno == EINTR)
 +			continue;
-+		if (count <= 0) {
++		if (count < 0) {
++			g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
++				    "Could not read protected RDPW profile: %s", g_strerror(errno));
++			g_free(buffer);
++			close(descriptor);
++			return NULL;
++		}
++		if (count == 0) {
 +			g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
 +					    "Protected RDPW profile changed while being read");
 +			g_free(buffer);
@@ -348,15 +364,43 @@ index 000000000..bc5b8534d
 + */
 +gchar *remmina_rdpw_to_utf8(const gchar *contents, gsize length)
 +{
++	const gchar *encoding = NULL;
++	gsize written = 0;
++	gchar *utf8 = NULL;
++
 +	g_return_val_if_fail(contents || length == 0, NULL);
 +
 +	if (length >= 2 && (guchar)contents[0] == 0xFF && (guchar)contents[1] == 0xFE)
-+		return g_convert(contents + 2, length - 2, "UTF-8", "UTF-16LE", NULL, NULL, NULL);
-+	if (length >= 2 && (guchar)contents[0] == 0xFE && (guchar)contents[1] == 0xFF)
-+		return g_convert(contents + 2, length - 2, "UTF-8", "UTF-16BE", NULL, NULL, NULL);
-+	if (!g_utf8_validate(contents, length, NULL))
++		encoding = "UTF-16LE";
++	else if (length >= 2 && (guchar)contents[0] == 0xFE && (guchar)contents[1] == 0xFF)
++		encoding = "UTF-16BE";
++	if (!encoding) {
++		/* g_utf8_validate() with a length also rejects an embedded NUL. */
++		if (!g_utf8_validate(contents, length, NULL))
++			return NULL;
++		return g_strndup(contents, length);
++	}
++	utf8 = g_convert(contents + 2, length - 2, "UTF-8", encoding, NULL, &written, NULL);
++	/*
++	 * Everything downstream treats the result as a C string, so a NUL in the
++	 * middle of it would silently drop every setting behind it.
++	 */
++	if (utf8 && strlen(utf8) != written) {
++		g_free(utf8);
 +		return NULL;
-+	return g_strndup(contents, length);
++	}
++	return utf8;
++}
++
++/*
++ * Split the text into lines the way FreeRDP's connection-file parser does:
++ * on CR as well as LF. Splitting on LF alone would leave a carriage return
++ * inside a line, so one allowlisted line could carry settings that this file
++ * never inspects but the parser would still act on.
++ */
++static gchar **rdpw_split_lines(const gchar *utf8)
++{
++	return g_strsplit_set(utf8, "\r\n", -1);
 +}
 +
 +/* Split "key:type:value"; returns the key, or NULL when the line has no value. */
@@ -386,7 +430,7 @@ index 000000000..bc5b8534d
 +	gboolean gateway = FALSE;
 +
 +	g_return_val_if_fail(utf8, REMMINA_RDPW_GENERIC);
-+	gchar **lines = g_strsplit(utf8, "\n", -1);
++	gchar **lines = rdpw_split_lines(utf8);
 +	for (gchar **line = lines; line && *line; line++) {
 +		const gchar *value = NULL;
 +		gchar *key = rdpw_split_line(g_strchomp(*line), &value);
@@ -452,7 +496,7 @@ index 000000000..bc5b8534d
 +{
 +	g_return_val_if_fail(utf8 && filtered_length, NULL);
 +	GString *filtered = g_string_sized_new(strlen(utf8));
-+	gchar **lines = g_strsplit(utf8, "\n", -1);
++	gchar **lines = rdpw_split_lines(utf8);
 +	gboolean refused = FALSE;
 +
 +	for (gchar **line = lines; line && *line; line++) {

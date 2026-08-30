@@ -3,10 +3,10 @@
 This directory contains a generic, unbranded patch series prepared against
 Remmina master commit `c620366ed85def5c3de2549eec7fcbef577281d8`. It is one
 linear series exported with `git format-patch` from the local GitLab-fork
-branch `contrib/eitaas-series-v5` (head `1cbc0f828`); each commit is a
+branch `contrib/eitaas-series-v5` (head `885647d21`); each commit is a
 complete logical change with no fix-up of an earlier commit:
 
-1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`65f002c1c`) reads a
+1. `0001-RDP-preserve-protected-RDPW-settings.patch` (`a2f714b38`) reads a
    protected `.rdpw` profile once into a bounded buffer, imports the generic
    fields from that buffer, and passes only an explicit AVD
    routing/authentication allowlist to FreeRDP's native parser before
@@ -19,21 +19,21 @@ complete logical change with no fix-up of an earlier commit:
    is all the file association needs because both desktop entries already
    declare `application/x-remmina`;
 2. `0002-RDP-select-Azure-US-Government-AVD-authentication.patch`
-   (`62787c477`) collects the public authority, scope, and redirect format of
+   (`44db83125`) collects the public authority, scope, and redirect format of
    every supported cloud in one table (`plugins/rdp/rdp_avd_cloud.h`) and
    selects the Azure US Government row for gateways in the public
    `.wvd.azure.us` namespace, leaving an authority that is not FreeRDP's
    default untouched;
 3. `0003-RDP-honor-configured-AVD-scope-and-redirect-format.patch`
-   (`9ae938d86`) makes the WebKit token path consume FreeRDP's configured AVD
+   (`fa086034f`) makes the WebKit token path consume FreeRDP's configured AVD
    scope and redirect format after validating them against that same table;
-4. `0004-RDP-bind-and-own-OAuth-callback-results.patch` (`e03d5b1d4`)
+4. `0004-RDP-bind-and-own-OAuth-callback-results.patch` (`44df4b74e`)
    replaces the polled, borrowed callback URI with a reference-counted OAuth
    transaction: exact redirect/state validation, PKCE S256, one terminal
    result, a finite wait, and a dialog torn down with its transaction, and
    lists `rdp_web_auth.c` in `po/POTFILES.in`;
 5. `0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch`
-   (`e5a5686a1`) handles WebKitGTK client-certificate and certificate-PIN
+   (`9cf9be73e`) handles WebKitGTK client-certificate and certificate-PIN
    challenges with bounded, cancellable PKCS #11 discovery, asynchronous
    certificate loading, origin-bound PIN transactions, and a held toplevel,
    and logs every stage through `REMMINA_PLUGIN_DEBUG`/`REMMINA_PLUGIN_WARNING`
@@ -42,14 +42,14 @@ complete logical change with no fix-up of an earlier commit:
    the sources compile only when `WITH_RDP_AUTH_AAD` is enabled, every string
    they show is translatable, and `p11tool` is resolved with
    `g_find_program_in_path()` (override: `-DREMMINA_P11TOOL=/path/to/p11tool`);
-6. `0006-RDP-extend-ARM-gateway-response-timeout.patch` (`b2476facb`)
+6. `0006-RDP-extend-ARM-gateway-response-timeout.patch` (`72e496cdb`)
    applies the profile timeout to `FreeRDP_TcpConnectTimeout` as well as
    `FreeRDP_TcpAckTimeout` (matching FreeRDP's own /timeout option), and
    raises the ARM gateway response wait to 60 seconds when the ARM
    transport is selected and the profile sets no timeout of its own (the
    ARM connection request is not idempotent and is never re-sent), logging
    `avd-arm: response-timeout-ms=60000` at debug level; and
-7. `0007-RDP-test-the-protected-connection-file-helpers.patch` (`1cbc0f828`)
+7. `0007-RDP-test-the-protected-connection-file-helpers.patch` (`885647d21`)
    adds a CTest target for the RDPW helpers — bounds and file-type checks,
    the refusal to follow a symbolic link, UTF-8/UTF-16 decoding, the ARM
    classification, and the allowlist — against a synthetic fixture, opt-in
