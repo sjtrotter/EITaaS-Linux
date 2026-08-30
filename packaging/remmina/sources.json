@@ -20,7 +20,8 @@
     "0001-preserve-protected-rdpw-settings.patch",
     "0002-add-cac-webview-authentication.patch",
     "0003-keep-private-runtime-paths.patch",
-    "0004-use-profile-avd-scope.patch"
+    "0004-use-profile-avd-scope.patch",
+    "0005-bind-protected-rdpw-content.patch"
   ],
   "downstream_sources": [
     "eitaas_cac_auth.c",

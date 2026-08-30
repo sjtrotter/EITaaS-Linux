@@ -1,16 +1,27 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
-Date: Sun, 30 Aug 2026 05:58:04 -0500
-Subject: [PATCH 2/2] RDP: select Azure US Government AVD authentication
+From: EITaaS-Linux contributors <noreply@example.invalid>
+Subject: [PATCH] Bind protected RDPW parsing to imported content
+License: GPL-2.0-or-later
+Copyright: 2026 Stephen Trotter
 
----
- plugins/rdp/rdp_file.c   | 102 +++++++++++++++++++++++++++++++++++++--
- plugins/rdp/rdp_file.h   |   4 ++
- plugins/rdp/rdp_plugin.c |  52 +++++++++++++++++---
- 3 files changed, 147 insertions(+), 11 deletions(-)
+Reject symlinks and oversized profiles, record the digest observed during
+import, and parse a verified immutable buffer exactly once before connection.
 
-diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
-index 4f3b4c92b..174f1bd18 100644
+--- a/plugins/rdp/rdp_file.h
++++ b/plugins/rdp/rdp_file.h
+@@ -38,9 +38,13 @@
+ #include <glib.h>
+ #include "common/remmina_plugin.h"
+ 
++#define REMMINA_RDPW_MAX_SIZE (1024 * 1024)
++
+ G_BEGIN_DECLS
+ 
+ gboolean remmina_rdp_file_import_test(RemminaFilePlugin *plugin, const gchar *from_file);
++gboolean remmina_rdp_file_read_protected(const gchar *path, gchar **contents,
++	                                     gsize *length, GError **error);
+ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin, const gchar *from_file);
+ gboolean remmina_rdp_file_export_test(RemminaFilePlugin *plugin, RemminaFile *remminafile);
+ gboolean remmina_rdp_file_export(RemminaFilePlugin *plugin, RemminaFile *remminafile, const gchar *to_file);
 --- a/plugins/rdp/rdp_file.c
 +++ b/plugins/rdp/rdp_file.c
 @@ -38,6 +38,63 @@
@@ -77,7 +88,7 @@ index 4f3b4c92b..174f1bd18 100644
  gboolean remmina_rdp_file_import_test(RemminaFilePlugin *plugin, const gchar *from_file)
  {
  	TRACE_CALL(__func__);
-@@ -199,23 +256,62 @@ RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin,const gchar *from
+@@ -199,20 +256,59 @@
  	GIOChannel *channel;
  	GError *error = NULL;
  	RemminaFile *remminafile;
@@ -110,7 +121,7 @@ index 4f3b4c92b..174f1bd18 100644
  
  	remminafile = remmina_rdp_file_import_channel(channel);
  	g_io_channel_shutdown(channel, TRUE, &error);
--	if (remminafile && g_ascii_strcasecmp(strrchr(from_file, '.'), ".rdpw") == 0) {
+-	if (remminafile && g_str_has_suffix(from_file, ".rdpw")) {
 +	if (remminafile && protected_profile) {
 +		gchar *verified_contents = NULL;
 +		gsize verified_length = 0;
@@ -129,13 +140,8 @@ index 4f3b4c92b..174f1bd18 100644
 +		g_free(verified_digest);
 +	}
 +	if (remminafile && protected_profile) {
- 		/* Protected AVD profiles contain settings and signatures that the generic
--		 * Remmina importer does not model. Keep the source so FreeRDP's native
--		 * connection-file parser can populate the live rdpSettings instance. */
-+		 * Remmina importer does not model. Bind the later native parse to the
-+		 * exact content digest accepted during import. */
- 		remmina_plugin_service->file_set_string(remminafile, "rdpw_path", from_file);
-+		remmina_plugin_service->file_set_string(remminafile, "rdpw_sha256", protected_digest);
+ 		remmina_plugin_service->file_set_string(remminafile, "eitaas_rdpw_path", from_file);
++		remmina_plugin_service->file_set_string(remminafile, "eitaas_rdpw_sha256", protected_digest);
  		remmina_plugin_service->file_set_string(remminafile, "gwtransp", "arm");
  	}
 +	g_free(protected_contents);
@@ -143,51 +149,20 @@ index 4f3b4c92b..174f1bd18 100644
  
  	return remminafile;
  }
-diff --git a/plugins/rdp/rdp_file.h b/plugins/rdp/rdp_file.h
-index 01962938d..b9829b97b 100644
---- a/plugins/rdp/rdp_file.h
-+++ b/plugins/rdp/rdp_file.h
-@@ -38,9 +38,13 @@
- #include <glib.h>
- #include "common/remmina_plugin.h"
- 
-+#define REMMINA_RDPW_MAX_SIZE (1024 * 1024)
-+
- G_BEGIN_DECLS
- 
- gboolean remmina_rdp_file_import_test(RemminaFilePlugin *plugin, const gchar *from_file);
-+gboolean remmina_rdp_file_read_protected(const gchar *path, gchar **contents,
-+	                                     gsize *length, GError **error);
- RemminaFile *remmina_rdp_file_import(RemminaFilePlugin *plugin, const gchar *from_file);
- gboolean remmina_rdp_file_export_test(RemminaFilePlugin *plugin, RemminaFile *remminafile);
- gboolean remmina_rdp_file_export(RemminaFilePlugin *plugin, RemminaFile *remminafile, const gchar *to_file);
-diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 8baa8a7a5..70e9a928f 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
-@@ -267,15 +267,7 @@ static BOOL rf_process_event_queue(RemminaProtocolWidget *gp)
- 		return true;
- 
- 	input = rfi->clientContext.context.input;
--
+@@ -1751,12 +1751,30 @@
  	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
--	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile, "rdpw_path");
--	if (rdpw_path &&
--	    freerdp_client_settings_parse_connection_file(rfi->clientContext.context.settings,
--	                                                  rdpw_path) != 0) {
+ 	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile,
+ 	                                                               "eitaas_rdpw_path");
+-	if (rdpw_path && freerdp_client_settings_parse_connection_file(
+-	                     rfi->clientContext.context.settings, rdpw_path) != 0) {
 -		REMMINA_PLUGIN_ERROR("Could not load the protected RDPW profile");
 -		return FALSE;
 -	}
- 
- 	while ((event = (RemminaPluginRdpEvent *)g_async_queue_try_pop(rfi->event_queue)) != NULL) {
- 		time(&(rfi->last_time)); //update last user interaction time
-@@ -1756,6 +1748,50 @@ static gboolean remmina_rdp_main(RemminaProtocolWidget *gp)
- 	channels = rfi->clientContext.context.channels;
- 
- 	remminafile = remmina_plugin_service->protocol_plugin_get_file(gp);
-+	const gchar *rdpw_path = remmina_plugin_service->file_get_string(remminafile, "rdpw_path");
-+	const gchar *rdpw_digest = remmina_plugin_service->file_get_string(remminafile, "rdpw_sha256");
-+	if (rdpw_path) {
+ 	if (rdpw_path) {
++		const gchar *rdpw_digest = remmina_plugin_service->file_get_string(
++		    remminafile, "eitaas_rdpw_sha256");
 +		gchar *contents = NULL;
 +		gsize length = 0;
 +		gchar *digest = NULL;
@@ -209,26 +184,6 @@ index 8baa8a7a5..70e9a928f 100644
 +		}
 +		g_free(digest);
 +		g_free(contents);
-+
-+		const gchar *gateway = freerdp_settings_get_string(
-+		    rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
-+		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {
-+			if (!freerdp_settings_set_string(rfi->clientContext.context.settings,
-+			                                 FreeRDP_GatewayAzureActiveDirectory,
-+			                                 "login.microsoftonline.us") ||
-+			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
-+			                                 FreeRDP_GatewayAvdScope,
-+			                                 "https%3A%2F%2Fwww.wvd.azure.us%2F.default%20openid%20profile%20offline_access") ||
-+			    !freerdp_settings_set_string(rfi->clientContext.context.settings,
-+			                                 FreeRDP_GatewayAvdAccessAadFormat,
-+			                                 "https%%3A%%2F%%2Flogin.microsoftonline.com%%2Fcommon%%2Foauth2%%2Fnativeclient") ||
-+			    !freerdp_settings_set_bool(rfi->clientContext.context.settings,
-+			                               FreeRDP_GatewayAvdUseTenantid, TRUE)) {
-+				REMMINA_PLUGIN_ERROR("Could not configure Azure US Government authentication");
-+				return FALSE;
-+			}
-+		}
-+	}
- 
- 	gchar* ddir = remmina_plugin_service->file_get_user_datadir();
- 	datapath = g_build_path("/",
+ 		const gchar *gateway = freerdp_settings_get_string(
+ 			rfi->clientContext.context.settings, FreeRDP_GatewayHostname);
+ 		if (gateway && g_str_has_suffix(gateway, ".wvd.azure.us")) {

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 05:57:41 -0500
-Subject: [PATCH 1/4] RDP: preserve protected RDPW settings
+Subject: [PATCH 1/2] RDP: preserve protected RDPW settings
 
 ---
  plugins/rdp/rdp_file.c   | 12 +++++++++++-
@@ -9,7 +9,7 @@ Subject: [PATCH 1/4] RDP: preserve protected RDPW settings
  2 files changed, 19 insertions(+), 1 deletion(-)
 
 diff --git a/plugins/rdp/rdp_file.c b/plugins/rdp/rdp_file.c
-index e93a6ae..4f3b4c9 100644
+index e93a6aef7..4f3b4c92b 100644
 --- a/plugins/rdp/rdp_file.c
 +++ b/plugins/rdp/rdp_file.c
 @@ -89,8 +89,11 @@ static void remmina_rdp_file_import_field(RemminaFile *remminafile, const gchar
@@ -40,7 +40,7 @@ index e93a6ae..4f3b4c9 100644
  	return remminafile;
  }
 diff --git a/plugins/rdp/rdp_plugin.c b/plugins/rdp/rdp_plugin.c
-index 5aff616..8baa8a7 100644
+index 5aff61676..8baa8a7a5 100644
 --- a/plugins/rdp/rdp_plugin.c
 +++ b/plugins/rdp/rdp_plugin.c
 @@ -71,6 +71,7 @@

@@ -24,7 +24,25 @@ Copyright: 2026 Stephen Trotter
  	char* auth_uri = GET_AUTH_URI(gp);
  
  	GtkWidget *dialog = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-@@ -176,7 +183,8 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+@@ -172,11 +179,26 @@ static BOOL remmina_rdp_webview_show(RemminaProtocolWidget *gp) {
+ 	WebKitWebView *webView = WEBKIT_WEB_VIEW(webkit_web_view_new());
+ 	gtk_container_add(GTK_CONTAINER(dialog), GTK_WIDGET(webView));
++	GUri *authentication_uri = g_uri_parse(auth_uri, G_URI_FLAGS_NONE, NULL);
++	const gchar *authentication_host = authentication_uri ? g_uri_get_host(authentication_uri) : NULL;
++	if (!authentication_host || g_uri_get_scheme(authentication_uri) == NULL ||
++	    g_ascii_strcasecmp(g_uri_get_scheme(authentication_uri), "https") != 0 ||
++	    (g_ascii_strcasecmp(authentication_host, "login.microsoftonline.com") != 0 &&
++	     g_ascii_strcasecmp(authentication_host, "login.microsoftonline.us") != 0)) {
++		if (authentication_uri)
++			g_uri_unref(authentication_uri);
++		gtk_widget_destroy(dialog);
++		return G_SOURCE_REMOVE;
++	}
++	g_object_set_data_full(G_OBJECT(webView), "rdp-authentication-host",
++	                       g_ascii_strdown(authentication_host, -1), g_free);
++	g_uri_unref(authentication_uri);
+ 
+ 	webkit_web_view_load_uri(webView, auth_uri);
  
  	g_signal_connect(dialog, "delete-event", G_CALLBACK(delete_event_cb), gp);
  	g_signal_connect(webView, "decide-policy", G_CALLBACK(decide_policy_cb), gp);

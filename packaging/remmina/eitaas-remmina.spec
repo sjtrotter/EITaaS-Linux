@@ -20,6 +20,7 @@ Patch0:         0001-preserve-protected-rdpw-settings.patch
 Patch1:         0002-add-cac-webview-authentication.patch
 Patch2:         0003-keep-private-runtime-paths.patch
 Patch3:         0004-use-profile-avd-scope.patch
+Patch4:         0005-bind-protected-rdpw-content.patch
 
 BuildRequires:  cmake
 BuildRequires:  gcc

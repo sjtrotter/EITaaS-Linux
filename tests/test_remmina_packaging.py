@@ -88,10 +88,69 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_downstream_patches_declare_their_license(self):
         patches = sorted(PACKAGE_DIR.glob("*.patch"))
-        self.assertEqual(len(patches), 4)
+        self.assertEqual(len(patches), 5)
         for patch in patches:
             with self.subTest(patch=patch.name):
                 self.assertIn("License: GPL-2.0-or-later", patch.read_text().split("---", 1)[0])
+
+    def test_cac_authentication_is_origin_bound_and_nonpersistent(self):
+        source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        for required in (
+            "trusted_request_host",
+            "webkit_authentication_request_is_for_proxy",
+            "webkit_authentication_request_get_security_origin",
+            'g_ascii_strcasecmp(protocol, "https")',
+            '"rdp-authentication-host"',
+            '"rdp-certificate-host"',
+            "WEBKIT_CREDENTIAL_PERSISTENCE_NONE",
+        ):
+            self.assertIn(required, source)
+        self.assertNotIn("g_str_has_suffix(host", source)
+
+    def test_pkcs11_discovery_is_bounded_cancellable_and_uses_trusted_tool(self):
+        source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        for required in (
+            '#define PKCS11_TOOL "/usr/bin/p11tool"',
+            "PKCS11_TIMEOUT_SECONDS",
+            "PKCS11_MAX_OUTPUT",
+            "PKCS11_MAX_URI",
+            "PKCS11_MAX_TOKENS",
+            "PKCS11_MAX_CERTIFICATES",
+            "G_SUBPROCESS_FLAGS_STDOUT_PIPE",
+            "g_cancellable_cancel",
+            "g_subprocess_force_exit",
+            "g_atomic_int_compare_and_exchange",
+        ):
+            self.assertIn(required, source)
+        self.assertNotIn("g_spawn_sync", source)
+        self.assertNotIn("g_find_program_in_path", source)
+
+    def test_oauth_patch_restricts_cloud_client_scope_and_redirect(self):
+        patch = (PACKAGE_DIR / "0004-use-profile-avd-scope.patch").read_text()
+        for required in (
+            "avd_oauth_settings_are_safe",
+            "a85cf173-4192-42f8-81fa-777a763e6e2c",
+            "login.microsoftonline.com",
+            "login.microsoftonline.us",
+            "www.wvd.microsoft.com",
+            "www.wvd.azure.us",
+        ):
+            self.assertIn(required, patch)
+
+    def test_protected_profile_is_digest_bound_and_parsed_from_a_bounded_buffer(self):
+        patch = (PACKAGE_DIR / "0005-bind-protected-rdpw-content.patch").read_text()
+        for required in (
+            "RDPW_MAX_SIZE",
+            "O_NOFOLLOW",
+            "fstat",
+            "read(descriptor",
+            "S_ISREG",
+            "G_CHECKSUM_SHA256",
+            "eitaas_rdpw_sha256",
+            "freerdp_client_settings_parse_connection_file_buffer",
+        ):
+            self.assertIn(required, patch)
+        self.assertNotIn("rf_process_event_queue", patch)
 
     def test_spec_declares_every_local_source_and_patch(self):
         declared = set(re.findall(r"^(?:Source|Patch)\d+:\s+(\S+)", SPEC, re.MULTILINE))

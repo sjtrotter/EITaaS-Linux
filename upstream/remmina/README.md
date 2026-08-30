@@ -17,6 +17,14 @@ file, tenant/workspace/resource identifiers, gateway or host values copied
 from a profile, login hints, certificate metadata, tokens, or PINs to an
 upstream report or test fixture.
 
+Security hardening is tracked in EITaaS-Linux issues #49–#52. The prepared
+branches bind protected-profile content before parsing, restrict OAuth
+settings to supported cloud/client combinations, bind CAC challenges to the
+verified HTTPS authentication origin, correlate PIN requests, and bound and
+cancel PKCS #11 discovery. These controls must remain equivalent in the
+GitLab contribution branches. No upstream merge request should be opened
+until the corresponding issue has a developer-attested verification comment.
+
 ## FreeRDP compatibility
 
 FreeRDP 3.31.0 is the EITaaS tested and pinned version, but it is important not
