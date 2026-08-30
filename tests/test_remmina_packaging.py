@@ -24,6 +24,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn('package_dir / "sources.json"', preparer)
         self.assertIn('manifest["patches"]', preparer)
         self.assertIn('metadata["sha256"]', preparer)
+        self.assertIn('remmina_dir / "data" / "reports"', preparer)
 
     def test_launcher_supports_rpm_and_debian_private_prefixes(self):
         launcher = (PACKAGE_DIR / "eitaas-remmina").read_text()

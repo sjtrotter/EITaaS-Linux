@@ -65,6 +65,9 @@ def main() -> int:
         safe_extract(fetch(name, metadata, args.cache), args.output)
 
     remmina_dir = args.output / f"Remmina-{manifest['sources']['remmina']['commit']}"
+    # Statistics are disabled in this minimal client. Exclude their bundled,
+    # generated web assets from the corresponding source package as well.
+    shutil.rmtree(remmina_dir / "data" / "reports")
     for filename in manifest["downstream_sources"][:2]:
         shutil.copy2(package_dir / filename, remmina_dir / "plugins" / "rdp" / filename)
 
