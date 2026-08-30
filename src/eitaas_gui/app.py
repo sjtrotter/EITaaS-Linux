@@ -23,6 +23,7 @@ from eitaas.api import (  # noqa: E402
     Application,
     ApplicationError,
     ConnectionRequest,
+    ConnectionResult,
     DoctorReport,
     ProgressEvent,
     Result,
@@ -196,6 +197,13 @@ class HelperWindow(Adw.ApplicationWindow):
         self.error_label.add_css_class("error")
         accessible(self.error_label, _("Connection error"))
         box.append(self.error_label)
+        self.copy_log_button = Gtk.Button.new_with_label(_("Copy diagnostic log"))
+        self.copy_log_button.set_visible(False)
+        self.copy_log_button.set_halign(Gtk.Align.CENTER)
+        accessible(self.copy_log_button, _("Copy diagnostic log"),
+                   _("Copies the redacted log of the last connection attempt to the clipboard."))
+        self.copy_log_button.connect("clicked", lambda _button: self.copy_text(self.diagnostic_log))
+        box.append(self.copy_log_button)
         self.status_page.set_child(box)
         return self.status_page
 
@@ -383,6 +391,8 @@ class HelperWindow(Adw.ApplicationWindow):
         if not viewmodel.can_connect(self.report, self.default_profile):
             return
         self.error_label.set_visible(False)
+        self.copy_log_button.set_visible(False)
+        self.diagnostic_log = ""
         self.cancel_event = threading.Event()
         self.connect_state = ConnectState.RUNNING
         self.spinner.start()
@@ -425,11 +435,31 @@ class HelperWindow(Adw.ApplicationWindow):
             title, body = viewmodel.error_text(result.error)
             self.error_label.set_label(f"{title}\n{body}")
             self.error_label.set_visible(True)
+        elif (result.value.exit_code != 0 or result.value.log_warnings) and not result.value.cancelled:
+            self._show_diagnostics(result.value)
         else:
             text = viewmodel.exit_text(result.value.exit_code, result.value.cancelled)
             if text:
                 self.toast(text)
         self._update_connect()
+
+    def _show_diagnostics(self, outcome: ConnectionResult) -> None:
+        """A failed run shows its reason-code lines in place and offers the redacted log."""
+        self.error_label.set_label(viewmodel.diagnostic_text(outcome.exit_code, (), outcome.log_path))
+        self.error_label.set_visible(True)
+        if outcome.log_path:
+            path = outcome.log_path
+            self._background(lambda: self.core.session_log(path),
+                             lambda result: self._session_log_done(outcome, result))
+
+    def _session_log_done(self, outcome: ConnectionResult, result: Result) -> None:
+        if result.error or self.connect_state is not ConnectState.IDLE:
+            return
+        self.diagnostic_log = result.value.text
+        self.error_label.set_label(
+            viewmodel.diagnostic_text(outcome.exit_code, result.value.reason_lines, result.value.path)
+        )
+        self.copy_log_button.set_visible(True)
 
     # ----- shutdown ----------------------------------------------------
 

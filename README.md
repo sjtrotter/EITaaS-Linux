@@ -137,6 +137,58 @@ sign-in and the smart card (PIV) PIN prompt happen in the Remmina window, and it
 privileged commands. Fixes such as `systemctl enable --now pcscd.socket` are
 shown with a copy button for you to run yourself.
 
+## Troubleshooting
+
+Every connection started by `eitaas connect` or EITaaS Connect writes the
+client's output, redacted line by line (tokens, `key=value` secrets, and URL
+query values are replaced), to
+`$XDG_STATE_HOME/eitaas-remmina/logs/session-<timestamp>-<pid>.log`
+(`~/.local/state/...` by default; directory 0700, files 0600, about 2 MiB
+each, the newest five kept). The last line is `exit=<code>`.
+
+- **Graphical helper:** when the client exits with a non-zero status the
+  Connect page shows the last `smartcard-auth:` reason-code and Remmina
+  warning lines from that log together with the log's path, and a
+  "Copy diagnostic log" button places the whole redacted log on the
+  clipboard for a support request.
+- **Command line:** `eitaas doctor --json` reports `latest_session_log`.
+  To watch the stages live on a terminal, run the bundled client directly:
+  `G_MESSAGES_DEBUG=remmina eitaas-remmina PROFILE.rdpw` (the launcher
+  sets that default itself, so plain `eitaas-remmina PROFILE.rdpw` also
+  prints them). Only counts, reason codes, and the Microsoft sign-in host
+  are logged; certificate labels, PKCS #11 URIs, PINs, and tokens never
+  are. Remmina itself also appends its debug lines to
+  `$TMPDIR/remmina_log_file.log` (upstream behaviour, not redacted by the
+  helper). The session-log header counts processes whose command name is
+  `remmina` — any Remmina binary, not only the bundled one — because a
+  running distribution Remmina is a known way to lose the connection
+  request.
+
+  The stable reason codes (`smartcard-auth: <code>`), identical in the
+  downstream and upstream trees:
+
+| Code | Level | Meaning |
+|---|---|---|
+| `challenge-received (scheme= unverified-host= port= proxy= retry= application= remote=)` | debug | WebKit asked for a client certificate or PIN; the host is the one WebKit reported, before validation |
+| `challenge-accepted (host=)` | debug | The challenge origin matched the verified sign-in authority |
+| `origin-rejected (reason)` | warning | Challenge refused: `proxy-challenge`, `no-authentication-host`, `no-security-origin`, `origin-not-https`, `origin-host-mismatch`, `host-not-authority`, `origin-port` |
+| `discovery-start (tool=)` | debug | `p11tool` enumeration started on a worker thread |
+| `discovery-token-skipped-trust (count=)` | debug | p11-kit trust tokens (`model=p11-kit-trust`) skipped without a subprocess |
+| `discovery-token-empty (count= last-exit=)` | debug | Tokens where `p11tool --list-certs` printed no URL and exited non-zero (no certificate on that token) |
+| `discovery-finished (tokens= certificates= label-filter kept= dropped=)` | debug | Enumeration done; counts only (`label-filter` is downstream-only) |
+| `discovery-busy` | warning | Another discovery was still running |
+| `discovery-empty: …` | warning | No selectable certificate; the "No usable smart-card authentication certificates" dialog |
+| `discovery-timeout` / `discovery-error: …` | warning | `p11tool` deadline (15 s) or failure (token listing failed, output/URI/count limits, malformed output) |
+| `discovery-cancelled (user|window-closed|error-after-close)` / `discovery-result-discarded` | warning | Discovery abandoned; the one-shot client then quits (`oneshot-quit`) |
+| `certificate-selected (index= of )` / `certificate-submitted (host=)` | debug | Choice made and presented to WebKit |
+| `selection-cancelled (user|window-closed)` | warning | Certificate dialog dismissed |
+| `load-start` / `load-finished` | debug | `GTlsCertificate` load off the GTK thread |
+| `load-timeout` / `load-error (domain/code: message)` / `load-cancelled` / `load-result-discarded` | warning / debug | Load outcome; error text is cut before any `pkcs11:` URI |
+| `pin-requested (host= retry=)` / `pin-submitted (host=)` | debug | PIN prompt shown and answered (the PIN itself is never logged) |
+| `pin-rejected (reason)` | warning | `origin-rejected`, `no-certificate-transaction`, `transaction-expired`, `transaction-host-mismatch`, `pin-already-submitted` |
+| `pin-cancelled (user|window-closed|transaction-cleared)` | warning | PIN dialog dismissed |
+| `oneshot-quit (application=)` | debug | The one-shot client is quitting after a cancelled discovery |
+
 ## Bundled client and desktop support
 
 Connections use only the bundled `eitaas-remmina` package: Remmina and

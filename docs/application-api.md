@@ -24,9 +24,23 @@ modules directly, parse CLI output, or construct client arguments.
 (`exit_code`, `cancelled`). It validates the profile with
 `profile.validate_profile` plus the launcher's `.rdpw`-only rule, resolves
 `eitaas-remmina` (`/usr/bin/eitaas-remmina`, then `PATH`), and runs
-exactly `[launcher, profile]` with no shell, no environment changes, and all
-standard streams on `DEVNULL`. Progress phases are `validating`, `starting`
-(cancellable), and `cancelling`. The stable error code is `launch_failed`.
+exactly `[launcher, profile]` with no shell, no environment changes, stdin on
+`DEVNULL`, and stdout/stderr merged into a pipe that a daemon reader thread
+drains into a redacted session log (`remmina.SessionLog`:
+`$XDG_STATE_HOME/eitaas-remmina/logs/session-*.log`, directory 0700, file
+0600, 2 MiB cap, newest five kept, `exit=<code>` as the last line). Every
+line passes through `redaction.redact` before it is written; the reader never
+blocks the child and a log that cannot be created falls back to `DEVNULL`.
+Progress phases are `validating`, `starting` (cancellable), and
+`cancelling`. The stable error code is `launch_failed`.
+`ConnectionResult.log_path` names the log (or is `None`).
+
+`Application.session_log(path)` returns `SessionLogSummary(path,
+reason_lines, text)` for a log inside that directory only: `reason_lines`
+are the last five lines carrying a `smartcard-auth:` reason code or a
+Remmina warning, `text` is the whole redacted log for a clipboard copy. The
+error code is `session_log_failed`. `DoctorReport.latest_session_log` names
+the newest log.
 
 The Python layer holds no connection policy. Endpoint allowlisting, the RDPW
 native-settings allowlist, clipboard handling, and refusal of the terminal

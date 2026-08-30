@@ -37,7 +37,13 @@ with the selected profile. The button is enabled only when the launcher is
 installed and a profile has been imported. While the client runs the page
 shows the phase and a Cancel button; sign-in and the PIN prompt happen in the
 client window. Closing the window while the client runs asks whether to
-disconnect and quit or keep working.
+disconnect and quit or keep working. When the client exits with a non-zero
+status the page shows the last
+.B smartcard-auth:
+reason-code and Remmina warning lines from the redacted session log, the
+log's path, and a "Copy diagnostic log" button that places the whole
+redacted log on the clipboard; see SESSION LOGS in
+.BR eitaas (1).
 .PP
 When
 .I FILE.rdpw
@@ -57,6 +63,10 @@ Imported profiles (directory mode 0700, files mode 0600).
 The default profile name, as
 .B [profiles] default = NAME
 (mode 0600).
+.TP
+.I $XDG_STATE_HOME/eitaas-remmina/logs/
+Redacted per-connection session logs (directory mode 0700, files mode 0600,
+newest five kept).
 .SH KEYBOARD
 .TP
 .B Ctrl+R

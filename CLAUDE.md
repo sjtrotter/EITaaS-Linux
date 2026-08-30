@@ -36,8 +36,13 @@ no connection-manager mode, no Flatpak/AppImage.
   (`profile.validate_profile`; the subsequent read-by-path is a known small TOCTOU gap — do not widen it).
 - C profiles (Remmina patches): `O_NOFOLLOW` + `fstat`, ≤ 1 MiB, one immutable buffer parsed once pre-connect.
 - Errors cross the API boundary through `redaction.redact` (JWTs, `key=value` secrets, URL query values);
-  API results expose basenames, never full profile paths; child output is never returned.
-- Child processes: fixed argv, no shell, timeouts, bounded output, stdio to `DEVNULL` unless required.
+  API results expose basenames, never full profile paths; raw child output is never returned — `launch`
+  writes it redacted line-by-line to the private session log (`remmina.SessionLog`, 0700/0600, capped,
+  rotated) and only that redacted log is served back (`Application.session_log`).
+- Child processes: fixed argv, no shell, timeouts, bounded output, stdio to `DEVNULL` unless required
+  (the `eitaas-remmina` child's stdout/stderr go to the session log; stdin stays `DEVNULL`).
+- Remmina smart-card logging (`eitaas_cac_auth.c` / `rdp_web_auth_pkcs11.c`): stable `smartcard-auth: <code>`
+  reason codes, counts, and the verified sign-in host only — never PKCS #11 URIs, labels, serials, PINs, tokens.
 - Untrusted `.rdpw` content reaches FreeRDP's native parser only through the explicit allowlist
   (`packaging/remmina/0005/0006-*.patch`, `upstream/remmina/0001-*.patch`).
 - OAuth: `state` + PKCE S256, exact callback scheme/host/port/path, one terminal result per transaction

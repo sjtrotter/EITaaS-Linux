@@ -152,3 +152,23 @@ class ConnectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DiagnosticTextTests(unittest.TestCase):
+    def test_diagnostic_text_lists_reason_lines_and_log_path(self):
+        lines = ("(remmina-WARNING) smartcard-auth: origin-rejected (proxy-challenge)",)
+        text = viewmodel.diagnostic_text(2, lines, "/home/u/.local/state/eitaas-remmina/logs/session-1.log")
+        self.assertIn("status 2", text)
+        self.assertIn("origin-rejected", text)
+        self.assertIn("Diagnostic log: /home/u/.local/state/eitaas-remmina/logs/session-1.log", text)
+
+    def test_diagnostic_text_for_a_clean_exit_with_warnings(self):
+        text = viewmodel.diagnostic_text(0, ("smartcard-auth: discovery-empty",), None)
+        self.assertIn("exited normally but reported smart-card warnings", text)
+        self.assertIn("discovery-empty", text)
+
+    def test_diagnostic_text_without_lines_or_log(self):
+        text = viewmodel.diagnostic_text(1, (), None)
+        self.assertIn("status 1", text)
+        self.assertIn("no smart-card diagnostic lines", text)
+        self.assertNotIn("Diagnostic log:", text)

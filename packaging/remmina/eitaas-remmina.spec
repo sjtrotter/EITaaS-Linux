@@ -4,7 +4,7 @@
 
 Name:           eitaas-remmina
 Version:        1.4.43
-Release:        0.9%{?dist}
+Release:        0.12%{?dist}
 Summary:        Isolated Remmina AVD and CAC prototype for EITaaS
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://gitlab.com/Remmina/Remmina
@@ -137,6 +137,14 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 %{_libexecdir}/eitaas-remmina
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.12
+- Treat a token without certificates as empty instead of failing discovery
+- Skip p11-kit trust tokens during certificate discovery
+
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.11
+- Log every smart-card authentication stage with redacted reason codes
+- Run the one-shot client under its own GApplication id
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.4.43-0.9
 - Harden RDPW parsing, OAuth transactions, and asynchronous CAC loading
 

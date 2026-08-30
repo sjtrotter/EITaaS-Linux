@@ -100,6 +100,61 @@ The launcher uses an isolated configuration directory below
 plugins and settings from the distribution Remmina installation are not mixed
 with the prototype.
 
+The launcher also starts the client with `--gapplication-app-id=org.eitaas.Remmina`
+(Remmina registers its GApplication with `G_APPLICATION_CAN_OVERRIDE_APP_ID`),
+so the one-shot client does not share an application id with a distribution
+Remmina. Without this, a Remmina already running under `org.remmina.Remmina`
+(tray icon, autostart, or a leftover instance) would become the primary
+instance, receive our `--connect` command line, handle it without the
+smart-card patches, and our process would exit with the primary's status.
+
+## Diagnostics
+
+`eitaas_cac_auth.c` logs every smart-card authentication stage through
+Remmina's debug and warning channels with a stable `smartcard-auth: <code>`
+reason code: the WebKit challenge (scheme, host, port, proxy flag) and whether
+it was accepted, discovery start and the token/certificate counts, the
+label-filter outcome (kept/dropped counts), the selected index, certificate
+load start/finish/timeout/error, PIN requests and why one was refused, and the
+source of every cancellation. Every error dialog is logged at warning level
+with the same code. Only counts, reason codes, and the verified sign-in host
+are logged; PKCS #11 URIs, labels, serials, PINs, tokens, and callback URLs
+never are. The launcher exports `G_MESSAGES_DEBUG=remmina` (unless already
+set) because `REMMINA_PLUGIN_DEBUG` is `g_debug()` and GLib drops the domain
+otherwise; the helper writes the same output, redacted, to
+`$XDG_STATE_HOME/eitaas-remmina/logs/session-*.log`, and Remmina itself also
+appends debug lines to `$TMPDIR/remmina_log_file.log`.
+
+Certificate discovery lists every PKCS #11 token, skips p11-kit's trust
+tokens (`model=p11-kit-trust`), and treats a token for which
+`p11tool --list-certs --only-urls` prints no URL and exits non-zero as
+empty (`discovery-token-empty`) rather than as a failure; token-listing
+failures, cancellation, output limits, URL output with a non-zero exit, and a
+tool killed by a signal remain fatal. The full reason-code table is in the top-level README under
+"Troubleshooting":
+
+| Code | Level | Meaning |
+|---|---|---|
+| `challenge-received (scheme= unverified-host= port= proxy= retry= application= remote=)` | debug | WebKit asked for a client certificate or PIN; the host is the one WebKit reported, before validation |
+| `challenge-accepted (host=)` | debug | The challenge origin matched the verified sign-in authority |
+| `origin-rejected (reason)` | warning | Challenge refused: `proxy-challenge`, `no-authentication-host`, `no-security-origin`, `origin-not-https`, `origin-host-mismatch`, `host-not-authority`, `origin-port` |
+| `discovery-start (tool=)` | debug | `p11tool` enumeration started on a worker thread |
+| `discovery-token-skipped-trust (count=)` | debug | p11-kit trust tokens (`model=p11-kit-trust`) skipped without a subprocess |
+| `discovery-token-empty (count= last-exit=)` | debug | Tokens where `p11tool --list-certs` printed no URL and exited non-zero (no certificate on that token) |
+| `discovery-finished (tokens= certificates= label-filter kept= dropped=)` | debug | Enumeration done; counts only (`label-filter` is downstream-only) |
+| `discovery-busy` | warning | Another discovery was still running |
+| `discovery-empty: …` | warning | No selectable certificate; the "No usable smart-card authentication certificates" dialog |
+| `discovery-timeout` / `discovery-error: …` | warning | `p11tool` deadline (15 s) or failure (token listing failed, output/URI/count limits, malformed output) |
+| `discovery-cancelled (user|window-closed|error-after-close)` / `discovery-result-discarded` | warning | Discovery abandoned; the one-shot client then quits (`oneshot-quit`) |
+| `certificate-selected (index= of )` / `certificate-submitted (host=)` | debug | Choice made and presented to WebKit |
+| `selection-cancelled (user|window-closed)` | warning | Certificate dialog dismissed |
+| `load-start` / `load-finished` | debug | `GTlsCertificate` load off the GTK thread |
+| `load-timeout` / `load-error (domain/code: message)` / `load-cancelled` / `load-result-discarded` | warning / debug | Load outcome; error text is cut before any `pkcs11:` URI |
+| `pin-requested (host= retry=)` / `pin-submitted (host=)` | debug | PIN prompt shown and answered (the PIN itself is never logged) |
+| `pin-rejected (reason)` | warning | `origin-rejected`, `no-certificate-transaction`, `transaction-expired`, `transaction-host-mismatch`, `pin-already-submitted` |
+| `pin-cancelled (user|window-closed|transaction-cleared)` | warning | PIN dialog dismissed |
+| `oneshot-quit (application=)` | debug | The one-shot client is quitting after a cancelled discovery |
+
 ## SSO-MIB per distribution
 
 The three recipes deliberately differ on one build flag, and the difference is

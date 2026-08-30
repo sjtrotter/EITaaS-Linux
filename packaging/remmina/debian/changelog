@@ -1,3 +1,17 @@
+eitaas-remmina (1.4.43+eitaas0.12) unstable; urgency=medium
+
+  * Treat a token without certificates as empty instead of failing discovery.
+  * Skip p11-kit trust tokens during certificate discovery.
+
+ -- Stephen Trotter <sjtrotter@users.noreply.github.com>  Sun, 30 Aug 2026 13:00:00 -0500
+
+eitaas-remmina (1.4.43+eitaas0.11) unstable; urgency=medium
+
+  * Log every smart-card authentication stage with redacted reason codes.
+  * Run the one-shot client under its own GApplication id.
+
+ -- Stephen Trotter <sjtrotter@users.noreply.github.com>  Sun, 30 Aug 2026 12:00:00 -0500
+
 eitaas-remmina (1.4.43+eitaas0.9) unstable; urgency=medium
 
   * Harden RDPW parsing, OAuth transactions, and asynchronous CAC loading.
