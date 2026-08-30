@@ -39,6 +39,8 @@ user-supplied protected GovCloud `.rdpw` profile directly and exits when that
 connection or its authentication flow ends. It does not replace, decorate, or
 extend the distribution Remmina installation.
 
+*Superseded by the 2026-08-30 note (#77): SSO-MIB was dropped and the pin follows 3.30.x.*
+
 The 3.31.0 pin is a validated product baseline, not a claim that every patch
 requires that version to compile. The relevant `.rdpw` and AVD settings APIs
 are present in FreeRDP 3.30.0. However, 3.30.0's SSO-MIB implementation fixes

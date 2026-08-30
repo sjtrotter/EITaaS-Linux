@@ -77,8 +77,8 @@ then Connect.
 ## Readiness
 
 Rows appear in a stable order: bundled remote desktop client, desktop session,
-smart-card service, smart-card reader, card middleware (OpenSC), identity
-broker, diagnostic tools. Each row is an `Adw.ActionRow` with a state icon, the
+smart-card service, smart-card reader, card middleware (OpenSC), diagnostic
+tools. Each row is an `Adw.ActionRow` with a state icon, the
 state word, one sentence saying what was checked and what it proves, and,
 where applicable, a hint naming the package to install or the command to run.
 A command (for example `systemctl enable --now pcscd.socket`) is shown as text

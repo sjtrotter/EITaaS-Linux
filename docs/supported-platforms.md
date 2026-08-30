@@ -25,10 +25,11 @@ The Remmina patches require the FreeRDP 3.16 settings API
 pins and is tested with the FreeRDP 3.30.x line. Distribution FreeRDP versions
 recorded on 2026-08-30 (#77): Fedora 43/44 3.30.0, Ubuntu 26.04 3.24.2 (3.30.0
 in updates), Arch 3.31.0, Debian 13 3.15.0 (3.26/3.30 in backports), Ubuntu
-24.04 3.5.1. Linking a patched Remmina against a distribution FreeRDP is
-therefore feasible on Fedora, Ubuntu 26.04, and Arch but not on Debian 13 or
-Ubuntu 24.04; the private bundle remains the delivery for every target until
-that simplification is taken up separately.
+24.04 3.5.1. The Fedora, Ubuntu 26.04, and Arch versions meet the >= 3.16
+floor (untested: no patched Remmina has been built or run against a
+distribution FreeRDP); Debian 13 and Ubuntu 24.04 do not. The private bundle
+remains the delivery for every target until that simplification is taken up
+separately.
 
 Ubuntu 22.04 is not a target: the bundled client's build dependencies are
 taken from the distribution and the DEB recipe is validated only on Ubuntu
