@@ -9,7 +9,7 @@
 
 Name:           eitaas-linux
 Version:        0.2.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI
 # The package is a composite: Remmina and the EITaaS CAC integration compiled
 # into its RDP plugin are GPL-2.0-or-later, FreeRDP is Apache-2.0, and the
@@ -20,6 +20,7 @@ Source0:        https://github.com/sjtrotter/EITaaS-Linux/archive/refs/tags/v%{v
 Source1:        https://github.com/FreeRDP/FreeRDP/archive/refs/tags/%{freerdp_version}.tar.gz
 Source2:        https://gitlab.com/Remmina/Remmina/-/archive/%{remmina_commit}/Remmina-%{remmina_commit}.tar.gz
 
+BuildRequires:  libusb1-devel
 BuildRequires:  python3-devel
 BuildRequires:  python3-setuptools
 BuildRequires:  pyproject-rpm-macros
@@ -99,7 +100,6 @@ cmake -S FreeRDP-%{freerdp_version} -B freerdp-build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%{private_prefix}" \
   -DCMAKE_INSTALL_LIBDIR=lib64 \
   -DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
-  -DCHANNEL_URBDRC=OFF \
   -DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF \
   -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF -DWITH_DOCUMENTATION=OFF -DWITH_FUSE=OFF \
   -DWITH_CUPS=OFF -DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
@@ -214,6 +214,9 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 %{_datadir}/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.2.0-2
+- Restore USB device redirection: build FreeRDP with its default urbdrc
+  channel and declare the libusb build dependency on every distribution
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.2.0-1
 - Ship one eitaas-linux package containing the bundled Remmina/FreeRDP client,
   the command-line helper, and the GTK 4 helper GUI
