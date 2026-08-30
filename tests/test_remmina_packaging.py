@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -6,9 +7,32 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = PROJECT_ROOT / "packaging" / "remmina"
 SPEC = (PACKAGE_DIR / "eitaas-remmina.spec").read_text()
+MANIFEST = json.loads((PACKAGE_DIR / "sources.json").read_text())
 
 
 class RemminaPackagingComplianceTests(unittest.TestCase):
+    def test_pinned_manifest_matches_rpm_spec(self):
+        freerdp = MANIFEST["sources"]["freerdp"]
+        remmina = MANIFEST["sources"]["remmina"]
+        self.assertIn(f"%global freerdp_version {freerdp['version']}", SPEC)
+        self.assertIn(f"%global remmina_commit {remmina['commit']}", SPEC)
+        self.assertRegex(SPEC, rf"(?m)^Version:\s+{re.escape(MANIFEST['package_version'])}$")
+
+        declared_patches = re.findall(r"^Patch\d+:\s+(\S+)", SPEC, re.MULTILINE)
+        self.assertEqual(declared_patches, MANIFEST["patches"])
+
+    def test_manifest_has_https_sources_and_sha256_digests(self):
+        for name, source in MANIFEST["sources"].items():
+            with self.subTest(source=name):
+                self.assertTrue(source["url"].startswith("https://"))
+                self.assertRegex(source["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_manifest_names_existing_downstream_inputs(self):
+        inputs = [*MANIFEST["patches"], *MANIFEST["downstream_sources"]]
+        for filename in inputs:
+            with self.subTest(filename=filename):
+                self.assertTrue((PACKAGE_DIR / filename).is_file())
+
     def test_eitaas_license_copy_matches_repository_license(self):
         self.assertEqual(
             (PACKAGE_DIR / "EITaaS-LICENSE").read_bytes(),
@@ -41,6 +65,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             "eitaas-remmina",
             "EITaaS-LICENSE",
             "THIRD_PARTY_NOTICES.md",
+            "sources.json",
             *(path.name for path in PACKAGE_DIR.glob("*.patch")),
         }
         self.assertLessEqual(expected, declared)

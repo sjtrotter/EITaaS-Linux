@@ -1,5 +1,9 @@
 # Isolated Remmina prototype
 
+All packaging formats must consume the pinned source and ordered patch data in
+`sources.json`. The cross-distribution delivery decision and validation matrix
+are recorded in `docs/adr/0001-remmina-packaging-strategy.md`.
+
 This package combines a private Remmina 1.4.43 build with private FreeRDP
 3.31.0 libraries under `/usr/libexec/eitaas-remmina`. It does not replace the
 distribution packages.
