@@ -1,5 +1,8 @@
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -330,6 +333,20 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         ):
             self.assertIn(required, source)
 
+    def test_challenge_host_relationship_is_defined_once_in_both_trees(self):
+        downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        upstream = (
+            PROJECT_ROOT / "upstream" / "remmina"
+            / "0004-RDP-handle-PKCS11-client-certificates-in-WebKit.patch"
+        ).read_text()
+        for source in (downstream, upstream):
+            self.assertEqual(source.count('#define CERTAUTH_HOST_PREFIX "certauth."'), 1)
+            self.assertIn("host_is_authority_or_certauth(host, authority)", source)
+            self.assertIn("g_strconcat(CERTAUTH_HOST_PREFIX, authority, NULL)", source)
+            self.assertNotIn("g_str_has_suffix(host", source)
+            self.assertNotIn("strstr(host", source)
+        self.assertNotIn("microsoftonline", downstream)
+
     def test_toplevel_is_held_across_nested_certificate_dialogs(self):
         downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
         upstream_dir = PROJECT_ROOT / "upstream" / "remmina"
@@ -351,6 +368,35 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             handler.count("auth_toplevel_release(&toplevel)"),
             handler.count("return TRUE;"),
         )
+
+    def test_certauth_host_matching_is_exact(self):
+        cc = shutil.which("cc")
+        pkg_config = shutil.which("pkg-config")
+        if not cc or not pkg_config:
+            self.skipTest("C compiler or pkg-config unavailable")
+        module = next(
+            (
+                name
+                for name in ("webkit2gtk-4.1", "webkit2gtk-4.0")
+                if subprocess.run([pkg_config, "--exists", name]).returncode == 0
+            ),
+            None,
+        )
+        if module is None:
+            self.skipTest("WebKitGTK development files unavailable")
+        flags = subprocess.run(
+            [pkg_config, "--cflags", "--libs", module],
+            check=True, capture_output=True, text=True,
+        ).stdout.split()
+        harness = PROJECT_ROOT / "tests" / "c" / "test_cac_challenge_host.c"
+        with tempfile.TemporaryDirectory() as workdir:
+            binary = Path(workdir) / "test_cac_challenge_host"
+            subprocess.run(
+                [cc, "-std=gnu11", "-Wall", "-Werror", str(harness), "-o", str(binary), *flags],
+                check=True, timeout=120,
+            )
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_spec_declares_every_local_source_and_patch(self):
         declared = set(re.findall(r"^(?:Source|Patch)\d+:\s+(\S+)", SPEC, re.MULTILINE))

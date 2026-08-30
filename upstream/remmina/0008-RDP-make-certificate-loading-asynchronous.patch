@@ -1,4 +1,4 @@
-From 533468ec0b057996da259564843d84a6676d28c8 Mon Sep 17 00:00:00 2001
+From eff25bef56f7fdf8e8d1421ba4802e0866579584 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 09:00:56 -0500
 Subject: [PATCH] RDP: make certificate loading asynchronous
@@ -33,10 +33,10 @@ Generated with AI assistance (Claude); reviewed and tested by the author.
  1 file changed, 181 insertions(+), 12 deletions(-)
 
 diff --git a/plugins/rdp/rdp_web_auth_pkcs11.c b/plugins/rdp/rdp_web_auth_pkcs11.c
-index 07b3d99a3..2548bb9b4 100644
+index b6785303a..5878f0cc9 100644
 --- a/plugins/rdp/rdp_web_auth_pkcs11.c
 +++ b/plugins/rdp/rdp_web_auth_pkcs11.c
-@@ -34,6 +34,28 @@ typedef struct {
+@@ -35,6 +35,28 @@ typedef struct {
  	gboolean timed_out;
  } RemminaCertificateDiscovery;
  
@@ -65,7 +65,7 @@ index 07b3d99a3..2548bb9b4 100644
  typedef struct {
  	GtkWindow *held;
  	GtkWindow *window;
-@@ -42,6 +64,21 @@ typedef struct {
+@@ -43,6 +65,21 @@ typedef struct {
  
  static gint discovery_active = 0;
  
@@ -87,7 +87,7 @@ index 07b3d99a3..2548bb9b4 100644
  static void auth_toplevel_destroyed(GtkWidget *widget, gpointer user_data)
  {
  	(void)widget;
-@@ -78,6 +115,130 @@ static void show_error(RemminaAuthToplevel *toplevel, const gchar *message)
+@@ -79,6 +116,130 @@ static void show_error(RemminaAuthToplevel *toplevel, const gchar *message)
  	gtk_widget_destroy(dialog);
  }
  
@@ -218,7 +218,7 @@ index 07b3d99a3..2548bb9b4 100644
  static void certificate_free(gpointer data)
  {
  	RemminaPkcs11Certificate *cert = data;
-@@ -365,6 +526,7 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+@@ -381,6 +542,7 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
  	RemminaAuthToplevel toplevel = { 0 };
  	auth_toplevel_hold(&toplevel, parent_data);
  	if (scheme == WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED) {
@@ -226,7 +226,7 @@ index 07b3d99a3..2548bb9b4 100644
  		const gchar *request_host = trusted_request_host(web_view, request);
  		if (!request_host) {
  			webkit_authentication_request_cancel(request);
-@@ -404,21 +566,22 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+@@ -420,21 +582,22 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
  			response = GTK_RESPONSE_CANCEL;
  		if (response == GTK_RESPONSE_ACCEPT && selected >= 0 && (guint)selected < certs->len) {
  			RemminaPkcs11Certificate *choice = g_ptr_array_index(certs, selected);
@@ -255,7 +255,7 @@ index 07b3d99a3..2548bb9b4 100644
  		} else {
  			webkit_authentication_request_cancel(request);
  		}
-@@ -428,10 +591,14 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+@@ -444,10 +607,14 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
  		return TRUE;
  	}
  	const gchar *request_host = trusted_request_host(web_view, request);
@@ -274,7 +274,7 @@ index 07b3d99a3..2548bb9b4 100644
  		webkit_authentication_request_cancel(request);
  		auth_toplevel_release(&toplevel);
  		return TRUE;
-@@ -447,16 +614,18 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
+@@ -463,16 +630,18 @@ gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
  	gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
  	gtk_widget_show_all(dialog);
  	gint response = gtk_dialog_run(GTK_DIALOG(dialog));

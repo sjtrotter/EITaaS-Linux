@@ -13,6 +13,7 @@
 #define PKCS11_MAX_LABEL 256
 #define PKCS11_MAX_TOKENS 16
 #define PKCS11_MAX_CERTIFICATES 64
+#define CERTAUTH_HOST_PREFIX "certauth."
 
 typedef struct {
 	gchar *label;
@@ -516,25 +517,40 @@ static GPtrArray *discover_certificates(EitaasAuthToplevel *toplevel,
 	return certificates;
 }
 
+/*
+ * Entra ID issues the client-certificate challenge either from the verified
+ * authority itself or from its dedicated CERTAUTH_HOST_PREFIX subdomain. Only
+ * those two exact names are trusted; no suffix or substring matching.
+ */
+static gboolean host_is_authority_or_certauth(const gchar *host, const gchar *authority)
+{
+	if (g_ascii_strcasecmp(host, authority) == 0)
+		return TRUE;
+	gchar *certauth = g_strconcat(CERTAUTH_HOST_PREFIX, authority, NULL);
+	gboolean match = g_ascii_strcasecmp(host, certauth) == 0;
+	g_free(certauth);
+	return match;
+}
+
 static const gchar *trusted_request_host(WebKitWebView *web_view,
 	                                    WebKitAuthenticationRequest *request)
 {
 	if (webkit_authentication_request_is_for_proxy(request))
 		return NULL;
-	const gchar *expected = g_object_get_data(G_OBJECT(web_view), "rdp-authentication-host");
+	const gchar *authority = g_object_get_data(G_OBJECT(web_view), "rdp-authentication-host");
 	const gchar *host = webkit_authentication_request_get_host(request);
 	WebKitSecurityOrigin *origin = webkit_authentication_request_get_security_origin(request);
 	const gchar *protocol = origin ? webkit_security_origin_get_protocol(origin) : NULL;
 	const gchar *origin_host = origin ? webkit_security_origin_get_host(origin) : NULL;
 	guint port = origin ? webkit_security_origin_get_port(origin) : 0;
-	gboolean valid = expected && host && origin_host && protocol &&
+	gboolean valid = authority && host && origin_host && protocol &&
 	                 g_ascii_strcasecmp(protocol, "https") == 0 &&
-	                 g_ascii_strcasecmp(host, expected) == 0 &&
-	                 g_ascii_strcasecmp(origin_host, expected) == 0 &&
+	                 g_ascii_strcasecmp(origin_host, host) == 0 &&
+	                 host_is_authority_or_certauth(host, authority) &&
 	                 (port == 0 || port == 443);
 	if (origin)
 		webkit_security_origin_unref(origin);
-	return valid ? expected : NULL;
+	return valid ? host : NULL;
 }
 
 gboolean eitaas_webview_authenticate(WebKitWebView *web_view,

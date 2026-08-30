@@ -1,4 +1,4 @@
-From 5b4f2b991c9e5335f2c1ceeb801b82a26b43ba48 Mon Sep 17 00:00:00 2001
+From 2b3c0555e2d646d29ae3d351e2ad164df91fbc08 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 05:59:56 -0500
 Subject: [PATCH] RDP: handle PKCS11 client certificates in WebKit
@@ -11,8 +11,15 @@ GTK main thread indefinitely.
 
 Challenges are only answered when they come from the verified HTTPS
 authentication origin on the effective port 443 and are not proxy
-challenges. PIN challenges must name the same host that received the
-certificate.
+challenges. Entra ID commonly issues the client-certificate challenge from
+the dedicated "certauth." subdomain of the login authority (for example
+certauth.login.microsoftonline.com), so the trusted host is either the
+exact verified authority or exactly "certauth." followed by that
+authority. The relationship is computed once as an expected name and
+compared exactly; no suffix or substring matching is performed, so
+lookalike names such as certauth.login.microsoftonline.com.example or
+xcertauth.login.microsoftonline.com are rejected. PIN challenges must
+name the same host that received the certificate.
 
 The dialogs run nested main loops, during which the WebView toplevel can
 be destroyed by a policy decision or a window-manager close. The handler
@@ -25,10 +32,10 @@ cancelled exactly once.
 Generated with AI assistance (Claude); reviewed and tested by the author.
 ---
  plugins/rdp/CMakeLists.txt        |   2 +
- plugins/rdp/rdp_web_auth.c        |  16 ++
- plugins/rdp/rdp_web_auth_pkcs11.c | 463 ++++++++++++++++++++++++++++++
+ plugins/rdp/rdp_web_auth.c        |  16 +
+ plugins/rdp/rdp_web_auth_pkcs11.c | 479 ++++++++++++++++++++++++++++++
  plugins/rdp/rdp_web_auth_pkcs11.h |  11 +
- 4 files changed, 492 insertions(+)
+ 4 files changed, 508 insertions(+)
  create mode 100644 plugins/rdp/rdp_web_auth_pkcs11.c
  create mode 100644 plugins/rdp/rdp_web_auth_pkcs11.h
 
@@ -86,10 +93,10 @@ index 53cd19af3..fdd8f83f3 100644
  
 diff --git a/plugins/rdp/rdp_web_auth_pkcs11.c b/plugins/rdp/rdp_web_auth_pkcs11.c
 new file mode 100644
-index 000000000..07b3d99a3
+index 000000000..b6785303a
 --- /dev/null
 +++ b/plugins/rdp/rdp_web_auth_pkcs11.c
-@@ -0,0 +1,463 @@
+@@ -0,0 +1,479 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -107,6 +114,7 @@ index 000000000..07b3d99a3
 +#define PKCS11_MAX_LABEL 256
 +#define PKCS11_MAX_TOKENS 16
 +#define PKCS11_MAX_CERTIFICATES 64
++#define CERTAUTH_HOST_PREFIX "certauth."
 +
 +typedef struct {
 +	gchar *label;
@@ -426,25 +434,40 @@ index 000000000..07b3d99a3
 +	return certificates;
 +}
 +
++/*
++ * Entra ID issues the client-certificate challenge either from the verified
++ * authority itself or from its dedicated CERTAUTH_HOST_PREFIX subdomain. Only
++ * those two exact names are trusted; no suffix or substring matching.
++ */
++static gboolean host_is_authority_or_certauth(const gchar *host, const gchar *authority)
++{
++	if (g_ascii_strcasecmp(host, authority) == 0)
++		return TRUE;
++	gchar *certauth = g_strconcat(CERTAUTH_HOST_PREFIX, authority, NULL);
++	gboolean match = g_ascii_strcasecmp(host, certauth) == 0;
++	g_free(certauth);
++	return match;
++}
++
 +static const gchar *trusted_request_host(WebKitWebView *web_view,
 +	                                    WebKitAuthenticationRequest *request)
 +{
 +	if (webkit_authentication_request_is_for_proxy(request))
 +		return NULL;
-+	const gchar *expected = g_object_get_data(G_OBJECT(web_view), "rdp-authentication-host");
++	const gchar *authority = g_object_get_data(G_OBJECT(web_view), "rdp-authentication-host");
 +	const gchar *host = webkit_authentication_request_get_host(request);
 +	WebKitSecurityOrigin *origin = webkit_authentication_request_get_security_origin(request);
 +	const gchar *protocol = origin ? webkit_security_origin_get_protocol(origin) : NULL;
 +	const gchar *origin_host = origin ? webkit_security_origin_get_host(origin) : NULL;
 +	guint port = origin ? webkit_security_origin_get_port(origin) : 0;
-+	gboolean valid = expected && host && origin_host && protocol &&
++	gboolean valid = authority && host && origin_host && protocol &&
 +	                 g_ascii_strcasecmp(protocol, "https") == 0 &&
-+	                 g_ascii_strcasecmp(host, expected) == 0 &&
-+	                 g_ascii_strcasecmp(origin_host, expected) == 0 &&
++	                 g_ascii_strcasecmp(origin_host, host) == 0 &&
++	                 host_is_authority_or_certauth(host, authority) &&
 +	                 (port == 0 || port == 443);
 +	if (origin)
 +		webkit_security_origin_unref(origin);
-+	return valid ? expected : NULL;
++	return valid ? host : NULL;
 +}
 +
 +gboolean remmina_rdp_webview_pkcs11_authenticate(WebKitWebView *web_view,
