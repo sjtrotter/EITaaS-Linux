@@ -14,7 +14,8 @@ output as public test evidence.
 - Verify server certificate validation remains enabled.
 - Verify clipboard redirection follows the profile's `redirectclipboard` field
   and that a profile without it gets the RDP default (enabled).
-- Install, upgrade, and remove both DEB and RPM packages.
+- Install, upgrade from the split packages, and remove the `eitaas-linux` DEB,
+  RPM, and Arch packages.
 - Confirm the release tag exactly matches the version in `pyproject.toml`.
 - Run `scripts/check-version-consistency.py --tag vX.Y.Z` before creating the tag.
 - Generate the canonical source tarball twice and confirm byte-for-byte output.
