@@ -1,0 +1,4 @@
+# Loaded by CI with `rpmlint -r packaging/rpm/eitaas-linux.rpmlintrc`.
+# The GUI imports libadwaita through GObject introspection; Fedora has no
+# typelib() provides, so the explicit Requires is intentional.
+addFilter(r"explicit-lib-dependency libadwaita")

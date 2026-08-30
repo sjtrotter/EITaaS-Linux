@@ -28,11 +28,12 @@ is required for connections.
 Summary:        Graphical readiness/profile/connect helper for EITaaS AVD
 Requires:       %{name} = %{version}-%{release}
 Requires:       python3-gobject
-# The GUI loads GTK 4 and Libadwaita through GObject introspection, which no
-# automatic dependency generator covers; the typelib provides come from the
-# gtk4 and libadwaita packages.
-Requires:       typelib(Gtk) = 4.0
-Requires:       typelib(Adw) = 1
+# The GUI loads GTK 4 and Libadwaita through GObject introspection; Fedora has
+# no typelib() provides and no automatic generator for PyGObject imports, so
+# the library packages are required explicitly (rpmlint's
+# explicit-lib-dependency is filtered in eitaas-linux.rpmlintrc).
+Requires:       gtk4
+Requires:       libadwaita
 Recommends:     eitaas-remmina
 
 %description gui
