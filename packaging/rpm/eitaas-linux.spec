@@ -19,8 +19,8 @@ Recommends:     eitaas-remmina
 
 %description
 Read-only diagnostics, protected RDPW profile handling, smart-card checks, and
-a validated wrapper around the bundled one-shot eitaas-remmina client, which is
-required for connections.
+a validated wrapper around the isolated one-shot EITaaS client package, which
+is required for connections.
 
 %prep
 %autosetup -n eitaas-linux-%{version}

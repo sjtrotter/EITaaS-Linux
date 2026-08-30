@@ -41,9 +41,10 @@ Clipboard redirection has no switch in
 .BR eitaas .
 The bundled client follows the profile's
 .B redirectclipboard
-field through Remmina's RDPW importer; a profile that omits the field gets
-Remmina's default, which is clipboard enabled (a default-off policy is tracked
-in issue #74). The field is not forwarded to FreeRDP's native profile parser.
+field through Remmina's RDPW importer; a profile that omits the field gets the
+RDP default (enabled). This is by design: the exported profile is the policy
+source, and the launcher does not override it. The field is not forwarded to
+FreeRDP's native profile parser.
 .PP
 Never publish real RDP/RDPW files or authentication callback URLs. See the
 installed SECURITY.md documentation for reporting guidance.
