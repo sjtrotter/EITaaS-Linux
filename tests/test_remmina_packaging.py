@@ -298,14 +298,16 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_oauth_dialog_is_bound_to_its_transaction_in_downstream_and_upstream(self):
         downstream = (PACKAGE_DIR / "0006-Harden-RDPW-and-OAuth-transaction-boundaries.patch").read_text()
-        upstream = (UPSTREAM_DIR / "0009-RDP-synchronize-OAuth-completion.patch").read_text()
+        upstream = (UPSTREAM_DIR / "0004-RDP-bind-and-own-OAuth-callback-results.patch").read_text()
         helpers = []
         for patch in (downstream, upstream):
             added = self._added_web_auth_lines(patch)
             start = added.index("#define OAUTH_TRANSACTION_TIMEOUT (5 * G_TIME_SPAN_MINUTE)")
             close = added.index("static void oauth_transaction_close(RemminaOAuthTransaction *transaction)")
             end = added.index("}", close)
-            helpers.append([line for line in added[start:end + 1] if line.strip()])
+            # The upstream series is formatted with Remmina's uncrustify profile
+            # (tab alignment); compare tokens, not whitespace.
+            helpers.append(["".join(line.split()) for line in added[start:end + 1] if line.strip()])
             joined = "\n".join(added)
             # The transaction is reference counted; every dialog and idle owns a reference.
             self.assertIn("static RemminaOAuthTransaction *oauth_transaction_ref(", joined)
@@ -336,10 +338,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_challenge_host_relationship_is_defined_once_in_both_trees(self):
         downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
-        upstream = (
-            PROJECT_ROOT / "upstream" / "remmina"
-            / "0004-RDP-handle-PKCS11-client-certificates-in-WebKit.patch"
-        ).read_text()
+        upstream = (UPSTREAM_DIR / "0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch").read_text()
         for source in (downstream, upstream):
             self.assertEqual(source.count('#define CERTAUTH_HOST_PREFIX "certauth."'), 1)
             self.assertIn("host_is_authority_or_certauth(host, authority)", source)
@@ -350,18 +349,11 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_toplevel_is_held_across_nested_certificate_dialogs(self):
         downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
-        upstream_dir = PROJECT_ROOT / "upstream" / "remmina"
-        discovery = (
-            upstream_dir / "0004-RDP-handle-PKCS11-client-certificates-in-WebKit.patch"
-        ).read_text()
-        loading = (
-            upstream_dir / "0008-RDP-make-certificate-loading-asynchronous.patch"
-        ).read_text()
-        for source in (downstream, discovery):
+        upstream = (UPSTREAM_DIR / "0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch").read_text()
+        for source in (downstream, upstream):
             self.assertIn("auth_toplevel_hold(&toplevel, parent_data)", source)
             self.assertIn('g_signal_connect(toplevel->held, "destroy"', source)
             self.assertNotIn("GtkWindow *parent = GTK_WINDOW(parent_data)", source)
-        for source in (downstream, loading):
             self.assertIn("Loading the smart-card certificate timed out", source)
             self.assertIn("load->abandoned = abandoned", source)
         handler = downstream[downstream.index("gboolean eitaas_webview_authenticate("):]
@@ -448,6 +440,96 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
         self.assertIn("copyright 2026 Stephen Trotter", " ".join(notice.split()))
         self.assertIn("developed with AI assistance", notice)
+
+
+class RemminaUpstreamSeriesTests(unittest.TestCase):
+    """Structural guarantees for the generic series in upstream/remmina."""
+
+    REMMINA_BASE = "c620366ed85def5c3de2549eec7fcbef577281d8"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.patches = sorted(UPSTREAM_DIR.glob("*.patch"))
+        cls.texts = {patch.name: patch.read_text() for patch in cls.patches}
+
+    def test_every_patch_is_exported_from_a_real_commit(self):
+        for patch in self.patches:
+            with self.subTest(patch=patch.name):
+                header = self.texts[patch.name].splitlines()[0]
+                match = re.fullmatch(r"From ([0-9a-f]{40}) Mon Sep 17 00:00:00 2001", header)
+                self.assertIsNotNone(match, header)
+                self.assertNotEqual(match.group(1), "0" * 40)
+
+    def test_patch_numbering_is_contiguous_and_matches_file_names(self):
+        self.assertGreater(len(self.patches), 0)
+        total = len(self.patches)
+        for index, patch in enumerate(self.patches, start=1):
+            with self.subTest(patch=patch.name):
+                self.assertTrue(patch.name.startswith(f"{index:04d}-RDP-"))
+                subject = re.search(r"^Subject: \[PATCH (\d+)/(\d+)\] (.+)$", self.texts[patch.name], re.MULTILINE)
+                self.assertIsNotNone(subject)
+                self.assertEqual((int(subject.group(1)), int(subject.group(2))), (index, total))
+                self.assertTrue(subject.group(3).startswith("RDP: "))
+
+    def test_every_commit_explains_why_and_discloses_ai_assistance(self):
+        for patch in self.patches:
+            with self.subTest(patch=patch.name):
+                body = self.texts[patch.name].split("\n---\n", 1)[0]
+                body = body.split("\n\n", 1)[1]
+                self.assertGreater(len(body.split()), 40, "commit body must explain the change")
+                self.assertIn("AI assistance", body)
+                self.assertIn("Tested with FreeRDP 3.31.0", body)
+
+    def test_series_touches_only_the_rdp_plugin(self):
+        for patch in self.patches:
+            with self.subTest(patch=patch.name):
+                # The series is an RDP-plugin change only; widen this deliberately
+                # if a future commit must touch the top-level build.
+                for path in re.findall(r"^\+\+\+ b/(\S+)$", self.texts[patch.name], re.MULTILINE):
+                    self.assertTrue(path.startswith("plugins/rdp/"), path)
+
+    def test_series_carries_no_downstream_branding(self):
+        for patch in self.patches:
+            with self.subTest(patch=patch.name):
+                self.assertNotRegex(self.texts[patch.name], r"(?i)eitaas")
+
+    def test_later_patches_do_not_touch_up_earlier_ones(self):
+        # The series is squashed: the OAuth transaction and scope handling
+        # are each introduced once, and the token path never carries the
+        # hard-coded commercial scope that the settings lookup replaced.
+        added = {name: "\n".join(l[1:] for l in text.splitlines() if l.startswith("+") and not l.startswith("+++"))
+                 for name, text in self.texts.items()}
+        joined = "\n".join(added.values())
+        self.assertEqual(joined.count("#define OAUTH_TRANSACTION_TIMEOUT"), 1)
+        self.assertEqual(joined.count("static BOOL avd_oauth_settings_are_safe("), 1)
+        self.assertEqual(joined.count("gsize *filtered_length)\n{"), 1)
+        self.assertNotIn('scope = "https%3A%2F%2Fwww.wvd.microsoft.com%2F.default";', joined)
+        removed = "\n".join(l[1:] for text in self.texts.values() for l in text.splitlines()
+                            if l.startswith("-") and not l.startswith("---"))
+        for symbol in ("rdpw_path", "rdpw_sha256", "OAUTH_TRANSACTION_TIMEOUT", "oauth_transaction_"):
+            self.assertNotIn(symbol, removed, f"{symbol} is introduced and then reworked within the series")
+
+    def test_readme_documents_the_base_commit_and_git_am(self):
+        readme = (UPSTREAM_DIR / "README.md").read_text()
+        self.assertIn(self.REMMINA_BASE, readme)
+        self.assertIn(f"git checkout {self.REMMINA_BASE}\ngit am /path/to/EITaaS-Linux/upstream/remmina/*.patch", readme)
+        for patch in self.patches:
+            self.assertIn(patch.name, readme)
+        self.assertIn("tested with FreeRDP 3.31.0", readme)
+
+    def test_ci_applies_and_builds_the_series_on_the_pinned_base(self):
+        self.assertIn("remmina-upstream-series:", WORKFLOW)
+        job = WORKFLOW.split("remmina-upstream-series:", 1)[1]
+        self.assertIn(self.REMMINA_BASE, job)
+        self.assertIn("git am", job)
+        self.assertIn("-DWITH_RDP_AUTH_AAD=$1", job)
+        self.assertIn("rev-list --reverse", job)
+        self.assertIn("build ON", job)
+        self.assertIn("build OFF", job)
+        self.assertIn("--target remmina-plugin-rdp", job)
+        # Remmina's find_suggested_package() is fatal unless WITH_<PKG>=OFF.
+        for flag in ("-DWITH_AVAHI=OFF", "-DWITH_CUPS=OFF", "-DWITH_PYTHONLIBS=OFF"):
+            self.assertIn(flag, job)
 
 
 if __name__ == "__main__":

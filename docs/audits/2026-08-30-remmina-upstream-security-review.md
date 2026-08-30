@@ -240,3 +240,16 @@ those gates are attested.
 - [OAuth 2.0 Security Best Current Practice, RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html)
 - [FreeRDP 3.31.0 RDP file parser](https://github.com/FreeRDP/FreeRDP/blob/3.31.0/client/common/file.c)
 - [Reviewed Remmina Web authentication source](https://gitlab.com/Remmina/Remmina/-/blob/c620366ed85def5c3de2549eec7fcbef577281d8/plugins/rdp/rdp_web_auth.c)
+
+### Update 2026-08-30 (issue #63)
+
+The contrib branch heads cited above (`cb56a41f3`, `46aa744f3`, `a25a3c2d7`,
+`b7c20fa7b`, `2c2442d7b`) and the later `-issue60`/`-issue61` branches
+(PRs #67 and #68) are superseded by the single linear series
+`contrib/eitaas-series-v2` (head `c8530d951`, five commits on
+`c620366ed`), exported as `upstream/remmina/0001..0005-*.patch`. The
+consolidation squashed every fix-up into its logical change, resolved the
+`rdp_web_auth.c` overlap so the token path uses the configured scope, and
+added the `remmina-upstream-series` CI job that applies the series with
+`git am` and builds `remmina-plugin-rdp` with `WITH_RDP_AUTH_AAD=ON` and
+`OFF`. The residual gates listed above are unchanged.
