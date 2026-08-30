@@ -1,4 +1,4 @@
-usr/lib/python3/dist-packages/eitaas_gui/
+usr/lib/python3*/dist-packages/eitaas_gui/
 usr/bin/eitaas-gui
 data/org.eitaas.Helper.desktop usr/share/applications
 data/org.eitaas.Helper.metainfo.xml usr/share/metainfo
