@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eux
+set -eu
 
 if [ "$#" -ne 1 ]; then
   echo "usage: test-remmina-deb-lifecycle.sh PACKAGE.deb" >&2
