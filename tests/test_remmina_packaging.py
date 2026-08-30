@@ -2,6 +2,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -362,7 +363,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             self.assertNotIn("GtkWindow *parent = GTK_WINDOW(parent_data)", source)
         for source in (downstream, loading):
             self.assertIn("Loading the smart-card certificate timed out", source)
-            self.assertIn("load->abandoned = TRUE", source)
+            self.assertIn("load->abandoned = abandoned", source)
         handler = downstream[downstream.index("gboolean eitaas_webview_authenticate("):]
         self.assertEqual(
             handler.count("auth_toplevel_release(&toplevel)"),
@@ -373,7 +374,9 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         cc = shutil.which("cc")
         pkg_config = shutil.which("pkg-config")
         if not cc or not pkg_config:
-            self.skipTest("C compiler or pkg-config unavailable")
+            reason = "SKIP: tests/c/test_cac_challenge_host.c not compiled because cc or pkg-config is missing"
+            print(reason, file=sys.stderr)
+            self.skipTest(reason)
         module = next(
             (
                 name
@@ -383,7 +386,12 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             None,
         )
         if module is None:
-            self.skipTest("WebKitGTK development files unavailable")
+            reason = (
+                "SKIP: tests/c/test_cac_challenge_host.c not compiled because no "
+                "webkit2gtk-4.1 or webkit2gtk-4.0 pkg-config module was found"
+            )
+            print(reason, file=sys.stderr)
+            self.skipTest(reason)
         flags = subprocess.run(
             [pkg_config, "--cflags", "--libs", module],
             check=True, capture_output=True, text=True,

@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Stephen Trotter
 //
 // Behavioral test for the client-certificate challenge-host relationship in
-// eitaas_cac_auth.c. Compiled and run by tests/test_remmina_packaging.py when
+// eitaas_cac_auth.c. Trailing-dot and IDNA/Unicode host forms are not
+// normalised by the helper and must fail closed. Compiled and run by tests/test_remmina_packaging.py when
 // a C compiler and WebKitGTK development files are available.
 
 #include "../../packaging/remmina/eitaas_cac_auth.c"
@@ -27,6 +28,10 @@ static const HostCase cases[] = {
 	{ "login.microsoftonline.us", "login.microsoftonline.com", FALSE },
 	{ "login.microsoftonline.us", "evil.login.microsoftonline.us", FALSE },
 	{ "login.microsoftonline.us", "certauth.", FALSE },
+	{ "login.microsoftonline.us", "login.microsoftonline.us.", FALSE },
+	{ "login.microsoftonline.us", "certauth.login.microsoftonline.us.", FALSE },
+	{ "LOGIN.MICROSOFTONLINE.US", "certauth.login.microsoftonline.us", TRUE },
+	{ "LOGIN.MICROSOFTONLINE.US", "login.microsoftonline.us", TRUE },
 	{ "login.microsoftonline.us", "", FALSE },
 };
 

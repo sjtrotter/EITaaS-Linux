@@ -1,4 +1,4 @@
-From 2b3c0555e2d646d29ae3d351e2ad164df91fbc08 Mon Sep 17 00:00:00 2001
+From 3f270ab87fcb32e4bef214ba809f648298159f01 Mon Sep 17 00:00:00 2001
 From: Stephen Trotter <33046718+sjtrotter@users.noreply.github.com>
 Date: Sun, 30 Aug 2026 05:59:56 -0500
 Subject: [PATCH] RDP: handle PKCS11 client certificates in WebKit
@@ -33,9 +33,9 @@ Generated with AI assistance (Claude); reviewed and tested by the author.
 ---
  plugins/rdp/CMakeLists.txt        |   2 +
  plugins/rdp/rdp_web_auth.c        |  16 +
- plugins/rdp/rdp_web_auth_pkcs11.c | 479 ++++++++++++++++++++++++++++++
+ plugins/rdp/rdp_web_auth_pkcs11.c | 483 ++++++++++++++++++++++++++++++
  plugins/rdp/rdp_web_auth_pkcs11.h |  11 +
- 4 files changed, 508 insertions(+)
+ 4 files changed, 512 insertions(+)
  create mode 100644 plugins/rdp/rdp_web_auth_pkcs11.c
  create mode 100644 plugins/rdp/rdp_web_auth_pkcs11.h
 
@@ -93,10 +93,10 @@ index 53cd19af3..fdd8f83f3 100644
  
 diff --git a/plugins/rdp/rdp_web_auth_pkcs11.c b/plugins/rdp/rdp_web_auth_pkcs11.c
 new file mode 100644
-index 000000000..b6785303a
+index 000000000..5d4c23dab
 --- /dev/null
 +++ b/plugins/rdp/rdp_web_auth_pkcs11.c
-@@ -0,0 +1,479 @@
+@@ -0,0 +1,483 @@
 +/*
 + * Remmina - The GTK+ Remote Desktop Client
 + * SPDX-License-Identifier: GPL-2.0-or-later
@@ -147,6 +147,7 @@ index 000000000..b6785303a
 +	(void)widget;
 +	RemminaAuthToplevel *toplevel = user_data;
 +	toplevel->window = NULL;
++	toplevel->destroy_handler = 0;
 +}
 +
 +/*
@@ -165,7 +166,8 @@ index 000000000..b6785303a
 +
 +static void auth_toplevel_release(RemminaAuthToplevel *toplevel)
 +{
-+	g_signal_handler_disconnect(toplevel->held, toplevel->destroy_handler);
++	if (toplevel->destroy_handler)
++		g_signal_handler_disconnect(toplevel->held, toplevel->destroy_handler);
 +	g_clear_object(&toplevel->held);
 +	toplevel->window = NULL;
 +}
@@ -395,8 +397,8 @@ index 000000000..b6785303a
 +	discovery->request = g_object_ref(request);
 +	discovery->cancellable = g_cancellable_new();
 +	discovery->dialog = gtk_dialog_new_with_buttons(
-+	    "Reading smart card", toplevel->window, GTK_DIALOG_MODAL,
-+	    "Cancel", GTK_RESPONSE_CANCEL, NULL);
++		"Reading smart card", toplevel->window, GTK_DIALOG_MODAL,
++		"Cancel", GTK_RESPONSE_CANCEL, NULL);
 +	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 +	GtkWidget *spinner = gtk_spinner_new();
 +	gtk_spinner_start(GTK_SPINNER(spinner));
@@ -437,7 +439,9 @@ index 000000000..b6785303a
 +/*
 + * Entra ID issues the client-certificate challenge either from the verified
 + * authority itself or from its dedicated CERTAUTH_HOST_PREFIX subdomain. Only
-+ * those two exact names are trusted; no suffix or substring matching.
++ * those two exact names are trusted; no suffix or substring matching. Hosts
++ * with a trailing dot or in a different (IDNA/Unicode) form are not
++ * normalised and therefore fail closed.
 + */
 +static gboolean host_is_authority_or_certauth(const gchar *host, const gchar *authority)
 +{
@@ -475,7 +479,7 @@ index 000000000..b6785303a
 +{
 +	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
 +	if (scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED &&
-+	    scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED)
++		scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED)
 +		return FALSE;
 +	RemminaAuthToplevel toplevel = { 0 };
 +	auth_toplevel_hold(&toplevel, parent_data);
@@ -503,8 +507,8 @@ index 000000000..b6785303a
 +		}
 +		gchar *dialog_title = g_strdup_printf("Select client certificate for %s", request_host);
 +		GtkWidget *dialog = gtk_dialog_new_with_buttons(
-+		    dialog_title, toplevel.window, GTK_DIALOG_MODAL,
-+		    "Cancel", GTK_RESPONSE_CANCEL, "Continue", GTK_RESPONSE_ACCEPT, NULL);
++			dialog_title, toplevel.window, GTK_DIALOG_MODAL,
++			"Cancel", GTK_RESPONSE_CANCEL, "Continue", GTK_RESPONSE_ACCEPT, NULL);
 +		g_free(dialog_title);
 +		GtkWidget *combo = gtk_combo_box_text_new();
 +		for (guint i = 0; i < certs->len; i++)
@@ -553,8 +557,8 @@ index 000000000..b6785303a
 +	}
 +	gchar *dialog_title = g_strdup_printf("Client certificate PIN for %s", request_host);
 +	GtkWidget *dialog = gtk_dialog_new_with_buttons(
-+	    dialog_title, toplevel.window, GTK_DIALOG_MODAL,
-+	    "Cancel", GTK_RESPONSE_CANCEL, "Continue", GTK_RESPONSE_ACCEPT, NULL);
++		dialog_title, toplevel.window, GTK_DIALOG_MODAL,
++		"Cancel", GTK_RESPONSE_CANCEL, "Continue", GTK_RESPONSE_ACCEPT, NULL);
 +	g_free(dialog_title);
 +	GtkWidget *entry = gtk_entry_new();
 +	gtk_entry_set_visibility(GTK_ENTRY(entry), FALSE);
@@ -564,7 +568,7 @@ index 000000000..b6785303a
 +	gint response = gtk_dialog_run(GTK_DIALOG(dialog));
 +	if (response == GTK_RESPONSE_ACCEPT && toplevel.window) {
 +		WebKitCredential *credential = webkit_credential_new_for_certificate_pin(
-+		    gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
++			gtk_entry_get_text(GTK_ENTRY(entry)), WEBKIT_CREDENTIAL_PERSISTENCE_NONE);
 +		webkit_authentication_request_authenticate(request, credential);
 +		webkit_credential_free(credential);
 +	} else {

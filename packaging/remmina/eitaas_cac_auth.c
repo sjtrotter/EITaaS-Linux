@@ -83,6 +83,7 @@ static void auth_toplevel_destroyed(GtkWidget *widget, gpointer user_data)
 	(void)widget;
 	EitaasAuthToplevel *toplevel = user_data;
 	toplevel->window = NULL;
+	toplevel->destroy_handler = 0;
 }
 
 /*
@@ -101,7 +102,8 @@ static void auth_toplevel_hold(EitaasAuthToplevel *toplevel, gpointer window)
 
 static void auth_toplevel_release(EitaasAuthToplevel *toplevel)
 {
-	g_signal_handler_disconnect(toplevel->held, toplevel->destroy_handler);
+	if (toplevel->destroy_handler)
+		g_signal_handler_disconnect(toplevel->held, toplevel->destroy_handler);
 	g_clear_object(&toplevel->held);
 	toplevel->window = NULL;
 }
@@ -223,14 +225,19 @@ static GTlsCertificate *load_certificate_async(EitaasAuthToplevel *toplevel,
 	gtk_widget_destroy(load->dialog);
 	load->dialog = NULL;
 	if (response != GTK_RESPONSE_ACCEPT || !load->certificate || !toplevel->window) {
+		/*
+		 * Mark the load abandoned before running another nested loop: the
+		 * completion callback may fire inside show_error() and must then
+		 * only free the load instead of responding to the destroyed dialog.
+		 */
+		gboolean abandoned = !load->completed;
+		load->abandoned = abandoned;
 		const gchar *message = load->timed_out
-		                       ? "Loading the smart-card certificate timed out" : load->error_message;
+				       ? "Loading the smart-card certificate timed out" : load->error_message;
 		if (message && toplevel->window)
 			show_error(toplevel, message);
-		if (load->completed)
+		if (!abandoned)
 			certificate_load_free(load);
-		else
-			load->abandoned = TRUE;
 		return NULL;
 	}
 	GTlsCertificate *certificate = g_steal_pointer(&load->certificate);
@@ -520,7 +527,9 @@ static GPtrArray *discover_certificates(EitaasAuthToplevel *toplevel,
 /*
  * Entra ID issues the client-certificate challenge either from the verified
  * authority itself or from its dedicated CERTAUTH_HOST_PREFIX subdomain. Only
- * those two exact names are trusted; no suffix or substring matching.
+ * those two exact names are trusted; no suffix or substring matching. Hosts
+ * with a trailing dot or in a different (IDNA/Unicode) form are not
+ * normalised and therefore fail closed.
  */
 static gboolean host_is_authority_or_certauth(const gchar *host, const gchar *authority)
 {
@@ -558,7 +567,7 @@ gboolean eitaas_webview_authenticate(WebKitWebView *web_view,
 {
 	WebKitAuthenticationScheme scheme = webkit_authentication_request_get_scheme(request);
 	if (scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED &&
-	    scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED)
+		scheme != WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED)
 		return FALSE;
 	EitaasAuthToplevel toplevel = { 0 };
 	auth_toplevel_hold(&toplevel, parent_data);
