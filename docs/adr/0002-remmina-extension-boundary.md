@@ -33,10 +33,10 @@ locally rather than consuming the corresponding FreeRDP settings.
 
 ## Decision
 
-Do not build a separate EITaaS Remmina protocol plugin now. It would need to
-copy or link against private implementation details from `plugins/rdp`, then
-track the full RDP plugin ABI and lifecycle. That is a disguised fork with a
-less reliable integration boundary.
+Do not make a separately named EITaaS protocol plugin the general distribution
+architecture. It would need to copy or link against private implementation
+details from `plugins/rdp`, then track the full RDP plugin ABI and lifecycle.
+That is a disguised fork with a less reliable integration boundary.
 
 Instead, reduce the downstream build through small generic Remmina changes:
 
@@ -51,6 +51,74 @@ After those capabilities are upstream, EITaaS should be a launcher, isolated
 configuration, packaging policy, and optional file/entry integration—not a
 second RDP implementation. A thin plugin may then be reconsidered for manager
 integration, but it must use public APIs only and remain optional.
+
+## Adversarial review of delivery options
+
+The preferred end state and the safest interim are different decisions. The
+end state is native upstream Remmina support. Until released distributions
+contain it, the private enhanced client remains the reference artifact. An
+exact-version replacement RDP-plugin package may become a smaller interim for
+individual distributions, but only after passing the gates below.
+
+| Option | Strongest argument for it | Failure mode that controls the decision | Verdict |
+| --- | --- | --- | --- |
+| Patch Remmina's built-in RDP plugin and build a private client | Reuses Remmina's complete, proven RDP integration while pinning the tested Remmina/FreeRDP pair | We must rebuild for security updates and carry a larger artifact | Reference interim; current safest reproducible deployment |
+| Replace a distro's separately packaged RDP plugin with an exact-version patched build | Small download, native Remmina UI, package-manager rollback, and no duplicate protocol | Remmina exposes a raw function-pointer ABI without negotiation; the package must exactly depend on the host Remmina/FreeRDP build and be rebuilt with them | Viable per-distro optimization after compatibility and hardware gates |
+| Install a renamed `EITAAS-RDP` beside the native RDP plugin | Does not remove the native plugin and can claim a distinct protocol | Copies roughly 9,800 lines, duplicates file handlers, and loads both RDP implementations and their FreeRDP dependencies into one process | Reject as the default; prototype only if replacement packaging is impossible |
+| Ship one portable plugin binary with private FreeRDP libraries | Appears to minimize packaging and insulate the plugin from distro versions | ELF libraries with the same FreeRDP SONAME share a process namespace; load order can silently select the wrong implementation despite RUNPATH | Reject |
+| Reimplement RDP directly on libfreerdp | Maximum control and no Remmina RDP source dependency | Recreates rendering, input, scaling, channels, reconnection, clipboard, audio, and monitor integration; becomes a new RDP client | Reject unless the product intentionally leaves Remmina |
+| Wait for upstream and distribute no interim | Zero downstream maintenance | Leaves current users without a working client for an unbounded review/release/distro cycle | Reject |
+
+The existing RDP plugin is not a small authentication adapter: the reviewed
+source is approximately 9,800 lines before generated code and links directly
+to `libfreerdp-client`, `libfreerdp`, and `libwinpr`. Remmina loads native
+plugins with `GModule` and passes a service structure of function pointers; the
+API has no ABI version field or capability negotiation. These facts make exact
+package coupling a safety requirement, not merely conservative packaging.
+
+Fedora and Debian-family distributions package the native RDP plugin and
+Remmina development headers separately, which makes a package-managed
+replacement technically possible. Arch currently ships the plugin in its main
+Remmina package, so the same technique would create a file ownership conflict
+there. No support claim carries between these packaging models.
+
+### Replacement-plugin qualification gates
+
+An exact-version replacement is allowed only when all of the following hold:
+
+1. It is built from the exact source version and distribution build interface
+   of the host `remmina` package, not merely a matching upstream version.
+2. It links only to the distribution's FreeRDP/WinPR libraries; it must not
+   load a private library with a colliding SONAME into native Remmina.
+3. The native RDP plugin is removed/replaced transactionally by the package
+   manager. Two plugins must not register competing `RDP`/RDP-file handlers.
+4. Dependencies require the exact compatible Remmina ABI and bounded FreeRDP
+   ABI. An incompatible upgrade must be blocked rather than allowed to crash.
+5. Install, upgrade, rollback, and removal restore the distribution plugin
+   without leaving unowned files or user-plugin overrides.
+6. The complete CAC/AVD, cancellation, card reinsertion, reconnect, rendering,
+   scaling, and smart-card passthrough matrix passes on that artifact.
+7. CI rebuilds or rejects the package whenever Remmina or FreeRDP changes.
+
+If a distribution cannot satisfy these conditions, use the isolated private
+client rather than weakening them. Plugin-only packaging is an optimization,
+not the security or compatibility boundary.
+
+### Evidence from the Fedora 44 prototype host
+
+The reviewed host has Remmina 1.4.41 and FreeRDP 3.30, while the working
+private artifact pins Remmina 1.4.43 and FreeRDP 3.31. Fedora packages
+`remmina-plugins-rdp` separately and offers `remmina-devel`. A loader probe
+forced the current enhanced plugin to resolve against Fedora's FreeRDP 3.30
+libraries and found no unresolved dynamic symbols. That is useful evidence
+that a Fedora-native replacement may be source-compatible; it is not runtime
+or ABI proof and does not qualify the artifact without rebuilding from Fedora's
+Remmina source and completing the hardware matrix.
+
+The next packaging experiment, after preparing the upstream changes, is
+therefore a Fedora 44 replacement subpackage—not a renamed user plugin. Its
+result decides only the Fedora path. Ubuntu 24.04, Debian 13, and Arch require
+their own source, dependency, transaction, and hardware results.
 
 ## Patch disposition
 
@@ -100,7 +168,9 @@ attached.
 - We continue carrying four downstream patches for now, but new EITaaS policy
   must not be added to Remmina's RDP internals without first evaluating a
   generic upstream form.
-- A standalone plugin is not a near-term packaging simplification.
+- A universal or side-by-side standalone plugin is not a packaging
+  simplification. Exact-version replacement subpackages may be evaluated per
+  distribution without changing the upstream-first end state.
 - Once upstream support lands, packaging can prefer distribution Remmina and
   FreeRDP versions that contain it; the private bundled pair remains necessary
   for older distributions and reproducible prototype artifacts.
@@ -114,3 +184,8 @@ attached.
 - [FreeRDP 3.31.0 settings keys](https://github.com/FreeRDP/FreeRDP/blob/3.31.0/include/freerdp/settings_keys.h)
 - [WebKitGTK authentication request API](https://webkitgtk.org/reference/webkit2gtk/stable/class.AuthenticationRequest.html)
 - [Remmina contribution guide](https://gitlab.com/Remmina/Remmina/-/blob/master/CONTRIBUTING.md)
+- [Fedora `remmina-plugins-rdp` package](https://packages.fedoraproject.org/pkgs/remmina/remmina-plugins-rdp/)
+- [Fedora `remmina-devel` package](https://packages.fedoraproject.org/pkgs/remmina/remmina-devel/)
+- [Ubuntu 24.04 `remmina-plugin-rdp` package](https://packages.ubuntu.com/noble/remmina-plugin-rdp)
+- [Debian 13 `remmina-dev` package](https://packages.debian.org/trixie/remmina-dev)
+- [Arch Linux Remmina package contents](https://archlinux.org/packages/extra/x86_64/remmina/files/)
