@@ -113,7 +113,7 @@ rm -f %{buildroot}$prefix/lib64/*.so
 plugin=%{buildroot}%{_libexecdir}/eitaas-remmina/lib64/remmina/plugins/remmina-plugin-rdp.so
 test -x %{buildroot}%{_libexecdir}/eitaas-remmina/bin/remmina
 test -f "$plugin"
-grep -a -q 'Could not load the protected RDPW profile' "$plugin"
+grep -a -q 'Protected RDPW profile contains invalid or disallowed settings' "$plugin"
 grep -a -q 'Select smart-card authentication certificate' "$plugin"
 license_dir=%{buildroot}%{_licensedir}/%{name}
 test -s "$license_dir/FreeRDP-LICENSE"
