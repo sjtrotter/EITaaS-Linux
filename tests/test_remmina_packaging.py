@@ -1176,3 +1176,18 @@ class SmartcardDiagnosticsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FreeRDPVersionPinTests(unittest.TestCase):
+    """The vendored FreeRDP must not inherit the parent repo's git tag.
+
+    FreeRDP's CMake defaults USE_VERSION_FROM_GIT_TAG=ON and runs `git
+    describe` in the enclosing tree; built inside this tagged repo it would
+    report the EITaaS version (e.g. 1.0.0) instead of 3.30.0, and Remmina's
+    find_package(FreeRDP 3) would then silently disable the RDP plugin.
+    """
+
+    def test_every_recipe_pins_freerdp_version_off_git(self):
+        for name, recipe in RECIPES.items():
+            with self.subTest(recipe=name):
+                self.assertIn("-DUSE_VERSION_FROM_GIT_TAG=OFF", recipe)
