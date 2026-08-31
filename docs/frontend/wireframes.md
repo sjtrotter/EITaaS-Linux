@@ -116,9 +116,10 @@ Keep is the default response; Remove is styled destructive.
 └──────────────────────────────────────────────────────────┘
 ```
 
-Connect is enabled only when the launcher is installed and a default profile
-exists; otherwise the description says which checks need attention or asks for
-an import first.
+Connect is enabled only when a readiness check has completed, the launcher
+and its private client are installed, and a default profile exists. Until then
+the description says which checks need attention or asks for an import first;
+warnings never disable the button.
 
 ## Running and cancelling
 

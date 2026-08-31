@@ -111,9 +111,10 @@ Finally, **Connect** (Ctrl+Return).
 ![EITaaS Connect connect page](docs/images/helper-connect.png)
 
 The button is disabled only on hard failures — the launcher or its private
-client binary missing, or no imported profile. Warnings never disable it. While
-the client runs the page shows the phase and a **Cancel** button; closing the
-window asks whether to disconnect and quit or keep working.
+client binary missing, or no imported profile — and while the readiness check
+has not yet completed. Warnings never disable it. While the client runs the
+page shows the phase and a **Cancel** button; closing the window asks whether
+to disconnect and quit or keep working.
 
 Once the checks have passed and a profile is imported, later starts open
 straight on **Connect** while the checks re-run in the background. If a check
@@ -161,7 +162,7 @@ These are the defaults as implemented today, not intentions:
 - **Server certificate verification stays on.** Nothing in this project passes
   a certificate-bypass switch, and `scripts/check-repository-artifacts.sh`
   fails the build if such guidance is ever committed.
-- **Your PIN is never captured.** The PIN is typed into the bundled client's
+- **Your PIN never leaves the bundled client's dialog.** It is typed into that
   dialog and is never logged, persisted, or passed across the Python API
   (`docs/application-api.md`).
 - **Imported profiles are private.** `eitaas profile import` and the helper

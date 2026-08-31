@@ -270,7 +270,10 @@ def can_connect(report: DoctorReport | None, profile: StoredProfileSummary | Non
 
     Hard failures are the launcher or its private client binary missing (and a
     missing default profile, which leaves nothing to connect to). Warnings such
-    as missing diagnostic tools never disable it.
+    as missing diagnostic tools never disable it. A missing ``report`` also
+    returns False: until the readiness check has completed — on startup, while
+    a background re-check runs, or after ``doctor`` itself failed — there is
+    nothing to prove the client is installed.
     """
     return bool(
         report and report.remmina.launcher and report.remmina.client and profile is not None
