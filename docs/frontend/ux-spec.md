@@ -17,8 +17,8 @@ community work, not an official Microsoft or United States Government client.
 
 The project icon (`org.eitaas.Helper`) combines an abstract remote display and
 a generic card chip. It must not use Microsoft/Windows marks, military seals,
-government agency emblems, smart card (PIV) artwork, or modified copies of existing product
-icons.
+government agency emblems, smart card (PIV) artwork, or modified copies of
+existing product icons.
 
 The helper uses native Libadwaita controls, typography, spacing, and window
 chrome, and follows the system light/dark preference. `design-tokens.json`
@@ -50,9 +50,6 @@ checks; dismissing it in any way (button, Escape, or close) switches to the
 Readiness page. The dialog uses a normal `Adw.AlertDialog` with an async
 response handler; it never blocks the main loop.
 
-Certificates remain CLI-only (`eitaas certificates`); the helper has no
-certificate view.
-
 ## Profile import
 
 The Profile page shows a **Web client** chooser (Azure US Government by
@@ -64,16 +61,17 @@ click the settings cog, choose "Download the rdp file", click the desktop
 (saves e.g. `Desktop.rdpw` to Downloads), then press **I downloaded the RDP
 file**, which opens `Gtk.FileDialog` filtered to `*.rdpw`, starting in the
 Downloads directory. A "Why do I need this file?" expander explains that the
-`.rdpw` is a signed, password-free description of the workspace, is personal,
-and is moved out of Downloads so other users cannot read it.
+`.rdpw` describes the workspace the client connects to, is personal, and is
+moved out of Downloads into a directory this project restricts to the user
+(the exact wording is `viewmodel.WHY_PROFILE`).
 
 Import calls `Application.import_profile`, which *moves* the chosen file
 (rename, or copy + fsync + unlink across filesystems; symlinks and files owned
 by another user are refused) into `$XDG_DATA_HOME/eitaas-remmina/profiles/`
 (directory mode `0700`, file mode `0600`), keeps the basename (adding `-2`,
 `-3`, … on collision), re-validates it, and makes it the default. The step text
-explains that the file is moved out of Downloads so it is not left readable by
-other accounts. A toast confirms "Imported NAME; it is now the default."
+explains that the file is moved out of Downloads into a directory restricted
+to the user. A toast confirms "Imported NAME; it is now the default."
 
 The **Imported profiles** list shows one row per stored file: basename, cloud
 label, size, mode, and import date (exactly the `StoredProfileSummary` fields).
@@ -118,13 +116,27 @@ shows "Stopping the remote desktop client".
 
 The core cannot observe authentication or session establishment, so there is
 no Authenticating or Connected state. Sign-in, certificate selection, and the
-PIN prompt happen in the Remmina window. When the child exits, a toast reports
-"Connection cancelled." or a non-zero exit status; a clean exit shows nothing.
-Import and profile rows are disabled while a connection is running.
+PIN prompt happen in the Remmina window. A cancelled run reports
+"Connection cancelled." as a toast and a clean run with no warnings shows
+nothing. Import and profile rows are disabled while a connection is running.
 
 Closing the window while the client runs asks **Disconnect and quit** /
-**Keep working** (default Keep working). Quit sets the cancellation event and
-joins the worker with a 7 s grace period.
+**Keep working** (default Keep working). Quit hides the window and sets the
+cancellation event; the worker is never joined on the GTK thread, and the
+window is destroyed from the `launch` completion callback once the child has
+exited.
+
+## Diagnostics after a failed run
+
+A run that exits non-zero, or that exits cleanly but logged `smartcard-auth:`
+warning lines, shows `viewmodel.diagnostic_text` in place on the Connect page:
+the exit status (or "exited normally but reported smart-card warnings"), the
+last reason-code and Remmina warning lines from the redacted session log, and
+the log's path. The lines are fetched with `Application.session_log` on a
+worker thread, so the page first shows the status and path and then gains the
+lines. A **Copy diagnostic log** button appears with them and places the whole
+redacted log on the clipboard. Raw child output never reaches the page by any
+other route.
 
 ## Failures and recovery
 

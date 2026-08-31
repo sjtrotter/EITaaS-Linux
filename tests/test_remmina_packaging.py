@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-# The bundle inputs (pinned manifest, ordered patch series, CAC integration
+# The bundle inputs (pinned manifest, ordered patch series, smart-card integration
 # sources, launcher, notices) live here; every packaging format consumes them.
 PACKAGE_DIR = PROJECT_ROOT / "packaging" / "remmina"
 UPSTREAM_DIR = PROJECT_ROOT / "upstream" / "remmina"
@@ -124,7 +124,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
 
     def test_sso_mib_is_disabled_in_every_recipe(self):
         # The identity-broker (SSO-MIB) route is not part of the product (#77):
-        # the validated path is the embedded WebKitGTK CAC WebView, so every
+        # the validated path is the embedded WebKitGTK smart-card WebView, so every
         # recipe builds FreeRDP and Remmina with the broker compiled out and
         # declares no sso-mib build or runtime dependency.
         for name, recipe in RECIPES.items():
@@ -133,7 +133,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
                 self.assertEqual(recipe.count("-DWITH_SSO_MIB=OFF"), 2)
                 self.assertNotIn("-DWITH_SSO_MIB=ON", recipe)
                 self.assertNotIn("sso-mib", recipe.replace("-DWITH_SSO_MIB=OFF", ""))
-                # Every recipe still builds the browser/CAC authentication path.
+                # Every recipe still builds the browser/smart-card authentication path.
                 self.assertIn("-DWITH_RDP_AUTH_AAD=ON", recipe)
                 self.assertIn("-DWITH_PCSC=ON", recipe)
 
@@ -467,11 +467,11 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         )
 
     def test_original_sources_have_spdx_identifiers(self):
-        cac_sources = ("eitaas_cac_" "auth.c", "eitaas_cac_" "auth.h")
-        for filename in (*cac_sources, "eitaas-remmina"):
+        plugin_sources = tuple(MANIFEST["downstream_sources"][:2])
+        for filename in (*plugin_sources, "eitaas-remmina"):
             with self.subTest(filename=filename):
                 beginning = (PACKAGE_DIR / filename).read_text().splitlines()[:4]
-                identifier = "GPL-2.0-or-later" if filename in cac_sources else "MIT"
+                identifier = "GPL-2.0-or-later" if filename in plugin_sources else "MIT"
                 self.assertTrue(
                     any(f"SPDX-License-Identifier: {identifier}" in line for line in beginning)
                 )
@@ -484,8 +484,8 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             with self.subTest(patch=patch.name):
                 self.assertIn("License: GPL-2.0-or-later", patch.read_text().split("---", 1)[0])
 
-    def test_cac_authentication_is_origin_bound_and_nonpersistent(self):
-        source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+    def test_smartcard_authentication_is_origin_bound_and_nonpersistent(self):
+        source = (PACKAGE_DIR / "eitaas_smartcard_auth.c").read_text()
         for required in (
             "trusted_request_host",
             "webkit_authentication_request_is_for_proxy",
@@ -499,7 +499,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertNotIn("g_str_has_suffix(host", source)
 
     def test_pkcs11_discovery_is_bounded_cancellable_and_uses_trusted_tool(self):
-        source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        source = (PACKAGE_DIR / "eitaas_smartcard_auth.c").read_text()
         for required in (
             "#define REMMINA_P11TOOL",
             "g_file_test(REMMINA_P11TOOL, G_FILE_TEST_IS_EXECUTABLE)",
@@ -605,7 +605,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertEqual(helpers[0], helpers[1])
 
     def test_certificate_loading_and_pin_state_are_asynchronous_and_bounded(self):
-        source = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        source = (PACKAGE_DIR / "eitaas_smartcard_auth.c").read_text()
         for required in (
             "load_certificate_async",
             "certificate_load_thread",
@@ -617,7 +617,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             self.assertIn(required, source)
 
     def test_challenge_host_relationship_is_defined_once_in_both_trees(self):
-        downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        downstream = (PACKAGE_DIR / "eitaas_smartcard_auth.c").read_text()
         upstream = (UPSTREAM_DIR / "0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch").read_text()
         for source in (downstream, upstream):
             self.assertEqual(source.count('#define CERTAUTH_HOST_PREFIX "certauth."'), 1)
@@ -628,7 +628,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertNotIn("microsoftonline", downstream)
 
     def test_toplevel_is_held_across_nested_certificate_dialogs(self):
-        downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        downstream = (PACKAGE_DIR / "eitaas_smartcard_auth.c").read_text()
         upstream = (UPSTREAM_DIR / "0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch").read_text()
         for source in (downstream, upstream):
             self.assertIn("auth_toplevel_hold(&toplevel, parent_data)", source)
@@ -646,7 +646,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         cc = shutil.which("cc")
         pkg_config = shutil.which("pkg-config")
         if not cc or not pkg_config:
-            reason = "SKIP: tests/c/test_cac_challenge_host.c not compiled because cc or pkg-config is missing"
+            reason = "SKIP: tests/c/test_smartcard_challenge_host.c not compiled because cc or pkg-config is missing"
             print(reason, file=sys.stderr)
             self.skipTest(reason)
         module = next(
@@ -659,7 +659,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         )
         if module is None:
             reason = (
-                "SKIP: tests/c/test_cac_challenge_host.c not compiled because no "
+                "SKIP: tests/c/test_smartcard_challenge_host.c not compiled because no "
                 "webkit2gtk-4.1 or webkit2gtk-4.0 pkg-config module was found"
             )
             print(reason, file=sys.stderr)
@@ -668,9 +668,9 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             [pkg_config, "--cflags", "--libs", module],
             check=True, capture_output=True, text=True,
         ).stdout.split()
-        harness = PROJECT_ROOT / "tests" / "c" / "test_cac_challenge_host.c"
+        harness = PROJECT_ROOT / "tests" / "c" / "test_smartcard_challenge_host.c"
         with tempfile.TemporaryDirectory() as workdir:
-            binary = Path(workdir) / "test_cac_challenge_host"
+            binary = Path(workdir) / "test_smartcard_challenge_host"
             subprocess.run(
                 [cc, "-std=gnu11", "-Wall", "-Werror", str(harness), "-o", str(binary), *flags],
                 check=True, timeout=120,
@@ -687,10 +687,10 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn("Remmina", declared[2])
 
     def test_spec_consumes_every_downstream_input_from_the_repository_source(self):
-        # The repository tarball is Source0, so the CAC integration, launcher,
-        # notices, and manifest are referenced by path instead of as SourceN.
-        cac_sources = ("eitaas_cac_" "auth.c", "eitaas_cac_" "auth.h")
-        for filename in (*cac_sources, "eitaas-remmina", "THIRD_PARTY_NOTICES.md"):
+        # The repository tarball is Source0, so the smart-card integration,
+        # launcher, notices, and manifest are referenced by path, not as SourceN.
+        plugin_sources = tuple(MANIFEST["downstream_sources"][:2])
+        for filename in (*plugin_sources, "eitaas-remmina", "THIRD_PARTY_NOTICES.md"):
             with self.subTest(filename=filename):
                 self.assertIn(f"packaging/remmina/{filename}", SPEC)
         self.assertIn("%global manifest packaging/remmina/sources.json", SPEC)
@@ -717,7 +717,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
             "030946c83fe1b7218a21b6d32f9c975b243b7031",
             "Remmina",
             "FreeRDP",
-            "CAC integration",
+            "smart card (PIV) integration",
             "one-shot launcher",
         ):
             with self.subTest(value=value):
@@ -1034,7 +1034,7 @@ class SmartcardDiagnosticsTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.downstream = (PACKAGE_DIR / "eitaas_cac_auth.c").read_text()
+        cls.downstream = (PACKAGE_DIR / "eitaas_smartcard_auth.c").read_text()
         cls.upstream = (UPSTREAM_DIR / "0005-RDP-handle-PKCS11-client-certificates-in-WebKit.patch").read_text()
 
     def test_reason_codes_exist_in_both_trees(self):

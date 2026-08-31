@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (c) 2026 Stephen Trotter
 
-#include "eitaas_cac_auth.h"
+#include "eitaas_smartcard_auth.h"
 
 #include <gtk/gtk.h>
 #include <string.h>

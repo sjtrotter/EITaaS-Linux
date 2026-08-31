@@ -1,7 +1,7 @@
 #compdef eitaas
 
 _arguments -C \
-  '1:command:(doctor inspect-profile smartcard connect profile certificates)' \
+  '1:command:(doctor inspect-profile smartcard connect profile)' \
   '*::argument:->args'
 
 case $words[2] in
@@ -20,5 +20,4 @@ case $words[2] in
       remove) _arguments '1:name:' ;;
     esac
     ;;
-  certificates) _arguments '1:command:(fetch inspect)' ;;
 esac

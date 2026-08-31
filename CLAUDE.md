@@ -6,11 +6,11 @@ upstream Remmina/FreeRDP submission; treat that as policy.
 
 ## What this repository is
 
-Community Linux tooling for Azure Virtual Desktop (US Government cloud) with CAC
-smart-card redirection. One installable deliverable per distribution — the
+Community Linux tooling for Azure Virtual Desktop (US Government cloud) with
+smart card (PIV) authentication and redirection. One installable deliverable per distribution — the
 `eitaas-linux` package (#80) — built from three source trees:
 
-- `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|profile|smartcard|certificates`).
+- `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|profile|smartcard`).
   `api.py` is the presentation-neutral facade; frontends never import platform modules directly.
   `connect` only validates the profile and runs `eitaas-remmina PROFILE` (`Application.launch`);
   Python holds no RDP/OAuth policy — that lives in the Remmina patches.
@@ -19,7 +19,7 @@ smart-card redirection. One installable deliverable per distribution — the
 - `src/eitaas_gui/` — GTK 4/Libadwaita helper `eitaas-gui` ("EITaaS Connect"), shipped in the single
   `eitaas-linux` package; imports `eitaas.api` only. `viewmodel.py` is toolkit-free and tested without GTK.
 - `packaging/remmina/` — the bundle inputs for the product client: the pinned manifest, the ordered
-  patch series, `eitaas_cac_auth.c` (WebKit CAC / PKCS #11 auth), the `eitaas-remmina` launcher, and the
+  patch series, `eitaas_smartcard_auth.c` (WebKit smart-card / PKCS #11 auth), the `eitaas-remmina` launcher, and the
   notices for the isolated one-shot Remmina 1.4.43 + FreeRDP 3.30.x build.
   `upstream/remmina/` holds the unbranded upstream-candidate exports of the same changes.
 
@@ -30,7 +30,7 @@ no connection-manager mode, no Flatpak/AppImage.
 ## Non-negotiable security invariants
 
 - Certificate verification stays on. Never add a cert-bypass switch or suggest one.
-- Never capture, log, or persist a CAC PIN, OAuth callback, token, or real `.rdpw` content.
+- Never capture, log, or persist a smart-card PIN, OAuth callback, token, or real `.rdpw` content.
   Test fixtures are synthetic (`tests/fixtures/synthetic.rdpw`) — no tenant/workspace/gateway values.
 - Refuse FreeRDP's terminal URL/callback OAuth fallback; only the embedded WebView
   (enforced in the Remmina patches, #51/#58; Python never builds FreeRDP arguments).
@@ -43,7 +43,7 @@ no connection-manager mode, no Flatpak/AppImage.
   rotated) and only that redacted log is served back (`Application.session_log`).
 - Child processes: fixed argv, no shell, timeouts, bounded output, stdio to `DEVNULL` unless required
   (the `eitaas-remmina` child's stdout/stderr go to the session log; stdin stays `DEVNULL`).
-- Remmina smart-card logging (`eitaas_cac_auth.c` / `rdp_web_auth_pkcs11.c`): stable `smartcard-auth: <code>`
+- Remmina smart-card logging (`eitaas_smartcard_auth.c` / `rdp_web_auth_pkcs11.c`): stable `smartcard-auth: <code>`
   reason codes, counts, and the verified sign-in host only — never PKCS #11 URIs, labels, serials, PINs, tokens.
 - Untrusted `.rdpw` content reaches FreeRDP's native parser only through the explicit allowlist
   (`packaging/remmina/0005/0006-*.patch`, `upstream/remmina/0001-*.patch`).
@@ -57,7 +57,7 @@ no connection-manager mode, no Flatpak/AppImage.
 - Version pins, patch order, and downstream sources live in `packaging/remmina/sources.json`; it is the
   intended SSOT for the Remmina bundle (aligning CI/spec/script strings to it is tracked in #64).
   `scripts/check-version-consistency.py` guards the single package version (pyproject.toml) across
-  RPM/DEB/Arch, the man pages, and the AppStream metainfo; the pinned Remmina/FreeRDP versions never
+  RPM/DEB/Arch, `docs/eitaas.1`, and the AppStream metainfo; the pinned Remmina/FreeRDP versions never
   become part of it.
   Never add a new hard-coded version string a manifest already holds.
 - Cloud constants (authorities, scopes, hosts) are defined once per language and referenced.

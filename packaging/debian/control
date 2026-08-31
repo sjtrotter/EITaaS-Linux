@@ -57,7 +57,7 @@ Breaks: eitaas-remmina, eitaas-linux-gui
 Replaces: eitaas-remmina, eitaas-linux-gui
 Description: EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI
  Everything needed to reach an EITaaS Azure Virtual Desktop workspace with
- Common Access Card redirection: the isolated one-shot Remmina and FreeRDP
+ smart card (PIV) redirection: the isolated one-shot Remmina and FreeRDP
  client built from the pins in sources.json and installed under a private
  prefix, the eitaas-remmina launcher, the eitaas command-line diagnostics,
  and the EITaaS Connect GTK 4 helper with its desktop entry, .rdpw MIME

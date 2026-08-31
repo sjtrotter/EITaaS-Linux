@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (c) 2026 Stephen Trotter
 //
-// Behavioral test for PKCS #11 certificate discovery in eitaas_cac_auth.c,
+// Behavioral test for PKCS #11 certificate discovery in eitaas_smartcard_auth.c,
 // driven by a fake p11tool (a shell script compiled in as REMMINA_P11TOOL).
 // Issue #82: p11tool exits non-zero for a token without matching objects
 // (p11-kit's trust tokens come first), which used to abort discovery before
@@ -13,7 +13,7 @@
 #define REMMINA_PLUGIN_DEBUG(fmt, ...) g_debug(fmt, ##__VA_ARGS__)
 #define REMMINA_PLUGIN_WARNING(fmt, ...) g_warning(fmt, ##__VA_ARGS__)
 
-#include "../../packaging/remmina/eitaas_cac_auth.c"
+#include "../../packaging/remmina/eitaas_smartcard_auth.c"
 
 #include <stdio.h>
 

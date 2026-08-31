@@ -10,14 +10,14 @@ attestations.
 Create the final annotated tag locally with a configured GPG or SSH signing key:
 
 ```bash
-git tag -s v0.1.0 <release-commit>
-git tag -v v0.1.0
-git push origin v0.1.0
+git tag -s v0.2.0 <release-commit>
+git tag -v v0.2.0
+git push origin v0.2.0
 ```
 
 The release workflow rejects a tag that does not exactly match every project
 and native-package version declaration. Do not create a release tag until the
-release commit has passed CI and the manual AVD/CAC matrix.
+release commit has passed CI and the manual AVD/smart-card matrix.
 
 ## Checksums and provenance
 
@@ -30,7 +30,7 @@ attestations after the protected environment is approved.
 Verify a downloaded artifact's GitHub provenance with:
 
 ```bash
-gh attestation verify eitaas-linux-0.1.0.tar.gz \
+gh attestation verify eitaas-linux-0.2.0.tar.gz \
   --repo sjtrotter/EITaaS-Linux
 ```
 

@@ -13,8 +13,8 @@ inputs. Two subcommands share that manifest:
 ``tree``
     Build the complete source tree the DEB and Arch recipes compile: the
     repository sources (Python packages, packaging metadata, patches, docs),
-    both extracted upstream trees with the CAC integration copied in and the
-    ordered patch series applied, and, for Debian, the ``debian/`` directory.
+    both extracted upstream trees with the smart-card integration copied in and
+    the ordered patch series applied, and, for Debian, the ``debian/`` directory.
 """
 
 from __future__ import annotations

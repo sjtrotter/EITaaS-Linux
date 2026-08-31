@@ -18,7 +18,7 @@
   },
   "patches": [
     "0001-preserve-protected-rdpw-settings.patch",
-    "0002-add-cac-webview-authentication.patch",
+    "0002-add-smartcard-webview-authentication.patch",
     "0003-keep-private-runtime-paths.patch",
     "0004-use-profile-avd-scope.patch",
     "0005-bind-protected-rdpw-content.patch",
@@ -26,8 +26,8 @@
     "0007-extend-arm-configuration-timeout.patch"
   ],
   "downstream_sources": [
-    "eitaas_cac_auth.c",
-    "eitaas_cac_auth.h",
+    "eitaas_smartcard_auth.c",
+    "eitaas_smartcard_auth.h",
     "eitaas-remmina"
   ]
 }

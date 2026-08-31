@@ -116,9 +116,10 @@ Keep is the default response; Remove is styled destructive.
 └──────────────────────────────────────────────────────────┘
 ```
 
-Connect is enabled only when the launcher is installed and a default profile
-exists; otherwise the description says which checks need attention or asks for
-an import first.
+Connect is enabled only when a readiness check has completed, the launcher
+and its private client are installed, and a default profile exists. Until then
+the description says which checks need attention or asks for an import first;
+warnings never disable the button.
 
 ## Running and cancelling
 
@@ -152,6 +153,28 @@ disabled until the child exits. There is no Authenticating or Connected state.
 The card holds the title for the error code, the redacted message, and the
 recovery text when supplied. No child output or arguments appear.
 
+## Diagnostics after a failed run
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│                     Connect                              │
+│                                                          │
+│                   (  Connect  )   ( Copy diagnostic log )│
+│ ┌──────────────────────────────────────────────────────┐ │
+│ │ The remote desktop client exited with status 1.      │ │
+│ │ Last diagnostic lines:                               │ │
+│ │ smartcard-auth: discovery-empty: no certificate      │ │
+│ │ Diagnostic log: ~/.local/state/eitaas-remmina/logs/  │ │
+│ │ session-20260830T091200.000000-4242.log              │ │
+│ └──────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+Shown when the client exits non-zero, or exits cleanly after logging
+`smartcard-auth:` warnings. The reason-code lines arrive from the redacted
+session log on a worker thread, so the status and path appear first. Copy
+diagnostic log puts the whole redacted log on the clipboard.
+
 ## Disconnect and quit
 
 ```text
@@ -165,5 +188,5 @@ recovery text when supplied. No child output or arguments appear.
 ```
 
 Shown on close-request while a connection runs. Keep working is the default;
-Disconnect and quit sets the cancellation event and joins the worker before
-the window closes.
+Disconnect and quit hides the window and sets the cancellation event, and the
+window is destroyed once the child has exited.

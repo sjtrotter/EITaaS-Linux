@@ -1,8 +1,8 @@
-# Isolated Remmina prototype
+# The bundled EITaaS client
 
 This directory holds the bundle inputs every packaging format consumes: the
-pinned source and ordered patch data in `sources.json`, the CAC integration
-sources, the `eitaas-remmina` launcher, the notices, and the Arch snapshot
+pinned source and ordered patch data in `sources.json`, the smart card (PIV)
+integration sources, the `eitaas-remmina` launcher, the notices, and the Arch snapshot
 date. The recipes themselves live in `packaging/rpm/eitaas-linux.spec`,
 `packaging/debian/`, and `packaging/arch/PKGBUILD` -- one binary package,
 `eitaas-linux`, per distribution (#80). The cross-distribution delivery
@@ -22,20 +22,21 @@ FreeRDP release recorded in `sources.json`, currently the 3.30.x line that
 Fedora ships, and that exact Remmina/FreeRDP pair is what the hardware gates
 are run against; treat "tested with 3.30.x" as a validation statement, not a
 compile-time minimum. The bundle does not link SSO-MIB: the only supported
-sign-in path is the embedded WebKitGTK CAC WebView (see below).
+sign-in path is the embedded WebKitGTK smart-card WebView (see below).
 
 The downstream changes preserve the original protected RDPW profile through
 FreeRDP's parser, select ARM/AAD transport, honor smart-card redirection, and
 handle WebKitGTK client-certificate and PIN challenges with PKCS #11-backed
-CAC credentials. Only authentication, identity, and PIV-labelled certificates
+smart card (PIV) credentials. Only authentication, identity, and PIV-labelled certificates
 are shown. Certificate discovery runs on a worker while a cancellable progress
 dialog keeps the GTK interface responsive. Cancelling discovery ends the
 containing AVD authentication attempt. Core dumps are disabled before opening
 the authentication view.
 
-The handler accepts certificate and PIN challenges only from the exact HTTPS
-authority that initiated the AAD WebView, limited to supported Microsoft
-commercial and US Government login hosts. It rejects proxy, mismatched,
+The handler accepts certificate and PIN challenges only from the HTTPS
+authority that initiated the AAD WebView, or that authority's `certauth.`
+sibling host, limited to supported Microsoft commercial and US Government
+login hosts. It rejects proxy, mismatched,
 standalone PIN, and insecure-origin challenges. PKCS #11 discovery uses the
 `p11tool` this build pins (`-DREMMINA_P11TOOL=/usr/bin/p11tool`, the path the
 package's `gnutls-utils`/`gnutls-bin` dependency installs; a build that pins
@@ -80,7 +81,7 @@ artifacts to `dist/`. `scripts/prepare-bundle-source.py` does the fetching and
 tree assembly for all three. The Arch builder uses the repository snapshot
 recorded in `SNAPSHOT`. These packages are build- and lifecycle-tested in clean
 containers by `scripts/test-{deb,rpm,arch}-lifecycle.sh`; Azure Government and
-CAC hardware validation is still required on each distribution before it
+smart-card hardware validation is still required on each distribution before it
 becomes a supported runtime target.
 
 Release and reproducibility builds use the repository date in `SNAPSHOT`.
@@ -96,7 +97,7 @@ After installation, launch only through:
 eitaas-remmina "$HOME/Downloads/Desktop.rdpw"
 ```
 
-This command is a one-shot connection: cancelling CAC authentication closes
+This command is a one-shot connection: cancelling smart-card authentication closes
 the authentication flow and the isolated Remmina application instead of
 leaving its connection manager open. A no-argument connection-manager mode is
 intentionally not part of the EITaaS product.
@@ -104,7 +105,7 @@ intentionally not part of the EITaaS product.
 The launcher uses an isolated configuration directory below
 `$XDG_STATE_HOME/eitaas-remmina` (or `~/.local/state/eitaas-remmina`) so user
 plugins and settings from the distribution Remmina installation are not mixed
-with the prototype.
+with the bundled client.
 
 The launcher also starts the client with `--gapplication-app-id=org.eitaas.Remmina`
 (Remmina registers its GApplication with `G_APPLICATION_CAN_OVERRIDE_APP_ID`),
@@ -116,7 +117,7 @@ smart-card patches, and our process would exit with the primary's status.
 
 ## Diagnostics
 
-`eitaas_cac_auth.c` logs every smart-card authentication stage through
+`eitaas_smartcard_auth.c` logs every smart-card authentication stage through
 Remmina's debug and warning channels with a stable `smartcard-auth: <code>`
 reason code: the WebKit challenge (scheme, host, port, proxy flag) and whether
 it was accepted, discovery start and the token/certificate counts, the
@@ -136,8 +137,8 @@ tokens (`model=p11-kit-trust`), and treats a token for which
 `p11tool --list-certs --only-urls` prints no URL and exits non-zero as
 empty (`discovery-token-empty`) rather than as a failure; token-listing
 failures, cancellation, output limits, URL output with a non-zero exit, and a
-tool killed by a signal remain fatal. The full reason-code table is in the top-level README under
-"Troubleshooting":
+tool killed by a signal remain fatal. The complete reason-code table follows;
+the top-level `README.md` and `eitaas(1)` point here for it.
 
 | Code | Level | Meaning |
 |---|---|---|
@@ -183,7 +184,7 @@ with `-DWITH_SSO_MIB=OFF`,
 them declares an `sso-mib` build or runtime dependency; the flags are asserted
 by `tests/test_remmina_packaging.py`. The Microsoft Identity Broker route was
 never hardware-validated on a sovereign cloud and only exists on Intune-
-enrolled devices, so it was dropped (#77). The embedded WebKitGTK CAC WebView
+enrolled devices, so it was dropped (#77). The embedded WebKitGTK smart-card WebView
 is therefore the only non-terminal authentication path compiled into every
 package; the terminal URL/callback fallback remains refused. Turning SSO-MIB
 back on is a support-matrix change that needs a hardware result and a matching
@@ -192,14 +193,14 @@ update to `docs/supported-platforms.md`, not a packaging tweak.
 ## Licensing and corresponding source
 
 This is a composite binary package, not a relicensing of Remmina or FreeRDP.
-Remmina and the EITaaS CAC integration compiled into its RDP plugin are
+Remmina and the EITaaS smart card (PIV) integration compiled into its RDP plugin are
 GPL-2.0-or-later; the Remmina OpenSSL exception is shipped with the package.
 FreeRDP is Apache-2.0, and the standalone EITaaS launcher is MIT. See
 `THIRD_PARTY_NOTICES.md` for the component map and exact pinned sources.
 
 The source RPM, Debian source package, and Arch corresponding-source tarball
-are buildable source distributions for this prototype. Each contains both
-pinned upstream archives, all downstream patches, the CAC integration sources,
+are buildable source distributions for this bundle. Each contains both pinned
+upstream archives, all downstream patches, the smart-card integration sources,
 launcher, the Python `eitaas`/`eitaas_gui` sources, license texts, notice
 manifest, and native packaging metadata. Rebuilding still downloads normal
 distribution build dependencies; it does not fetch either application source

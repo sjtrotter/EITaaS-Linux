@@ -1,20 +1,21 @@
 # Manual release checklist
 
-Do not use real profiles, account identifiers, callback URLs, or CAC output as
-public test evidence.
+Do not use real profiles, account identifiers, callback URLs, or smart-card
+output as public test evidence.
 
 - Confirm Azure US Government initial authentication with an authorized test account.
 - Confirm authentication uses the embedded WebView and never
   emits or requests an authorization URL, callback URL, code, or token.
-- Confirm CAC authentication is passed into the desktop.
+- Confirm smart card (PIV) authentication is passed into the desktop.
 - Run `certutil -scinfo` inside the Windows session.
-- Test CAC removal and reinsertion, disconnect, and reconnect.
+- Test card removal and reinsertion, disconnect, and reconnect.
 - Test GNOME Wayland/XWayland, KDE Wayland/XWayland, and an X11 session.
 - Exercise the bundled client under X11 and XWayland sessions that are claimed as supported.
 - Verify server certificate validation remains enabled.
 - Verify clipboard redirection follows the profile's `redirectclipboard` field
   and that a profile without it gets the RDP default (enabled).
-- Install, upgrade, and remove both DEB and RPM packages.
+- Install, upgrade from the split packages, and remove the `eitaas-linux` DEB,
+  RPM, and Arch packages.
 - Confirm the release tag exactly matches the version in `pyproject.toml`.
 - Run `scripts/check-version-consistency.py --tag vX.Y.Z` before creating the tag.
 - Generate the canonical source tarball twice and confirm byte-for-byte output.

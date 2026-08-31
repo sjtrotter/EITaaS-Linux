@@ -1,5 +1,5 @@
 From: EITaaS-Linux contributors <noreply@example.invalid>
-Subject: [PATCH] Add CAC authentication to the Remmina AAD WebView
+Subject: [PATCH] Add smart card (PIV) authentication to the Remmina AAD WebView
 License: GPL-2.0-or-later
 Copyright: 2026 Stephen Trotter
 
@@ -30,7 +30,7 @@ Copyright: 2026 Stephen Trotter
 +#include <sys/prctl.h>
 +#include <sys/resource.h>
 +
-+#include "eitaas_cac_auth.c"
++#include "eitaas_smartcard_auth.c"
  
  #define AUTH_CANCELLED "__AUTH_CANCELLED__"
  
