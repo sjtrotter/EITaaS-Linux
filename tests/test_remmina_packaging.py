@@ -7,6 +7,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+try:  # ``unittest discover -s tests`` vs ``python -m unittest tests.test_...``
+    from test_version_consistency import SCHEME
+except ImportError:
+    from tests.test_version_consistency import SCHEME
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # The bundle inputs (pinned manifest, ordered patch series, smart-card integration
@@ -34,6 +39,17 @@ def project_version():
     match = re.search(r'(?m)^version = "([^"]+)"$', PYPROJECT)
     assert match, "unparsable pyproject version"
     return match.group(1)
+
+
+def native_version():
+    """Return the RPM/Debian spelling of the pyproject version (issue #95).
+
+    A pre-release carries a `~` marker there so it sorts below its final
+    release; a final release is spelled identically in every format. The
+    mapping lives in scripts/check-version-consistency.py and is used, never
+    re-implemented, here.
+    """
+    return SCHEME.native_version(project_version())
 
 
 def debian_version():
@@ -162,22 +178,34 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         notices; they are not part of the package version any more.
         """
         version = project_version()
+        native = native_version()
+
+        # RPM and Debian spell a pre-release with a `~` marker so it sorts
+        # below the final release; the canonical string still names the
+        # release tarball and its directory, so the spec keeps it once.
+        self.assertIn(f"%global upstream_version {version}\n", SPEC)
+        self.assertIn("v%{upstream_version}.tar.gz", SPEC)
+        self.assertIn("-n eitaas-linux-%{upstream_version}", SPEC)
         self.assertRegex(
-            SPEC, rf"(?m)^Version:\s+{re.escape(version)}$"
+            SPEC, rf"(?m)^Version:\s+{re.escape(native)}$"
         )
         release = re.search(r"(?m)^Release:\s+(\S+?)%\{\?dist\}$", SPEC)
         self.assertIsNotNone(release)
         self.assertRegex(release.group(1), r"^[1-9]\d*$")
-        self.assertIn(f"- {version}-{release.group(1)}\n", SPEC.split("%changelog", 1)[1])
+        self.assertIn(f"- {native}-{release.group(1)}\n", SPEC.split("%changelog", 1)[1])
 
         # The Debian package is native: <project version>, no revision.
-        self.assertEqual(debian_version(), version)
+        self.assertEqual(debian_version(), native)
         self.assertIn(
             "3.0 (native)",
             (PROJECT_ROOT / "packaging" / "debian" / "source" / "format").read_text(),
         )
 
+        # `~` is invalid in an Arch pkgver, so it keeps the canonical string;
+        # pacman's vercmp already sorts a pre-release below its final release,
+        # which scripts/test-arch-lifecycle.sh asserts against a real vercmp.
         self.assertIn(f"pkgver={version}\n", PKGBUILD)
+        self.assertNotIn("~", version)
         pkgrel = re.search(r"(?m)^pkgrel=(\S+)$", PKGBUILD)
         self.assertIsNotNone(pkgrel)
         self.assertRegex(pkgrel.group(1), r"^[1-9]\d*$")
@@ -198,7 +226,6 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertNotIn("pkgbase=", PKGBUILD)
 
     def test_upgrade_path_from_the_split_packages_is_declared(self):
-        version = project_version()
         superseded = ("eitaas-remmina", "eitaas-linux-gui")
 
         # RPM: every Provides sits at or above its Obsoletes bound so the
@@ -256,7 +283,7 @@ class RemminaPackagingComplianceTests(unittest.TestCase):
         self.assertIn("stub eitaas-linux 0.1.0 7", rpm)
         self.assertIn("stub eitaas-remmina 1.4.43 0.15", rpm)
         self.assertIn("stub eitaas-linux-gui 0.1.0 7", rpm)
-        self.assertIn(str(version), CHANGELOG)
+        self.assertIn(native_version(), CHANGELOG)
 
     def test_runtime_dependencies_are_consolidated_without_internal_recommends(self):
         """One Requires/Depends/depends set per distribution, no weak links.

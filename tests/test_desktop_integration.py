@@ -3,6 +3,7 @@
 import configparser
 import shutil
 import subprocess
+import re
 import unittest
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
@@ -78,12 +79,17 @@ class MetainfoTests(unittest.TestCase):
         releases = self.root.findall("releases/release")
         self.assertTrue(releases)
         self.assertEqual(releases[0].get("version"), eitaas.__version__)
-        # AppStream lists releases newest first.
-        versions = [
-            tuple(int(part) for part in release.get("version").split("."))
-            for release in releases
-        ]
-        self.assertEqual(versions, sorted(versions, reverse=True))
+        # AppStream lists releases newest first. Versions may carry a PEP 440
+        # pre-release suffix (e.g. 1.0.0rc1), so parse rather than int-split.
+        def version_key(value):
+            m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:(a|b|rc)(\d+))?", value)
+            assert m, f"unparsable release version {value!r}"
+            pre_rank = {"a": 0, "b": 1, "rc": 2, None: 3}[m.group(4)]
+            pre_num = int(m.group(5)) if m.group(5) else 0
+            return (int(m.group(1)), int(m.group(2)), int(m.group(3)), pre_rank, pre_num)
+
+        keys = [version_key(release.get("version")) for release in releases]
+        self.assertEqual(keys, sorted(keys, reverse=True))
 
     def test_name_and_summary_carry_no_third_party_marks(self):
         for field in ("name", "summary"):

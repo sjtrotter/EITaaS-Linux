@@ -10,7 +10,7 @@
 # already applied. The builder substitutes its checksum for @SHA256@; the
 # recipe never carries an upstream download URL.
 pkgname=eitaas-linux
-pkgver=0.2.0
+pkgver=1.0.0rc1
 pkgrel=1
 pkgdesc='EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI'
 arch=('x86_64')

@@ -1,4 +1,11 @@
 %global manifest packaging/remmina/sources.json
+# The canonical (PEP 440) version from pyproject.toml. It names the release
+# tag, the source tarball, and its top-level directory. RPM's Version below is
+# the distribution spelling of the same release: a pre-release marker becomes
+# a `~` segment so X.Y.Z~rcN sorts BELOW the eventual X.Y.Z final and the
+# final upgrades over its candidates (issue #95). For a final release the two
+# strings are identical. scripts/check-version-consistency.py guards the pair.
+%global upstream_version 1.0.0rc1
 %global freerdp_version 3.30.0
 %global remmina_version 1.4.43
 %global remmina_commit 030946c83fe1b7218a21b6d32f9c975b243b7031
@@ -8,8 +15,8 @@
 %global debug_package %{nil}
 
 Name:           eitaas-linux
-Version:        0.2.0
-Release:        2%{?dist}
+Version:        1.0.0~rc1
+Release:        1%{?dist}
 Summary:        EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI
 # The package is a composite: Remmina and the EITaaS smart card (PIV)
 # integration compiled into its RDP plugin are GPL-2.0-or-later, FreeRDP is
@@ -17,7 +24,7 @@ Summary:        EITaaS Azure Virtual Desktop client, diagnostics, and helper GUI
 # THIRD_PARTY_NOTICES.md.
 License:        GPL-2.0-or-later AND Apache-2.0 AND MIT
 URL:            https://github.com/sjtrotter/EITaaS-Linux
-Source0:        https://github.com/sjtrotter/EITaaS-Linux/archive/refs/tags/v%{version}.tar.gz
+Source0:        https://github.com/sjtrotter/EITaaS-Linux/archive/refs/tags/v%{upstream_version}.tar.gz
 Source1:        https://github.com/FreeRDP/FreeRDP/archive/refs/tags/%{freerdp_version}.tar.gz
 Source2:        https://gitlab.com/Remmina/Remmina/-/archive/%{remmina_commit}/Remmina-%{remmina_commit}.tar.gz
 
@@ -84,7 +91,7 @@ the EITaaS Connect GTK 4 helper. The private client does not replace the
 distribution Remmina or FreeRDP packages.
 
 %prep
-%setup -q -n eitaas-linux-%{version} -a 1 -a 2
+%setup -q -n eitaas-linux-%{upstream_version} -a 1 -a 2
 remmina=Remmina-%{remmina_commit}
 cp packaging/remmina/eitaas_smartcard_auth.c "$remmina/plugins/rdp/eitaas_smartcard_auth.c"
 cp packaging/remmina/eitaas_smartcard_auth.h "$remmina/plugins/rdp/eitaas_smartcard_auth.h"
@@ -215,6 +222,11 @@ grep -q 'MIT License' "$license_dir/EITaaS-LICENSE"
 %{_datadir}/icons/hicolor/symbolic/apps/org.eitaas.Helper-symbolic.svg
 
 %changelog
+* Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 1.0.0~rc1-1
+- First 1.0 release candidate: bundled Remmina 1.4.43 + FreeRDP 3.30.0
+  client with smart card (PIV) AVD authentication, the eitaas CLI, and the
+  EITaaS Connect helper GUI, shipped as one package.
+
 * Sun Aug 30 2026 EITaaS-Linux contributors <noreply@example.invalid> - 0.2.0-2
 - Restore USB device redirection: build FreeRDP with its default urbdrc
   channel and declare the libusb build dependency on every distribution
