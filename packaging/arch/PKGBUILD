@@ -45,6 +45,7 @@ build() {
   python -m build --wheel --no-isolation
 
   cmake -S "$freerdp" -B freerdp-build -G Ninja \
+    -DUSE_VERSION_FROM_GIT_TAG=OFF \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$_prefix" \
     -DCMAKE_INSTALL_LIBDIR=lib -DWITH_AAD=ON -DWITH_PCSC=ON \
     -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON -DWITH_CLIENT_SDL=OFF \

@@ -105,6 +105,7 @@ done
 
 private_root="$PWD/private-root"
 cmake -S FreeRDP-%{freerdp_version} -B freerdp-build -G Ninja \
+  -DUSE_VERSION_FROM_GIT_TAG=OFF \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="%{private_prefix}" \
   -DCMAKE_INSTALL_LIBDIR=lib64 \
   -DWITH_AAD=ON -DWITH_PCSC=ON -DWITH_SSO_MIB=OFF -DWITH_CLIENT=ON \
