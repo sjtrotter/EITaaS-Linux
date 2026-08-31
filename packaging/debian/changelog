@@ -1,3 +1,11 @@
+eitaas-linux (1.0.0~rc1) unstable; urgency=medium
+
+  * First 1.0 release candidate. No functional change from 0.2.0; the
+    combined package, smart card (PIV) AVD client, and helper GUI are
+    promoted for release-candidate validation.
+
+ -- EITaaS-Linux contributors <noreply@example.invalid>  Sun, 30 Aug 2026 18:00:00 +0000
+
 eitaas-linux (0.2.0) unstable; urgency=medium
 
   * Ship one binary package containing the bundled Remmina/FreeRDP client, the

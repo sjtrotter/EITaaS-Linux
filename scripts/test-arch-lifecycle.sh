@@ -16,7 +16,23 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 
 bsdtar -tf "$package" >"$work/package-files.txt"
 current_version=$(bsdtar -xOf "$package" .PKGINFO | sed -n 's/^pkgver = //p')
-prior_version=${current_version%-*}-0
+package_version=${current_version%-*}
+prior_version=$package_version-0
+
+# Arch has no `~` pre-release marker, so packaging/arch/PKGBUILD keeps the
+# canonical PEP 440 pkgver (X.Y.ZrcN) where RPM and Debian spell the same
+# release X.Y.Z~rcN. pacman must still sort a pre-release BELOW the final
+# release of the same base version, or the eventual final would not upgrade
+# over its candidates (issue #95). This is the one place a real vercmp exists,
+# so assert the guarantee here instead of documenting it and hoping.
+base_version=$(printf '%s\n' "$package_version" | sed -E 's/(a|b|rc)[0-9]+$//')
+if [ "$base_version" != "$package_version" ]; then
+  test "$(vercmp "$package_version" "$base_version")" -lt 0 ||
+    { echo "pacman does not sort $package_version below $base_version" >&2; exit 1; }
+  test "$(vercmp "$base_version" "$package_version")" -gt 0 ||
+    { echo "pacman does not sort $base_version above $package_version" >&2; exit 1; }
+fi
+
 for path in \
   usr/bin/eitaas \
   usr/bin/eitaas-gui \
