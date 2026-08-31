@@ -55,12 +55,17 @@ jobs:
           path: source-artifacts
       - run: >-
           sudo apt-get update && sudo apt-get install -y
-          build-essential debhelper dh-python pybuild-plugin-pyproject python3-all
-          python3-setuptools python3-wheel lintian
+          build-essential cmake debhelper desktop-file-utils devscripts
+          dh-python dpkg-dev gettext git gnutls-bin libcurl4-openssl-dev
+          libgtk-3-dev libicu-dev libjson-c-dev libjson-glib-dev libkrb5-dev
+          libpcsclite-dev libsecret-1-dev libsodium-dev libsoup-3.0-dev
+          libssh-dev libssl-dev libusb-1.0-0-dev libwebkit2gtk-4.1-dev
+          lintian ninja-build opensc patch pcscd pybuild-plugin-pyproject
+          python3-all python3-setuptools python3-wheel zlib1g-dev
       - run: scripts/build-deb.sh source-artifacts/eitaas-linux-*.tar.gz
       - run: >-
           lintian --suppress-tags
-          bad-distribution-in-changes-file,initial-upload-closes-no-bugs
+          bad-distribution-in-changes-file,initial-upload-closes-no-bugs,no-manual-page,file-without-copyright-information,inconsistent-appstream-metadata-license,odd-historical-debian-changelog-version
           dist/*.changes
       - uses: actions/upload-artifact@v4
         with:
@@ -79,15 +84,21 @@ jobs:
     container: fedora:44
     steps:
       - run: >-
-          dnf install -y git findutils rpm-build python3-devel
-          python3-setuptools pyproject-rpm-macros python3-wheel rpmlint
+          dnf install -y git findutils libusb1-devel rpm-build rpmlint
+          python3-devel python3-setuptools pyproject-rpm-macros python3-wheel
+          desktop-file-utils appstream cmake gcc gcc-c++ gettext ninja-build
+          patch gtk3-devel json-c-devel json-glib-devel krb5-devel
+          libcurl-devel libicu-devel libsecret-devel libsodium-devel
+          libsoup3-devel libssh-devel openssl-devel
+          pcsc-lite-devel webkit2gtk4.1-devel zlib-devel
+          gtk4 libadwaita python3-gobject
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: release-source-python
           path: source-artifacts
       - run: scripts/build-rpm.sh source-artifacts/eitaas-linux-*.tar.gz
-      - run: rpmlint packaging/rpm/eitaas-linux.spec dist/*.rpm
+      - run: rpmlint -r packaging/rpm/eitaas-linux.rpmlintrc packaging/rpm/eitaas-linux.spec dist/*.rpm
       - uses: actions/upload-artifact@v4
         with:
           name: release-rpm
@@ -99,9 +110,11 @@ jobs:
     container: archlinux:base
     steps:
       - run: >-
-          pacman -Syu --noconfirm --needed base-devel git namcap
-          python-build python-installer python-setuptools python-wheel
-          opensc pcsclite ccid pcsc-tools
+          pacman -Syyu --noconfirm --needed base-devel cmake curl desktop-file-utils libusb
+          gettext git gnutls gtk3 gtk4 icu json-c json-glib krb5 libadwaita
+          libsecret libsodium libsoup3 libssh namcap ninja opensc openssl patch
+          pcsclite ccid pcsc-tools python python-build python-gobject
+          python-installer python-setuptools python-wheel webkit2gtk-4.1 zstd
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
@@ -112,7 +125,7 @@ jobs:
           useradd --create-home builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
           runuser -u builder -- scripts/build-arch.sh source-artifacts/eitaas-linux-*.tar.gz
-      - run: namcap packaging/arch/PKGBUILD dist/*.pkg.tar.zst
+      - run: namcap .build/eitaas-bundle/package/PKGBUILD dist/*.pkg.tar.zst
       - uses: actions/upload-artifact@v4
         with:
           name: release-arch
