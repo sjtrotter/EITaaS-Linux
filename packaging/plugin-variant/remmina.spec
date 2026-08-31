@@ -16,12 +16,20 @@
 # it is the clean base whose remmina-plugins-rdp the -piv package replaces.
 #
 # The packaging (dependencies, cmake flags, subpackages, %%check) is unchanged
-# from Fedora so the base tracks the distribution's own remmina.
+# from Fedora so the base tracks the distribution's own remmina; ONLY the
+# source/EVR and this changelog head differ (the historical Fedora changelog
+# below is trimmed to the most recent entry).
+#
+# EVR: snapshot versioning 1.4.43^142.g030946c83-1 -- the "^142.g030946c83"
+# marks a post-v1.4.43 snapshot, so it sorts ABOVE both Fedora stock
+# (1.4.41-2) and any future real 1.4.43-1, and BELOW 1.4.44. The companion
+# remmina-plugin-rdp-piv Requires this exact EVR, so the base and the plugin
+# MUST always be built and released together.
 
 %global commit 030946c83fe1b7218a21b6d32f9c975b243b7031
 
 Name: remmina
-Version: 1.4.43
+Version: 1.4.43^142.g030946c83
 Release: 1%{?dist}
 Summary: Remote Desktop Client
 License: GPL-2.0-or-later and MIT
@@ -375,7 +383,7 @@ appstream-util validate-relax --nonet %{buildroot}/%{_datadir}/metainfo/*.appdat
 %{_mandir}/man1/remmina-gnome.1*
 
 %changelog
-* Mon Aug 31 2026 EITaaS-Linux <noreply@example.invalid> - 1.4.43-1
+* Mon Aug 31 2026 EITaaS-Linux <noreply@example.invalid> - 1.4.43^142.g030946c83-1
 - EITaaS COPR variant base (issue #101, ADR-0003 Track 2).
 - Bump to the pinned Remmina 1.4.43 snapshot 030946c8 (git describe
   v1.4.43-142-g030946c83) recorded in packaging/remmina/sources.json; the RDP

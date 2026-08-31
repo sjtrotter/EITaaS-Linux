@@ -17,14 +17,14 @@
 
 %global commit 030946c83fe1b7218a21b6d32f9c975b243b7031
 # EVR of the base remmina this plugin is ABI-matched to and requires exactly.
-%global base_version 1.4.43
+%global base_version 1.4.43^142.g030946c83
 %global base_release 1%{?dist}
 # The remmina-plugins-rdp capability EVR this package provides/obsoletes. It is
-# one release above the base plugin (1.4.43-1) so a plain `dnf install` of this
-# package automatically obsoletes BOTH Fedora's stock plugin (1.4.41-2) and the
-# equal-versioned base plugin (1.4.43-1) without needing --allowerasing, while
+# one release above the base plugin (release 1) so a plain `dnf install`
+# of this package automatically obsoletes BOTH Fedora's stock plugin (1.4.41-2)
+# and the equal-versioned base plugin without needing --allowerasing, while
 # never obsoleting its own provide.
-%global rdp_evr 1.4.43-2%{?dist}
+%global rdp_evr %{base_version}-2%{?dist}
 
 Name: remmina-plugin-rdp-piv
 Version: %{base_version}
@@ -73,6 +73,7 @@ BuildRequires: pkgconfig(x11)
 BuildRequires: pkgconfig(xkbfile)
 BuildRequires: pkgconfig(libcurl)
 BuildRequires: binutils
+BuildRequires: patchelf
 
 # ABI lock: the plugin is compiled against this exact Remmina build (matching
 # the stock plugins-rdp's own "Requires: remmina = EVR"); a different remmina
@@ -80,7 +81,7 @@ BuildRequires: binutils
 Requires: remmina%{?_isa} = %{base_version}-%{base_release}
 
 # Clean drop-in swap of the stock/base RDP plugin. Provides satisfies remmina's
-# "Recommends: remmina-plugins-rdp"; Obsoletes (at rdp_evr = 1.4.43-2, one above
+# "Recommends: remmina-plugins-rdp"; Obsoletes (at rdp_evr, one release above
 # the base plugin) auto-removes both Fedora's stock plugin and the equal-EVR
 # base plugin on `dnf install`; Conflicts is belt-and-suspenders against manual
 # co-installation.
@@ -137,6 +138,10 @@ install -d %{buildroot}%{_libdir}/remmina/plugins
 install -p -m 0755 \
     %{_vpath_builddir}/plugins/rdp/remmina-plugin-rdp.so \
     %{buildroot}%{_libdir}/remmina/plugins/remmina-plugin-rdp.so
+# Patch 0003 (keep-private-runtime-paths) sets an $ORIGIN-relative RUNPATH for
+# the vendored-prefix bundle; it is meaningless (and rpmlint-flagged) in this
+# system-prefix build, so drop it.
+patchelf --remove-rpath %{buildroot}%{_libdir}/remmina/plugins/remmina-plugin-rdp.so
 
 %check
 so=%{buildroot}%{_libdir}/remmina/plugins/remmina-plugin-rdp.so
@@ -156,7 +161,7 @@ echo "OK: linkage and smart-card strings present"
 %{_libdir}/remmina/plugins/remmina-plugin-rdp.so
 
 %changelog
-* Mon Aug 31 2026 EITaaS-Linux <noreply@example.invalid> - 1.4.43-1
+* Mon Aug 31 2026 EITaaS-Linux <noreply@example.invalid> - 1.4.43^142.g030946c83-1
 - Initial drop-in AAD/PIV RDP plugin variant (issue #101, ADR-0003 Track 2).
 - Built from the pinned Remmina 1.4.43 snapshot 030946c8 with the EITaaS
   downstream RDP series, WITH_RDP_AUTH_AAD=ON / WITH_SSO_MIB=OFF, against the
