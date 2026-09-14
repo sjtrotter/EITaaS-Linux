@@ -7,8 +7,9 @@ upstream Remmina/FreeRDP submission; treat that as policy.
 ## What this repository is
 
 Community Linux tooling for Azure Virtual Desktop (US Government cloud) with
-smart card (PIV) authentication and redirection. One installable deliverable per distribution — the
-`eitaas-linux` package (#80) — built from three source trees:
+smart card (PIV) authentication and redirection. ADR-0003 settles distribution as two tracks:
+the reference bundle — one installable deliverable per distribution, the `eitaas-linux` package
+(#80) — and a community-repo drop-in variant of Remmina's own RDP plugin (#101). Four source trees:
 
 - `src/eitaas/` — stdlib-only Python ≥ 3.10 CLI (`eitaas doctor|inspect-profile|connect|profile|smartcard`).
   `api.py` is the presentation-neutral facade; frontends never import platform modules directly.
@@ -22,10 +23,15 @@ smart card (PIV) authentication and redirection. One installable deliverable per
   patch series, `eitaas_smartcard_auth.c` (WebKit smart-card / PKCS #11 auth), the `eitaas-remmina` launcher, and the
   notices for the isolated one-shot Remmina 1.4.43 + FreeRDP 3.30.x build.
   `upstream/remmina/` holds the unbranded upstream-candidate exports of the same changes.
+- `packaging/plugin-variant/` — ADR-0003 Track 2 (#101): `remmina-plugin-rdp-piv.spec` plus the
+  `remmina.spec` base, both built from the same pinned 1.4.43 snapshot so they are ABI-matched.
+  It is a *variant build of Remmina's stock RDP plugin*, not an EITaaS plugin-API extension.
+  Host install/hardware procedure: `docs/plugin-variant-testing.md`.
 
 Read `README.md`, `docs/adr/*.md`, and `docs/audits/*.md` before changing behavior.
-ADR-0002 fixes the product boundary: one-shot `eitaas-remmina PROFILE.rdpw`; no plugin,
-no connection-manager mode, no Flatpak/AppImage.
+ADR-0002 fixes the boundary for the bundle client: one-shot `eitaas-remmina PROFILE.rdpw`;
+no EITaaS plugin-API extension, no connection-manager mode, no Flatpak/AppImage.
+ADR-0003 then adds the variant-plugin track above; the two ship side by side.
 
 ## Non-negotiable security invariants
 
@@ -118,4 +124,6 @@ Code destined for `upstream/remmina/` or the GitLab `contrib/*` branches follows
   assembled by `scripts/prepare-bundle-source.py`; lifecycle checks are `scripts/test-{deb,rpm,arch}-lifecycle.sh`.
 - Local build trees may exist under `.build/` (ignored, machine-local); if present, `.build/remmina-poc/prefix`
   holds an installed FreeRDP for plugin builds (check its version against `sources.json`).
+- Variant plugin (ADR-0003 Track 2): `packaging/plugin-variant/`, tested per `docs/plugin-variant-testing.md`;
+  it links the distribution's FreeRDP 3, which is not rebuilt.
 - Support matrix and gates: `docs/supported-platforms.md`. Release: `docs/release-checklist.md`.
